@@ -151,7 +151,7 @@ export default function LoginPage() {
                     </div>
 
                     {/* Form Card */}
-                    <div className="rounded-2xl border border-border bg-card shadow-xl p-8 space-y-6">
+                    <div className="glass-panel p-8 space-y-6 relative overflow-hidden">
 
                         <form onSubmit={handleLogin} className="space-y-5">
 
@@ -174,7 +174,7 @@ export default function LoginPage() {
                                     onChange={e => setUsername(e.target.value)}
                                     onFocus={() => setUserFocused(true)}
                                     onBlur={() => setUserFocused(false)}
-                                    className="w-full h-14 pl-10 pr-4 pt-4 pb-1 rounded-xl border border-border bg-background text-foreground text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                    className="w-full h-14 pl-10 pr-4 pt-4 pb-1 rounded-xl border border-white/20 bg-white/40 dark:bg-white/5 backdrop-blur-md text-foreground text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-inner"
                                     autoComplete="username"
                                     autoFocus
                                 />
@@ -199,7 +199,7 @@ export default function LoginPage() {
                                     onChange={e => setPassword(e.target.value)}
                                     onFocus={() => setPassFocused(true)}
                                     onBlur={() => setPassFocused(false)}
-                                    className="w-full h-14 pl-10 pr-4 pt-4 pb-1 rounded-xl border border-border bg-background text-foreground text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                    className="w-full h-14 pl-10 pr-4 pt-4 pb-1 rounded-xl border border-white/20 bg-white/40 dark:bg-white/5 backdrop-blur-md text-foreground text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 shadow-inner"
                                     autoComplete="current-password"
                                 />
                             </div>
@@ -225,13 +225,6 @@ export default function LoginPage() {
                             </Button>
                         </form>
 
-                        {/* Security badge */}
-                        <div className="flex items-center justify-center gap-2 pt-2 border-t border-border">
-                            <Shield className="w-3.5 h-3.5 text-muted-foreground" />
-                            <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-widest">
-                                Secured · Admin Access Only
-                            </p>
-                        </div>
                     </div>
 
                     {/* Bottom mobile copyright */}
