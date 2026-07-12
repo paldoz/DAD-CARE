@@ -135,12 +135,12 @@ export function MobileNav() {
                 <div className="fixed inset-0 z-[60] md:hidden">
                     {/* Backdrop */}
                     <div
-                        className="absolute inset-0 bg-black/60 backdrop-blur-md"
+                        className="absolute inset-0 bg-black/5 dark:bg-black/20 backdrop-blur-[2px]"
                         onClick={() => setShowMore(false)}
                     />
 
                     {/* Sheet */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-card rounded-t-[28px] border-t border-border/50 p-6 pb-10 animate-in slide-in-from-bottom duration-300 shadow-2xl">
+                    <div className="absolute bottom-0 left-0 right-0 bg-white/60 dark:bg-black/50 backdrop-blur-xl border-t border-white/40 dark:border-white/10 rounded-t-[28px] p-6 pb-10 animate-in slide-in-from-bottom duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
                         {/* Handle */}
                         <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full mx-auto mb-6" />
 

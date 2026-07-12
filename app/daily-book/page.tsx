@@ -1712,24 +1712,24 @@ return (
                 .daily-popup-backdrop {
                     position: fixed; inset: 0; z-index: 10000;
                     display: flex; align-items: center; justify-content: center;
-                    background: rgba(0,0,0,0.22);
-                    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+                    background: rgba(0,0,0,0.05);
+                    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
                 }
-                .dark .daily-popup-backdrop { background: rgba(0,0,0,0.48); }
+                .dark .daily-popup-backdrop { background: rgba(0,0,0,0.2); }
 
                 .daily-popup-card {
                     position: relative; width: 296px; max-height: 440px;
                     border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
-                    background: rgba(255,255,255,0.95);
-                    border: 1.5px solid rgba(30,64,175,0.25);
-                    box-shadow: 0 0 0 1px rgba(30,64,175,0.1), 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
-                    backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6);
+                    background: rgba(255,255,255,0.65);
+                    border: 1px solid rgba(255,255,255,0.4);
+                    box-shadow: 0 16px 40px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.5);
+                    backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
                     animation: popIn 0.22s cubic-bezier(.34,1.56,.64,1) both;
                 }
                 .dark .daily-popup-card {
-                    background: rgba(9,9,11,0.92);
-                    border-color: rgba(59,130,246,0.3);
-                    box-shadow: 0 0 24px rgba(59,130,246,0.15), 0 8px 40px rgba(0,0,0,0.6);
+                    background: rgba(0,0,0,0.5);
+                    border-color: rgba(255,255,255,0.2);
+                    box-shadow: 0 16px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
                 }
 
                 .daily-popup-strip { height: 3px; width: 100%; }
