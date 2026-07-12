@@ -6,7 +6,6 @@ import { AppSidebar } from './app-sidebar';
 import { MobileNav } from './mobile-nav';
 import { LogOut, ChevronDown } from 'lucide-react';
 import { logout } from '@/lib/session';
-import { createClient } from '@/lib/supabase/client';
 import { subscribeToDailyDates } from '@/lib/hijri-date';
 import { IdleMonitor } from './idle-monitor';
 
@@ -18,7 +17,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    const supabase = createClient();
+    // Guard: only run SUPER_ADMIN background prefetch once per session mount
+    const hasFetchedAdminDataRef = useRef(false);
 
     useEffect(() => {
         const storedUser = localStorage.getItem('currentUser');
@@ -43,32 +43,33 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         return () => unsub();
     }, [pathname, router]);
 
-    // Secret Background Fetcher for Audit Data (Run once on mount)
+    // Secret Background Fetcher for Audit Data (Run ONCE per session mount)
     useEffect(() => {
-        if (currentUser?.role === 'SUPER_ADMIN') {
-            const fetchBackgroundStats = async () => {
-                const token = localStorage.getItem('dadwork_session_token') || '';
-                if (!token) return;
-                try {
-                    // Prefetch online sessions silently
-                    fetch('/api/admin-sessions', { headers: { 'x-session-token': token } })
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.online) localStorage.setItem('dadwork_online_sessions', JSON.stringify(data.online));
-                        }).catch(() => { });
+        if (currentUser?.role !== 'SUPER_ADMIN') return;
+        // Prevent re-running on every page navigation — only fetch once after login
+        if (hasFetchedAdminDataRef.current) return;
+        hasFetchedAdminDataRef.current = true;
 
-                    // Prefetch audit stats silently
-                    fetch('/api/audit-logs?limit=1&stats=true', { headers: { 'x-session-token': token } })
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.userStats) localStorage.setItem('dadwork_audit_stats', JSON.stringify(data.userStats));
-                        }).catch(() => { });
-                } catch (e) { }
-            };
-            fetchBackgroundStats();
-            // Removed 60s interval to prevent massive Vercel usage spikes.
-            // Settings page already uses Supabase Realtime for instant updates.
-        }
+        const fetchBackgroundStats = async () => {
+            const token = localStorage.getItem('dadwork_session_token') || '';
+            if (!token) return;
+            try {
+                // Prefetch online sessions silently
+                fetch('/api/admin-sessions', { credentials: 'include' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.online) localStorage.setItem('dadwork_online_sessions', JSON.stringify(data.online));
+                    }).catch(() => { });
+
+                // Prefetch audit stats silently
+                fetch('/api/audit-logs?limit=1&stats=true', { credentials: 'include' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.userStats) localStorage.setItem('dadwork_audit_stats', JSON.stringify(data.userStats));
+                    }).catch(() => { });
+            } catch (e) { }
+        };
+        fetchBackgroundStats();
     }, [currentUser]);
 
     // Close popup when clicking outside
@@ -85,7 +86,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const handleLogout = async () => {
         setShowProfileMenu(false);
         await logout();
-        await supabase.auth.signOut();
+        // Note: supabase.auth.signOut() removed — this app uses a custom session system,
+        // not Supabase Auth, so the call was hitting the Auth API unnecessarily.
         router.push('/login');
     };
 

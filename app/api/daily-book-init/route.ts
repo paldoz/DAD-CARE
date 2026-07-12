@@ -43,8 +43,9 @@ export const GET = trackApiRoute('/api/daily-book-init', async (request: Request
     try {
         const data = await getDailyBookInit();
         const response = NextResponse.json(data);
-        // Force NO CACHING because Vercel edge CDN was holding onto stale historyCounts for 5+ minutes
-        response.headers.set('Cache-Control', 'private, no-cache, no-store, max-age=0, must-revalidate');
+        // Allow Vercel edge to cache for 60s, then serve stale while revalidating in background.
+        // Customers list + latestDate change infrequently — this saves a DB hit on every page load.
+        response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
         return response;
     } catch (error: any) {
         console.error('Daily Book Init Error:', error);

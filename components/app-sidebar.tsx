@@ -20,7 +20,6 @@ import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { createClient } from '@/lib/supabase/client';
 import { logout } from '@/lib/session';
 import { subscribeToDailyDates } from '@/lib/hijri-date';
 
@@ -38,7 +37,6 @@ export function AppSidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const { theme, setTheme } = useTheme();
-    const supabase = createClient();
     const [mounted, setMounted] = useState(false);
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [dates, setDates] = useState({ standard: '', hijri: '' });
@@ -62,7 +60,8 @@ export function AppSidebar() {
 
     const handleLogout = async () => {
         await logout();
-        await supabase.auth.signOut();
+        // Note: supabase.auth.signOut() removed — this app uses a custom session system,
+        // not Supabase Auth, so the call was hitting the Supabase Auth API unnecessarily.
         router.push('/login');
     };
 

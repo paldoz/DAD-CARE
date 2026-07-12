@@ -514,7 +514,16 @@ export default function SettingsPage() {
         }
     };
 
-    const loadOnlineSessions = async () => {
+    const loadOnlineSessions = async (force = false) => {
+        // Skip the network call if we already have fresh data (<2 min old) in localStorage
+        if (!force) {
+            const cachedAt = localStorage.getItem('dadwork_online_sessions_at');
+            const AGE_LIMIT = 2 * 60 * 1000; // 2 minutes
+            if (cachedAt && Date.now() - parseInt(cachedAt) < AGE_LIMIT) {
+                // Data is fresh enough — no need to hit the server again
+                return;
+            }
+        }
         try {
             const res = await fetch('/api/admin-sessions', {
                 credentials: 'include',
@@ -525,7 +534,10 @@ export default function SettingsPage() {
                     setOnlineSessions(data.online || []);
                     setAllSessions(data.all || []);
                     try {
-                        if (data.online) localStorage.setItem('dadwork_online_sessions', JSON.stringify(data.online));
+                        if (data.online) {
+                            localStorage.setItem('dadwork_online_sessions', JSON.stringify(data.online));
+                            localStorage.setItem('dadwork_online_sessions_at', String(Date.now()));
+                        }
                     } catch(e) {}
                 } catch (err) {
                     console.error("Failed to parse online sessions JSON", err);

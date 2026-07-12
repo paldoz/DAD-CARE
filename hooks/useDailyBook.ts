@@ -113,8 +113,10 @@ export function useDailyBookHistory() {
         {
             revalidateFirstPage: false,
             revalidateOnFocus: false,
+            revalidateOnReconnect: false,
             revalidateAll: false,
             persistSize: true,
+            dedupingInterval: 120000, // 2 min — prevents re-fetch on every mount
         }
     );
 
