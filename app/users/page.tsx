@@ -403,7 +403,7 @@ export default function UsersPage() {
 
             {/* Kickout PIN Dialog */}
             <Dialog open={!!kickoutTarget} onOpenChange={(open) => { if (!open) { setKickoutTarget(null); setKickPin1(''); setKickPin2(''); } }}>
-                <DialogContent className="bg-card border-border sm:max-w-[380px]">
+                <DialogContent className="border-border sm:max-w-[380px]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-destructive">
                             <span className="text-2xl">🦵</span>
@@ -450,7 +450,7 @@ export default function UsersPage() {
                                 Add User
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="bg-card border-border">
+                        <DialogContent className="border-border">
                             <DialogHeader>
                                 <DialogTitle className="flex items-center gap-2 text-foreground">
                                     <UserPlus className="w-5 h-5 text-primary" />

@@ -122,18 +122,28 @@ export default function LoginPage() {
             {/* ── RIGHT PANEL — Login form ── */}
             <div className="flex-1 flex items-center justify-center p-6 lg:p-12 relative">
 
-                {/* Mobile background */}
-                <div className="absolute inset-0 lg:hidden opacity-30 pointer-events-none">
-                    <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
-                    <div className="dark:block hidden absolute inset-0" style={{ backgroundImage: 'linear-gradient(to right, #27272a 1px, transparent 1px), linear-gradient(to bottom, #27272a 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+                {/* Mobile background enhancements */}
+                <div className="absolute inset-0 lg:hidden overflow-hidden pointer-events-none">
+                    {/* Glowing orb for mobile */}
+                    <div className="absolute top-0 right-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px]"
+                        style={{ background: '#6366f1' }} />
+                    <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px]"
+                        style={{ background: '#8b5cf6' }} />
+                    
+                    {/* Grid */}
+                    <div className="absolute inset-0 opacity-30">
+                        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+                        <div className="dark:block hidden absolute inset-0" style={{ backgroundImage: 'linear-gradient(to right, #27272a 1px, transparent 1px), linear-gradient(to bottom, #27272a 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+                    </div>
                 </div>
 
                 <div className="w-full max-w-md relative z-10">
 
                     {/* Mobile logo */}
-                    <div className="flex flex-col items-center mb-10 lg:hidden">
-                        <div className="w-16 h-16 rounded-2xl overflow-hidden mb-4 border-2 border-primary/30 shadow-xl">
-                            <img src="/icons/icon-192.png" alt="DADWORK" className="w-full h-full object-cover" />
+                    <div className="flex flex-col items-center mb-10 lg:hidden animate-in fade-in slide-in-from-top-4 duration-700">
+                        <div className="w-20 h-20 rounded-3xl overflow-hidden mb-5 border border-primary/20 bg-white/5 backdrop-blur-sm p-1 shadow-2xl"
+                             style={{ boxShadow: '0 10px 40px -10px rgba(99,102,241,0.5)' }}>
+                            <img src="/icons/icon-192.png" alt="DADWORK" className="w-full h-full object-cover rounded-2xl" />
                         </div>
                         <h1 className="text-3xl font-black text-foreground tracking-tight">
                             DAD<span className="text-primary">WORK</span>
@@ -151,7 +161,7 @@ export default function LoginPage() {
                     </div>
 
                     {/* Form Card */}
-                    <div className="glass-panel p-8 space-y-6 relative overflow-hidden">
+                    <div className="glass-panel p-8 space-y-6 relative overflow-hidden animate-in fade-in zoom-in-95 duration-500 delay-150 fill-mode-both">
 
                         <form onSubmit={handleLogin} className="space-y-5">
 

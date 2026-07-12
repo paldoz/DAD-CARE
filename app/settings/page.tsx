@@ -1919,8 +1919,8 @@ export default function SettingsPage() {
 
             {/* ── Clear Ledger History Dialog ── */}
             <Dialog open={isClearHistoryOpen} onOpenChange={setIsClearHistoryOpen}>
-                <DialogContent className="bg-card border-border/50 max-w-[95vw] sm:max-w-md rounded-2xl p-0 overflow-hidden shadow-2xl">
-                    <div className="bg-card/95 backdrop-blur-xl border-b border-border/40 px-4 py-3">
+                <DialogContent className="border-border/50 max-w-[95vw] sm:max-w-md rounded-2xl p-0 overflow-hidden shadow-2xl">
+                    <div className="border-b border-border/40 px-4 py-3">
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2 text-foreground text-sm font-black">
                                 <Shield className="w-4 h-4 text-destructive animate-pulse" />
@@ -2041,9 +2041,9 @@ export default function SettingsPage() {
 
             {/* ── Create/Edit User Dialog ── */}
             <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-                <DialogContent className="bg-card border-border/50 max-w-[95vw] sm:max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-0">
+                <DialogContent className="border-border/50 max-w-[95vw] sm:max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl p-0">
                     {/* Dialog Header */}
-                    <div className="sticky top-0 z-10 bg-card/95 backdrop-blur-xl border-b border-border/40 px-4 py-3 rounded-t-2xl">
+                    <div className="sticky top-0 z-10 backdrop-blur-xl border-b border-border/40 px-4 py-3 rounded-t-2xl">
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2 text-foreground text-sm">
                                 {selectedUser ? <UserCheck className="w-4 h-4 text-primary" /> : <UserPlus className="w-4 h-4 text-primary" />}
@@ -2268,7 +2268,7 @@ export default function SettingsPage() {
 
             {/* ── Admin Detail Dialog ── */}
             <Dialog open={adminDetailOpen} onOpenChange={setAdminDetailOpen}>
-                <DialogContent className="max-w-md w-full rounded-2xl p-0 overflow-hidden border border-border/50 bg-card shadow-2xl">
+                <DialogContent className="max-w-md w-full rounded-2xl p-0 overflow-hidden border border-border/50 shadow-2xl">
                     <DialogHeader className="sr-only">
                         <DialogTitle>Admin Activity Details</DialogTitle>
                         <DialogDescription>Full activity timeline for {adminDetailUser?.name}</DialogDescription>
@@ -2357,7 +2357,7 @@ export default function SettingsPage() {
 
                         {/* Activity Feed */}
                         <div className="flex-1 overflow-y-auto">
-                            <div className="px-4 py-3 border-b border-border/20 sticky top-0 bg-card/95 backdrop-blur-sm z-10">
+                            <div className="px-4 py-3 border-b border-border/20 sticky top-0 z-10">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Full Activity Timeline</p>
                             </div>
 

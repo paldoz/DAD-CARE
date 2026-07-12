@@ -735,7 +735,7 @@ export default function CustomerDetailPage() {
 
             {/* Transaction Edit Modal */}
             <Dialog open={!!transactionToEdit} onOpenChange={(open) => !open && setTransactionToEdit(null)}>
-                <DialogContent className="sm:max-w-[425px] glass-card border-border shadow-2xl">
+                <DialogContent className="sm:max-w-[425px] border-border shadow-2xl">
                     <DialogHeader>
                         <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Transaction</DialogTitle>
                         <DialogDescription className="text-[10px] opacity-70">
@@ -813,7 +813,7 @@ export default function CustomerDetailPage() {
                                 <Pencil className="w-3 h-3" /> Edit
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px] glass-card border-border shadow-2xl">
+                        <DialogContent className="sm:max-w-[425px] border-border shadow-2xl">
                             <DialogHeader>
                                 <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Customer Details</DialogTitle>
                             </DialogHeader>
