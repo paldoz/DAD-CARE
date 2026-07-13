@@ -1944,28 +1944,28 @@ export default function SettingsPage() {
                                 )}
 
                                 {/* ── All-In-One Audit Logs Feed ── */}
-                                <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm mt-6">
-                                    <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-blue-500/8 to-transparent flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-1.5 rounded-lg bg-blue-500/15">
-                                                <Activity className="w-4 h-4 text-blue-500" />
+                                <div className="rounded-3xl border border-white/10 bg-background/60 backdrop-blur-xl overflow-hidden shadow-2xl mt-6 relative before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/5 before:to-transparent before:pointer-events-none">
+                                    <div className="px-4 py-3 border-b border-white/10 bg-gradient-to-r from-blue-500/10 to-transparent flex items-center justify-between relative z-10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 rounded-xl bg-blue-500/20 shadow-inner border border-blue-500/20">
+                                                <Activity className="w-4 h-4 text-blue-400" />
                                             </div>
                                             <div>
-                                                <h3 className="text-sm font-bold text-foreground">Audit Log Feed</h3>
-                                                <p className="text-[10px] text-muted-foreground">All system actions and events</p>
+                                                <h3 className="text-sm font-black text-foreground tracking-tight">System Audit Log</h3>
+                                                <p className="text-[10px] font-medium text-muted-foreground">Real-time security & event feed</p>
                                             </div>
                                         </div>
                                         <button
                                             onClick={handleClearAuditLogs}
-                                            className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-[10px] font-black border border-red-500/20 transition-all active:scale-95 flex items-center gap-1.5"
+                                            className="px-3 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-500 rounded-xl text-[10px] font-black border border-red-500/30 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
                                         >
-                                            <Trash2 className="w-3 h-3" />
-                                            RESET DB
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                            RESET ALL
                                         </button>
                                     </div>
 
                                     {/* Filters */}
-                                    <div className="px-4 py-3 border-b border-border/40 bg-muted/10 grid grid-cols-2 gap-3">
+                                    <div className="px-4 py-2.5 border-b border-white/5 bg-black/5 dark:bg-white/5 grid grid-cols-2 gap-3 relative z-10">
                                         <div className="space-y-1">
                                             <Label className="text-[10px] font-bold text-muted-foreground uppercase">Filter Admin</Label>
                                             <select
@@ -2001,7 +2001,7 @@ export default function SettingsPage() {
                                     </div>
 
                                     {/* Feed */}
-                                    <div className="divide-y divide-border/20 max-h-[600px] overflow-y-auto">
+                                    <div className="divide-y divide-white/5 max-h-[350px] overflow-y-auto relative z-10 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                                         {auditLoading && auditLogs.length === 0 ? (
                                             <div className="py-12 flex flex-col items-center justify-center gap-3">
                                                 <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
@@ -2020,31 +2020,38 @@ export default function SettingsPage() {
                                                 const isClear = action === 'CLEAR_AUDIT_LOGS';
                                                 const logDate = new Date(log.created_at);
                                                 return (
-                                                    <div key={log.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/10 transition-colors">
-                                                        <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${isLogin ? 'bg-emerald-500/15 border border-emerald-500/20'
-                                                                : isLogout ? 'bg-slate-500/15 border border-slate-500/20'
-                                                                    : isFailed ? 'bg-red-500/15 border border-red-500/20'
-                                                                        : isClear ? 'bg-orange-500/15 border border-orange-500/20'
-                                                                            : 'bg-blue-500/15 border border-blue-500/20'
+                                                    <div key={log.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors group">
+                                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 shadow-inner ${isLogin ? 'bg-emerald-500/20 border border-emerald-500/30'
+                                                                : isLogout ? 'bg-slate-500/20 border border-slate-500/30'
+                                                                    : isFailed ? 'bg-red-500/20 border border-red-500/30'
+                                                                        : isClear ? 'bg-orange-500/20 border border-orange-500/30'
+                                                                            : 'bg-blue-500/20 border border-blue-500/30'
                                                             }`}>
-                                                            {isLogin ? <LogIn className="w-3.5 h-3.5 text-emerald-500" />
-                                                                : isLogout ? <LogOut className="w-3.5 h-3.5 text-slate-500" />
-                                                                    : isFailed ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                                                                        : isClear ? <Trash2 className="w-3.5 h-3.5 text-orange-500" />
-                                                                            : <Zap className="w-3.5 h-3.5 text-blue-500" />}
+                                                            {isLogin ? <LogIn className="w-3 h-3 text-emerald-400" />
+                                                                : isLogout ? <LogOut className="w-3 h-3 text-slate-400" />
+                                                                    : isFailed ? <AlertTriangle className="w-3 h-3 text-red-400" />
+                                                                        : isClear ? <Trash2 className="w-3 h-3 text-orange-400" />
+                                                                            : <Zap className="w-3 h-3 text-blue-400" />}
                                                         </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                                                                <span className="text-xs font-black text-foreground">{log.name || log.username}</span>
-                                                                <span className="text-[9px] font-bold text-muted-foreground px-1.5 py-0.5 rounded-md bg-muted border border-border/40">
-                                                                    {log.action}
-                                                                </span>
+                                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="text-[11px] font-black text-foreground drop-shadow-sm">{log.name || log.username}</span>
+                                                                    <span className="text-[8px] font-black tracking-widest text-muted-foreground px-1.5 py-0.5 rounded-md bg-black/20 dark:bg-white/10 border border-white/5">
+                                                                        {log.action}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 text-[8px] font-medium text-muted-foreground/70">
+                                                                    <span>{logDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                                    {log.ip_address && (
+                                                                        <>
+                                                                            <span className="w-1 h-1 rounded-full bg-white/10"></span>
+                                                                            <span className="font-mono text-[7px] bg-black/20 dark:bg-white/10 px-1 py-0.5 rounded border border-white/5">{log.ip_address}</span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                            {log.details && <p className="text-[11px] text-muted-foreground leading-relaxed">{log.details}</p>}
-                                                            <p className="text-[9px] text-muted-foreground/60 mt-1">
-                                                                {logDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · {logDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                                                                {log.ip_address && <span className="ml-2 px-1 py-0.5 bg-background rounded border border-border/50">{log.ip_address}</span>}
-                                                            </p>
+                                                            {log.details && <p className="text-[10px] text-muted-foreground/90 leading-relaxed mt-0.5 truncate group-hover:whitespace-normal group-hover:text-clip">{log.details}</p>}
                                                         </div>
                                                     </div>
                                                 );
