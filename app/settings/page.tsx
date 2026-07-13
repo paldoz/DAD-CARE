@@ -2057,14 +2057,14 @@ export default function SettingsPage() {
                                                 );
                                             })
                                         )}
-                                        {auditLogs.length < auditTotal && (
-                                            <div className="p-4 flex justify-center border-t border-border/40">
+                                        {auditLogs.length > 0 && auditLogs.length < auditTotal && (
+                                            <div className="p-4 flex justify-center border-t border-white/5">
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={loadMoreAuditLogs}
                                                     disabled={auditLoadingMore}
-                                                    className="rounded-xl font-bold text-xs"
+                                                    className="rounded-xl font-bold text-xs border-white/10 bg-white/5 hover:bg-white/10"
                                                 >
                                                     {auditLoadingMore ? 'Loading...' : `Load More (${auditTotal - auditLogs.length} remaining)`}
                                                 </Button>
