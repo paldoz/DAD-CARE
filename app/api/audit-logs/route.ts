@@ -172,7 +172,7 @@ export const DELETE = trackApiRoute('/api/audit-logs', async (request: Request) 
         await pool.query(`
             INSERT INTO "AuditLog" (user_id, username, name, role, action, details)
             VALUES ($1, $2, $3, $4, $5, $6)
-        `, [session.id, session.username, session.name, session.role, 'CLEAR_AUDIT_LOGS', 'Admin cleared all audit logs manually']);
+        `, [session.userId, session.username, session.username, session.role, 'CLEAR_AUDIT_LOGS', 'Admin cleared all audit logs manually']);
 
         return NextResponse.json({ success: true, message: 'Audit logs cleared successfully' });
     } catch (error: any) {
