@@ -1198,36 +1198,33 @@ return (
                                                                 {(() => {
                                                                     const vipItems = entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip'));
                                                                     const entryVipCount = vipItems.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
-                                                                    return entryVipCount > 0 ? (
+                                                                    return (
                                                                         <button
                                                                             type="button"
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
-                                                                                setVipPopupData({ date: entry.date, items: vipItems });
+                                                                                if (vipItems.length > 0) setVipPopupData({ date: entry.date, items: vipItems });
                                                                             }}
-                                                                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+                                                                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${entryVipCount > 0 ? 'bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 hover:brightness-110 active:scale-95 cursor-pointer' : 'bg-muted/50 text-muted-foreground/50 border border-border/20 cursor-default'}`}
                                                                         >
                                                                             👑 {entryVipCount} VIP
                                                                         </button>
-                                                                    ) : null;
+                                                                    );
                                                                 })()}
                                                                 {(() => {
                                                                     const absentItems = entry.items.filter(i => i.present === false);
-                                                                    if (absentItems.length > 0) {
-                                                                        return (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    setAbsentPopupData({ date: entry.date, items: absentItems });
-                                                                                }}
-                                                                                className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 to-yellow-500 text-yellow-950 border border-yellow-300 hover:brightness-110 active:scale-95 transition-all shadow-[0_0_10px_rgba(245,158,11,0.4)] cursor-pointer"
-                                                                            >
-                                                                                ⚠️ Inta Maqan: {absentItems.length}
-                                                                            </button>
-                                                                        );
-                                                                    }
-                                                                    return null;
+                                                                    return (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (absentItems.length > 0) setAbsentPopupData({ date: entry.date, items: absentItems });
+                                                                            }}
+                                                                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${absentItems.length > 0 ? 'bg-gradient-to-r from-amber-400 to-yellow-500 text-yellow-950 border border-yellow-300 shadow-[0_0_10px_rgba(245,158,11,0.4)] hover:brightness-110 active:scale-95 cursor-pointer' : 'bg-muted/50 text-muted-foreground/50 border border-border/20 cursor-default'}`}
+                                                                        >
+                                                                            ⚠️ Inta Maqan: {absentItems.length}
+                                                                        </button>
+                                                                    );
                                                                 })()}
                                                                 {historyLedgerStatus[entry.date] ? (() => {
                                                                     const withKg = entry.items.filter(i => i.kg > 0);
