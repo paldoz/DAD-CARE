@@ -1178,7 +1178,7 @@ return (
                                                             <ChevronRight className="w-5 h-5" />
                                                         )}
                                                     </div>
-                                                    <div className="flex-1 overflow-hidden">
+                                                    <div className="flex-1 min-w-0">
                                                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-1">
                                                             <h4 className="font-semibold text-foreground text-base md:text-lg">
                                                                 {format(new Date(entry.date), 'MMM dd, yyyy')}
@@ -1189,12 +1189,15 @@ return (
                                                             </span>
                                                         </div>
                                                         
-                                                        {/* Kinetic Stats Line - Using relative/absolute to guarantee visibility */}
+                                                        {/* ALL STATS IN A SINGLE KINETIC LINE */}
                                                         <div className="relative w-full h-[28px] mt-2 overflow-hidden bg-muted/10 rounded border border-border/20">
-                                                            <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic px-2 w-max">
-                                                                <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                                            <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic w-max min-w-full px-2">
+                                                                {/* 1. KG */}
+                                                                <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[10px] md:text-xs">
                                                                     ⚡ {Math.round(entry.totalKg)} KG
                                                                 </span>
+
+                                                                {/* 2. VIP */}
                                                                 {(() => {
                                                                     const vipItems = entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip'));
                                                                     const entryVipCount = vipItems.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
@@ -1205,12 +1208,14 @@ return (
                                                                                 e.stopPropagation();
                                                                                 setVipPopupData({ date: entry.date, items: vipItems });
                                                                             }}
-                                                                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all cursor-pointer bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 hover:brightness-110 active:scale-95"
+                                                                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all cursor-pointer bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 hover:brightness-110 active:scale-95 shrink-0"
                                                                         >
                                                                             👑 {entryVipCount} VIP
                                                                         </button>
                                                                     ) : null;
                                                                 })()}
+
+                                                                {/* 3. Inta Maqan */}
                                                                 {(() => {
                                                                     const absentItems = entry.items.filter(i => i.present === false);
                                                                     return absentItems.length > 0 ? (
@@ -1220,22 +1225,24 @@ return (
                                                                                 e.stopPropagation();
                                                                                 setAbsentPopupData({ date: entry.date, items: absentItems });
                                                                             }}
-                                                                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all cursor-pointer bg-gradient-to-r from-amber-400 to-yellow-500 text-yellow-950 border border-yellow-300 shadow-[0_0_10px_rgba(245,158,11,0.4)] hover:brightness-110 active:scale-95"
+                                                                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all cursor-pointer bg-gradient-to-r from-amber-400 to-yellow-500 text-yellow-950 border border-yellow-300 shadow-[0_0_10px_rgba(245,158,11,0.4)] hover:brightness-110 active:scale-95 shrink-0"
                                                                         >
                                                                             ⚠️ Inta Maqan: {absentItems.length}
                                                                         </button>
                                                                     ) : null;
                                                                 })()}
+
+                                                                {/* 4. Maqalka Status */}
                                                                 {historyLedgerStatus[entry.date] ? (() => {
                                                                     const withKg = entry.items.filter(i => i.kg > 0);
                                                                     const processed = withKg.filter(i => historyLedgerStatus[entry.date].has(i.customer_id)).length;
                                                                     const total = withKg.length;
                                                                     return processed === total && total > 0 ? (
-                                                                        <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wide border border-emerald-500/20">
+                                                                        <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wide border border-emerald-500/20 shrink-0">
                                                                             ✓ All in Maqalka
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wide border border-amber-500/20">
+                                                                        <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wide border border-amber-500/20 shrink-0">
                                                                             ⚠ {processed}/{total} Maqalka
                                                                         </span>
                                                                     );
