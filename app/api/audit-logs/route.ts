@@ -147,3 +147,36 @@ export const GET = trackApiRoute('/api/audit-logs', async (request: Request) => 
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 });
+
+export const DELETE = trackApiRoute('/api/audit-logs', async (request: Request) => {
+    try {
+        const cookieHeader = request.headers.get('cookie') || '';
+        const cookieToken = cookieHeader.match(/dadwork_session=([^;]+)/)?.[1];
+        const token = cookieToken || request.headers.get('x-session-token');
+
+        if (!token) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const session = await validateSession(token);
+        if (!session || session.role !== 'SUPER_ADMIN') {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
+        await ensureAuditLogTable();
+
+        // Perform the deletion
+        await pool.query(`DELETE FROM "AuditLog"`);
+        
+        // Log the deletion itself so the table isn't completely empty and there is a trace
+        await pool.query(`
+            INSERT INTO "AuditLog" (user_id, username, name, role, action, details)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [session.id, session.username, session.name, session.role, 'CLEAR_AUDIT_LOGS', 'Admin cleared all audit logs manually']);
+
+        return NextResponse.json({ success: true, message: 'Audit logs cleared successfully' });
+    } catch (error: any) {
+        console.error('Audit Log DELETE Error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+});

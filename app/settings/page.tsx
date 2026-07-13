@@ -548,6 +548,27 @@ export default function SettingsPage() {
         }
     };
 
+    const handleClearAuditLogs = async () => {
+        if (!confirm('Are you sure you want to permanently delete all audit logs? This cannot be undone.')) return;
+        try {
+            const token = localStorage.getItem('dadwork_session_token') || '';
+            const res = await fetch('/api/audit-logs', {
+                method: 'DELETE',
+                headers: { 'x-session-token': token }
+            });
+            if (res.ok) {
+                toast.success('Audit logs cleared');
+                setAuditLogs([]);
+                setAuditTotal(0);
+                loadAuditLogs(auditFilterUser, auditFilterAction, true, true);
+            } else {
+                toast.error('Failed to clear audit logs');
+            }
+        } catch (e) {
+            toast.error('Network error while clearing logs');
+        }
+    };
+
     const loadUsers = async () => {
         // Show cached data instantly to avoid blank flash
         const cached = localStorage.getItem('dadwork_settings_users');
@@ -1922,7 +1943,128 @@ export default function SettingsPage() {
                                     </div>
                                 )}
 
+                                {/* ── All-In-One Audit Logs Feed ── */}
+                                <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm mt-6">
+                                    <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-blue-500/8 to-transparent flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-blue-500/15">
+                                                <Activity className="w-4 h-4 text-blue-500" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-foreground">Audit Log Feed</h3>
+                                                <p className="text-[10px] text-muted-foreground">All system actions and events</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleClearAuditLogs}
+                                            className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-[10px] font-black border border-red-500/20 transition-all active:scale-95 flex items-center gap-1.5"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                            RESET DB
+                                        </button>
+                                    </div>
 
+                                    {/* Filters */}
+                                    <div className="px-4 py-3 border-b border-border/40 bg-muted/10 grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Filter Admin</Label>
+                                            <select
+                                                value={auditFilterUser}
+                                                onChange={(e) => {
+                                                    setAuditFilterUser(e.target.value);
+                                                    loadAuditLogs(e.target.value, auditFilterAction);
+                                                }}
+                                                className="w-full bg-background border border-border/50 rounded-xl h-9 text-xs px-2 outline-none"
+                                            >
+                                                <option value="">All Admins</option>
+                                                {auditUserStats.map(s => (
+                                                    <option key={s.username} value={s.username}>{s.name || s.username}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Filter Action</Label>
+                                            <select
+                                                value={auditFilterAction}
+                                                onChange={(e) => {
+                                                    setAuditFilterAction(e.target.value);
+                                                    loadAuditLogs(auditFilterUser, e.target.value);
+                                                }}
+                                                className="w-full bg-background border border-border/50 rounded-xl h-9 text-xs px-2 outline-none"
+                                            >
+                                                <option value="">All Actions</option>
+                                                {auditActions.map(a => (
+                                                    <option key={a} value={a}>{a}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Feed */}
+                                    <div className="divide-y divide-border/20 max-h-[600px] overflow-y-auto">
+                                        {auditLoading && auditLogs.length === 0 ? (
+                                            <div className="py-12 flex flex-col items-center justify-center gap-3">
+                                                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Loading Logs...</p>
+                                            </div>
+                                        ) : auditLogs.length === 0 ? (
+                                            <div className="py-12 text-center text-[11px] text-muted-foreground">
+                                                No logs found matching your filters.
+                                            </div>
+                                        ) : (
+                                            auditLogs.map((log: any) => {
+                                                const action = log.action as string;
+                                                const isLogin = action === 'LOGIN';
+                                                const isLogout = action === 'LOGOUT';
+                                                const isFailed = action === 'LOGIN_FAILED';
+                                                const isClear = action === 'CLEAR_AUDIT_LOGS';
+                                                const logDate = new Date(log.created_at);
+                                                return (
+                                                    <div key={log.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/10 transition-colors">
+                                                        <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${isLogin ? 'bg-emerald-500/15 border border-emerald-500/20'
+                                                                : isLogout ? 'bg-slate-500/15 border border-slate-500/20'
+                                                                    : isFailed ? 'bg-red-500/15 border border-red-500/20'
+                                                                        : isClear ? 'bg-orange-500/15 border border-orange-500/20'
+                                                                            : 'bg-blue-500/15 border border-blue-500/20'
+                                                            }`}>
+                                                            {isLogin ? <LogIn className="w-3.5 h-3.5 text-emerald-500" />
+                                                                : isLogout ? <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                                                                    : isFailed ? <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                                                                        : isClear ? <Trash2 className="w-3.5 h-3.5 text-orange-500" />
+                                                                            : <Zap className="w-3.5 h-3.5 text-blue-500" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                                                <span className="text-xs font-black text-foreground">{log.name || log.username}</span>
+                                                                <span className="text-[9px] font-bold text-muted-foreground px-1.5 py-0.5 rounded-md bg-muted border border-border/40">
+                                                                    {log.action}
+                                                                </span>
+                                                            </div>
+                                                            {log.details && <p className="text-[11px] text-muted-foreground leading-relaxed">{log.details}</p>}
+                                                            <p className="text-[9px] text-muted-foreground/60 mt-1">
+                                                                {logDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · {logDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                                                {log.ip_address && <span className="ml-2 px-1 py-0.5 bg-background rounded border border-border/50">{log.ip_address}</span>}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                        {auditLogs.length < auditTotal && (
+                                            <div className="p-4 flex justify-center border-t border-border/40">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={loadMoreAuditLogs}
+                                                    disabled={auditLoadingMore}
+                                                    className="rounded-xl font-bold text-xs"
+                                                >
+                                                    {auditLoadingMore ? 'Loading...' : `Load More (${auditTotal - auditLogs.length} remaining)`}
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </TabsContent>
                     )}
