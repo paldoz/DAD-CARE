@@ -8,8 +8,8 @@ import { unstable_cache } from 'next/cache';
 // Cache the per-user stats for 5 minutes — counts LAST 24 HOURS only, resets naturally.
 const getCachedAuditStats = unstable_cache(
     async () => {
-        const cleanupOldLogs = pool.query(`DELETE FROM "AuditLog" WHERE created_at < NOW() - INTERVAL '24 hours'`).catch(console.error);
-
+        // Removed the 24-hour auto-deletion of audit logs based on user request.
+        // Audit logs will now be kept permanently.
     const { rows: userStatsRows } = await pool.query(`
             SELECT
                 a.username,
