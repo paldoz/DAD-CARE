@@ -433,7 +433,7 @@ export default function SettingsPage() {
         }
     }, []);
 
-    const loadAuditLogs = async (userFilter = auditFilterUser, actionFilter = auditFilterAction, silent = false, includeStats = false, days = 1) => {
+    const loadAuditLogs = async (userFilter = auditFilterUser, actionFilter = auditFilterAction, silent = false, includeStats = false, days = 0) => {
         if (!silent) setAuditLoading(true);
         try {
             const params = new URLSearchParams({ limit: '20', stats: includeStats ? 'true' : 'false' });
