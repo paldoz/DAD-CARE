@@ -440,8 +440,11 @@ export default function SettingsPage() {
             if (userFilter) params.set('user', userFilter);
             if (actionFilter) params.set('action', actionFilter);
             if (days > 0) params.set('days', String(days)); // limit to last N days
+            params.set('_t', String(Date.now())); // BUST CACHE
+
             const res = await fetch(`/api/audit-logs?${params}`, {
                 credentials: 'include',
+                cache: 'no-store'
             });
             if (res.ok) {
                 try {
@@ -1764,6 +1767,7 @@ export default function SettingsPage() {
                                             onClick={async () => {
                                                 await loadOnlineSessions();
                                                 await loadUsers();
+                                                await loadAuditLogs(auditFilterUser, auditFilterAction, false, true);
                                             }}
                                             className="p-1.5 rounded-lg hover:bg-muted/50 transition-all active:scale-90"
                                         >
