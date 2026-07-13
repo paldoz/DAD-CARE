@@ -47,11 +47,12 @@ export const GET = trackApiRoute('/api/daily-book-history', async (request: Requ
                 date: book.date,
                 totalKg: parseFloat(book.total_kg) || 0,
                 itemCount: parseInt(book.item_count) || 0,
-                // Omit `note` and `present` — not needed by the history list view.
-                // Only customer_id + kg are used for rendering totals and customer chips.
+                // Include note and present so VIP and Inta Maqan filters work in the history UI.
                 items: itemsList.map((item: any) => ({
                     customer_id: item.customer_id,
                     kg:          item.kg,
+                    note:        item.note    || null,
+                    present:     item.present ?? true,
                 }))
             };
         });
