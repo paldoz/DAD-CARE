@@ -277,8 +277,8 @@ main {
 
 /* Kinetic Typography and Lightning */
 @keyframes kinetic-fluid {
-  0%, 10% { left: 0%; transform: translateX(0%); }
-  90%, 100% { left: 100%; transform: translateX(-100%); }
+  0%, 15% { left: 0%; transform: translateX(0%); }
+  85%, 100% { left: 100%; transform: translateX(-100%); }
 }
 
 .animate-kinetic {
@@ -287,7 +287,7 @@ main {
   height: 100%;
   display: flex;
   align-items: center;
-  animation: kinetic-fluid 5s ease-in-out infinite alternate;
+  animation: kinetic-fluid 8s ease-in-out infinite alternate;
 }
 
 @keyframes lightning {
