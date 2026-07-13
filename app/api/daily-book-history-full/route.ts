@@ -2,13 +2,11 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import pool from '@/lib/db';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { unstable_cache } from 'next/cache';
 
-export const GET = trackApiRoute('/api/daily-book-history-full', async (request: Request) => {
-    const { errorResponse } = await requireSession(request);
-    if (errorResponse) return errorResponse;
-
-    try {
-        const { rows: historyResult } = await pool.query(`
+const getCachedHistoryFull = unstable_cache(
+    async () => {
+        const { rows } = await pool.query(`
             SELECT 
                 db.id, 
                 db.date,
@@ -31,8 +29,19 @@ export const GET = trackApiRoute('/api/daily-book-history-full', async (request:
             ORDER BY db.date DESC
             LIMIT 15
         `);
+        return rows;
+    },
+    ['daily-book-history-full-cache'],
+    { revalidate: 120, tags: ['daily-book-history'] }
+);
 
-        // Transform data to match the SavedEntry format expected by the frontend
+export const GET = trackApiRoute('/api/daily-book-history-full', async (request: Request) => {
+    const { errorResponse } = await requireSession(request);
+    if (errorResponse) return errorResponse;
+
+    try {
+        const historyResult = await getCachedHistoryFull();
+
         const history = (historyResult || []).map((book: any) => {
             const itemsList = typeof book.items === 'string' ? JSON.parse(book.items) : (book.items || []);
             const totalKg = itemsList.reduce((sum: number, item: any) => sum + (item.kg || 0), 0);
@@ -51,7 +60,7 @@ export const GET = trackApiRoute('/api/daily-book-history-full', async (request:
         });
 
         const response = NextResponse.json(history);
-        response.headers.set('Cache-Control', 'private, no-cache, no-store, max-age=0, must-revalidate');
+        response.headers.set('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
         return response;
     } catch (error: any) {
         console.error('Fetch Daily Book Full History Error:', error);

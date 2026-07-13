@@ -2,17 +2,12 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import pool from '@/lib/db';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { unstable_cache } from 'next/cache';
 
-export const GET = trackApiRoute('/api/daily-book-history', async (request: Request) => {
-    const { errorResponse } = await requireSession(request);
-    if (errorResponse) return errorResponse;
-
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '7', 10);
-    const offset = parseInt(searchParams.get('offset') || '0', 10);
-
-    try {
-        const { rows: historyResult } = await pool.query(`
+// Cache history for 2 minutes — these records almost never change within a minute
+const getCachedHistory = unstable_cache(
+    async (limit: number, offset: number) => {
+        const { rows } = await pool.query(`
             SELECT 
                 db.id, 
                 db.date,
@@ -36,7 +31,23 @@ export const GET = trackApiRoute('/api/daily-book-history', async (request: Requ
             ORDER BY db.date DESC
             LIMIT $1 OFFSET $2
         `, [limit, offset]);
+        return rows;
+    },
+    ['daily-book-history-cache'],
+    { revalidate: 120, tags: ['daily-book-history'] }
+);
 
+export const GET = trackApiRoute('/api/daily-book-history', async (request: Request) => {
+    const { errorResponse } = await requireSession(request);
+    if (errorResponse) return errorResponse;
+
+    const { searchParams } = new URL(request.url);
+    const limit = parseInt(searchParams.get('limit') || '7', 10);
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+    const historyResult = await getCachedHistory(limit, offset);
+
+    try {
         const history = (historyResult || []).map((book: any) => {
             const itemsList: any[] = typeof book.items === 'string'
                 ? JSON.parse(book.items)
@@ -47,7 +58,6 @@ export const GET = trackApiRoute('/api/daily-book-history', async (request: Requ
                 date: book.date,
                 totalKg: parseFloat(book.total_kg) || 0,
                 itemCount: parseInt(book.item_count) || 0,
-                // Include note and present so VIP and Inta Maqan filters work in the history UI.
                 items: itemsList.map((item: any) => ({
                     customer_id: item.customer_id,
                     kg:          item.kg,
@@ -58,7 +68,7 @@ export const GET = trackApiRoute('/api/daily-book-history', async (request: Requ
         });
 
         const response = NextResponse.json(history);
-        response.headers.set('Cache-Control', 'private, no-cache, no-store, max-age=0, must-revalidate');
+        response.headers.set('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
         return response;
     } catch (error: any) {
         console.error('Fetch Daily Book History Error:', error);

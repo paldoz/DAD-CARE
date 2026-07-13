@@ -28,6 +28,54 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=604800" }
       ]
+    },
+    {
+      "source": "/api/dashboard",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=600, stale-while-revalidate=1200" }
+      ]
+    },
+    {
+      "source": "/api/customers",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=120, stale-while-revalidate=300" }
+      ]
+    },
+    {
+      "source": "/api/daily-book-history",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, max-age=120, stale-while-revalidate=300" }
+      ]
+    },
+    {
+      "source": "/api/daily-book-history-full",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, max-age=120, stale-while-revalidate=300" }
+      ]
+    },
+    {
+      "source": "/api/daily-book-dates",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=30, stale-while-revalidate=60" }
+      ]
+    },
+    {
+      "source": "/api/maqal-pairs",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=3600, stale-while-revalidate=7200" }
+      ]
+    },
+    {
+      "source": "/api/maqal-per-user",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=300, stale-while-revalidate=600" }
+      ]
+    },
+    {
+      "source": "/api/admin-sessions",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=60, stale-while-revalidate=120" }
+      ]
     }
   ]
 }
