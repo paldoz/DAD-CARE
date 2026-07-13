@@ -1187,62 +1187,60 @@ return (
                                                                 <BookOpen className="w-3 h-3" />
                                                                 {entry.items.length} <span className="hidden md:inline">customers</span>
                                                             </span>
-                                                            <div className="flex-1 min-w-[120px] h-[22px] overflow-hidden relative">
-                                                                <div className="inline-flex items-center gap-2 md:gap-3 w-max animate-kinetic px-2">
-                                                                    <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                                                        ⚡ {Math.round(entry.totalKg)} KG
-                                                                    </span>
-                                                                    {(() => {
-                                                                        // Sum the actual count of any customer whose note contains 'vip'
-                                                                        const vipItems = entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip'));
-                                                                        const entryVipCount = vipItems.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
-                                                                        return entryVipCount > 0 ? (
+                                                            <div className="flex-1 flex flex-wrap items-center gap-2 md:gap-3">
+                                                                <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                                    ⚡ {Math.round(entry.totalKg)} KG
+                                                                </span>
+                                                                {(() => {
+                                                                    // Sum the actual count of any customer whose note contains 'vip'
+                                                                    const vipItems = entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip'));
+                                                                    const entryVipCount = vipItems.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
+                                                                    return entryVipCount > 0 ? (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setVipPopupData({ date: entry.date, items: vipItems });
+                                                                            }}
+                                                                            className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap hover:brightness-110 active:scale-95 transition-all cursor-pointer animate-lightning"
+                                                                        >
+                                                                            👑 {entryVipCount} VIP
+                                                                        </button>
+                                                                    ) : null;
+                                                                })()}
+                                                                {(() => {
+                                                                    const absentItems = entry.items.filter(i => i.present === false);
+                                                                    if (absentItems.length > 0) {
+                                                                        return (
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
-                                                                                    setVipPopupData({ date: entry.date, items: vipItems });
+                                                                                    setAbsentPopupData({ date: entry.date, items: absentItems });
                                                                                 }}
-                                                                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap hover:brightness-110 active:scale-95 transition-all cursor-pointer animate-lightning"
+                                                                                className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 to-yellow-500 text-yellow-950 border border-yellow-300 hover:brightness-110 active:scale-95 transition-all shadow-[0_0_10px_rgba(245,158,11,0.4)] cursor-pointer animate-lightning font-black"
                                                                             >
-                                                                                👑 {entryVipCount} VIP
+                                                                                ⚠️ Inta Maqan: {absentItems.length}
                                                                             </button>
-                                                                        ) : null;
-                                                                    })()}
-                                                                    {(() => {
-                                                                        const absentItems = entry.items.filter(i => i.present === false);
-                                                                        if (absentItems.length > 0) {
-                                                                            return (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        setAbsentPopupData({ date: entry.date, items: absentItems });
-                                                                                    }}
-                                                                                    className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-400 to-yellow-500 text-yellow-950 border border-yellow-300 hover:brightness-110 active:scale-95 transition-all shadow-[0_0_10px_rgba(245,158,11,0.4)] cursor-pointer animate-lightning font-black"
-                                                                                >
-                                                                                    ⚠️ Inta Maqan: {absentItems.length}
-                                                                                </button>
-                                                                            );
-                                                                        }
-                                                                        return null;
-                                                                    })()}
-                                                                    {/* Ledger status summary badge */}
-                                                                    {historyLedgerStatus[entry.date] ? (() => {
-                                                                        const withKg = entry.items.filter(i => i.kg > 0);
-                                                                        const processed = withKg.filter(i => historyLedgerStatus[entry.date].has(i.customer_id)).length;
-                                                                        const total = withKg.length;
-                                                                        return processed === total && total > 0 ? (
-                                                                            <span className="flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border border-emerald-500/20">
-                                                                                ✓ All in Maqalka
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border border-amber-500/20 animate-lightning">
-                                                                                ⚠ {processed}/{total} Maqalka
-                                                                            </span>
                                                                         );
-                                                                    })() : null}
-                                                                </div>
+                                                                    }
+                                                                    return null;
+                                                                })()}
+                                                                {/* Ledger status summary badge */}
+                                                                {historyLedgerStatus[entry.date] ? (() => {
+                                                                    const withKg = entry.items.filter(i => i.kg > 0);
+                                                                    const processed = withKg.filter(i => historyLedgerStatus[entry.date].has(i.customer_id)).length;
+                                                                    const total = withKg.length;
+                                                                    return processed === total && total > 0 ? (
+                                                                        <span className="flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border border-emerald-500/20">
+                                                                            ✓ All in Maqalka
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border border-amber-500/20 animate-lightning">
+                                                                            ⚠ {processed}/{total} Maqalka
+                                                                        </span>
+                                                                    );
+                                                                })() : null}
                                                             </div>
                                                         </div>
                                                     </div>
