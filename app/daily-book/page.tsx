@@ -1191,7 +1191,7 @@ return (
                                                         
                                                         {/* Kinetic Stats Line - Using relative/absolute to guarantee visibility */}
                                                         <div className="relative w-full h-[28px] mt-2 overflow-hidden bg-muted/10 rounded border border-border/20">
-                                                            <div className="absolute top-0 left-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic px-2">
+                                                            <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic px-2 w-max">
                                                                 <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                                                                     ⚡ {Math.round(entry.totalKg)} KG
                                                                 </span>
