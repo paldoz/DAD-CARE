@@ -5,6 +5,8 @@ import { ensureAuditLogTable } from '@/lib/audit';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { unstable_cache } from 'next/cache';
 
+export const dynamic = 'force-dynamic';
+
 // Cache the per-user stats for 5 minutes — counts LAST 24 HOURS only, resets naturally.
 const getCachedAuditStats = unstable_cache(
     async () => {
