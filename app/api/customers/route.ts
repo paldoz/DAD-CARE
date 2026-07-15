@@ -423,7 +423,6 @@ export const POST = trackApiRoute('/api/customers', async (request: Request) => 
         return NextResponse.json({ error: result.error.issues[0].message }, { status: 400 });
     }
     const { name, gender, phone, customer_code: hintCode } = result.data;
-    const supabase = await createClient();
 
     try {
         // ✅ ALWAYS auto-generate a sequential numeric code server-side.
@@ -448,36 +447,31 @@ export const POST = trackApiRoute('/api/customers', async (request: Request) => 
         const hashedDefaultPassword = await bcrypt.hash('123', salt);
 
         // 1. Create the User account first
-        const { data: userData, error: userError } = await supabase
-            .from('User')
-            .insert({
-                username: customer_code.toLowerCase().replace(/\s+/g, ''),
-                email: `${customer_code.toLowerCase().replace(/\s+/g, '')}@dadwork.com`,
-                name: name,
-                password: hashedDefaultPassword,
-                role: 'CUSTOMER',
-                is_active: true
-            })
-            .select()
-            .single();
-
-        if (userError) {
+        try {
+            await pool.query(
+                `INSERT INTO "User" (id, username, email, name, password, role, is_active, created_at, updated_at)
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, 'CUSTOMER', true, NOW(), NOW())`,
+                [
+                    customer_code.toLowerCase().replace(/\s+/g, ''),
+                    `${customer_code.toLowerCase().replace(/\s+/g, '')}@dadwork.com`,
+                    name,
+                    hashedDefaultPassword
+                ]
+            );
+        } catch (userError: any) {
             console.error('Error creating linked user:', userError);
         }
 
         // 2. Create the Customer record
-        const { data, error } = await supabase
-            .from('Customer')
-            .insert({
-                name,
-                customer_code: customer_code,
-                gender: gender || null,
-                phone: phone || null
-            })
-            .select()
-            .single();
+        const { rows: inserted } = await pool.query(
+            `INSERT INTO "Customer" (id, name, customer_code, gender, phone, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
+             RETURNING *`,
+            [name, customer_code, gender || null, phone || null]
+        );
 
-        if (error) throw error;
+        const data = inserted[0];
+        if (!data) throw new Error('Failed to create customer record');
         await logAudit(request, 'CREATE_CUSTOMER', `Created customer ${name} (${customer_code})`);
         revalidatePath('/api/customers');
         revalidatePath('/api/daily-book-init');
