@@ -1030,13 +1030,45 @@ export default function CustomerDetailPage() {
                 ) : (
                     finalReceipts.map((receipt) => {
                         const isExpanded = expandedReceipts.has(receipt.id);
+
+                        let pct = 0;
+                        let paymentsInReceipt = 0;
+                        let statusColorClass = 'bg-primary'; 
+                        let textStatusColorClass = 'text-primary';
+                        let gradientBorderClass = 'border-primary/40 bg-gradient-to-r from-primary/5 via-transparent to-primary/5';
+
+                        if (receipt.totalMaqalka > 0) {
+                            paymentsInReceipt = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
+                            pct = Math.min(100, Math.round((paymentsInReceipt / receipt.totalMaqalka) * 100));
+
+                            if (pct >= 100) {
+                                statusColorClass = 'bg-emerald-500';
+                                textStatusColorClass = 'text-emerald-600 dark:text-emerald-400';
+                                gradientBorderClass = 'border-emerald-400/40 dark:border-emerald-500/30 bg-gradient-to-r from-emerald-500/5 via-transparent to-emerald-500/5 shadow-[0_0_8px_rgba(16,185,129,0.15)]';
+                            } else if (pct >= 80) {
+                                statusColorClass = 'bg-orange-500';
+                                textStatusColorClass = 'text-orange-600 dark:text-orange-400';
+                                gradientBorderClass = 'border-orange-400/40 dark:border-orange-500/30 bg-gradient-to-r from-orange-500/5 via-transparent to-orange-500/5 shadow-[0_0_8px_rgba(249,115,22,0.15)]';
+                            } else if (pct >= 50) {
+                                statusColorClass = 'bg-red-500';
+                                textStatusColorClass = 'text-red-600 dark:text-red-400';
+                                gradientBorderClass = 'border-red-400/40 dark:border-red-500/30 bg-gradient-to-r from-red-500/5 via-transparent to-red-500/5 shadow-[0_0_8px_rgba(239,68,68,0.15)]';
+                            } else {
+                                statusColorClass = 'bg-rose-800 dark:bg-rose-900';
+                                textStatusColorClass = 'text-rose-800 dark:text-rose-500';
+                                gradientBorderClass = 'border-rose-400/40 dark:border-rose-500/30 bg-gradient-to-r from-rose-800/5 via-transparent to-rose-800/5 shadow-[0_0_8px_rgba(190,18,60,0.15)]';
+                            }
+                        } else if (receipt.kind === 'ADJUSTMENT') {
+                            statusColorClass = 'bg-amber-500';
+                        }
+
                         return (
                             <div key={receipt.id} className="rounded-lg border border-border/60 overflow-hidden bg-card">
                             <button
                                     onClick={() => toggleReceipt(receipt.id)}
                                     className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-muted/30 transition-colors"
                                 >
-                                    <div className={`w-1 h-8 rounded-full shrink-0 ${receipt.kind === 'ADJUSTMENT' ? 'bg-amber-500' : 'bg-primary'}`} />
+                                    <div className={`w-1 h-8 rounded-full shrink-0 transition-colors duration-300 ${statusColorClass}`} />
                                     <div className="flex-1 text-left min-w-0">
                                         <p className="text-[11px] font-bold text-foreground leading-tight flex items-center gap-1.5 flex-wrap min-w-0">
                                             <span className="truncate">{receipt.titleString || format(new Date(receipt.mainDate), 'MMM dd, yyyy')}</span>
@@ -1047,33 +1079,24 @@ export default function CustomerDetailPage() {
                                             )}
                                         </p>
                                         {/* Inline badges: % paid + diff amount */}
-                                        {receipt.totalMaqalka > 0 && (() => {
-                                            const paymentsInReceipt = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
-                                            const pct = Math.min(100, Math.round((paymentsInReceipt / receipt.totalMaqalka) * 100));
+                                        {receipt.totalMaqalka > 0 && paymentsInReceipt > 0 && (() => {
                                             const diff = paymentsInReceipt - receipt.totalMaqalka;
-                                            // diff > 0 = overpaid (Kaso hartay = has credit) → GREEN
-                                            // diff < 0 = still owes (Ka dhiman) → ORANGE ≥50%, RED <50%
-                                            const isOverpaid = diff > 0;   // paid MORE than maqal
+                                            const isOverpaid = diff > 0;
                                             const isExact = diff === 0;
-                                            const owesColor = pct >= 50
-                                                ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400'
-                                                : 'bg-red-500/15 text-red-700 dark:text-red-400';
-                                            
-                                            if (paymentsInReceipt === 0) return null;
 
                                             return (
-                                                <div className="mt-1.5 w-full h-[18px] overflow-hidden relative border-l-2 border-r-2 border-amber-400/40 dark:border-amber-500/30 bg-gradient-to-r from-amber-500/5 via-transparent to-amber-500/5 rounded shadow-[0_0_8px_rgba(251,191,36,0.15)]">
+                                                <div className={`mt-1.5 w-full h-[18px] overflow-hidden relative border-l-2 border-r-2 rounded transition-colors duration-300 ${gradientBorderClass}`}>
                                                     <div className="inline-flex gap-4 w-max animate-kinetic px-2">
                                                         {/* % Paid badge */}
-                                                        <span className={`text-[8px] font-black tracking-widest uppercase flex items-center gap-1 animate-lightning ${pct >= 100 ? 'text-emerald-600 dark:text-emerald-400' : pct >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                                                        <span className={`text-[8px] font-black tracking-widest uppercase flex items-center gap-1 animate-lightning transition-colors duration-300 ${textStatusColorClass}`}>
                                                             ⚡ {pct}% Paid
                                                         </span>
                                                         {/* Diff badge */}
                                                         {!isExact && (
-                                                            <span className={`text-[8px] font-black tracking-widest uppercase flex items-center gap-1 animate-lightning ${
+                                                            <span className={`text-[8px] font-black tracking-widest uppercase flex items-center gap-1 animate-lightning transition-colors duration-300 ${
                                                                 isOverpaid
                                                                     ? 'text-emerald-600 dark:text-emerald-400'
-                                                                    : (pct >= 50 ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400')
+                                                                    : textStatusColorClass
                                                             }`}>
                                                                 ⚡ {isOverpaid
                                                                     ? `Kaso hartay -$${Math.abs(Math.round(diff))}`
