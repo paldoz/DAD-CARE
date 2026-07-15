@@ -73,7 +73,7 @@ export function GlobalSearch() {
             </div>
 
             {isOpen && query.trim() !== '' && (
-                <div className="absolute top-full left-0 right-0 mt-2 glass-card border border-white/10 dark:border-white/5 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white/70 dark:bg-black/50 backdrop-blur-3xl border border-white/20 dark:border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                     {filtered.length > 0 ? (
                         <div className="max-h-[60vh] overflow-y-auto p-2 relative">
                             {/* Animated glowing orb behind results for mirroring effect */}
