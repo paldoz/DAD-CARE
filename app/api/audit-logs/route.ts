@@ -17,7 +17,7 @@ const getCachedAuditStats = unstable_cache(
                 a.username,
                 COALESCE(MAX(u.name), MAX(a.name)) as name,
                 COALESCE(MAX(u.role)::text, MAX(a.role)) as role,
-                CASE WHEN length(COALESCE(MAX(u.avatar_url), '')) > 100000 THEN NULL ELSE COALESCE(MAX(u.avatar_url), NULL) END as avatar_url,
+                NULL as avatar_url,
                 COUNT(a.id) as total_actions,
                 MAX(a.created_at) as last_activity,
                 MAX(CASE WHEN a.action = 'LOGIN' THEN a.created_at END) as last_login,
