@@ -73,14 +73,18 @@ export default function LoginPage() {
             <div className="hidden lg:flex flex-col items-center justify-center flex-1 relative overflow-hidden"
                 style={{ background: 'linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)' }}>
 
-                {/* Animated tiny grid pattern with shine */}
-                <div className="absolute inset-0 opacity-20"
-                    style={{ 
-                        backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)', 
-                        backgroundSize: '24px 24px',
-                        maskImage: 'radial-gradient(circle at center, black, transparent 70%)',
-                        WebkitMaskImage: 'radial-gradient(circle at center, black, transparent 70%)'
-                    }} />
+                {/* Comforting Thunder / Energy Beams (Desktop Left Panel) */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40">
+                    <div className="absolute top-[-20%] left-[15%] w-[2px] h-[150%] bg-indigo-300 rotate-[20deg] blur-[1px] animate-[pulse_4s_ease-in-out_infinite]" />
+                    <div className="absolute top-[-20%] left-[15%] w-[30px] h-[150%] bg-indigo-500/10 rotate-[20deg] blur-[20px]" />
+                    
+                    <div className="absolute top-[20%] left-[30%] w-[1px] h-[80%] bg-sky-200 rotate-[40deg] blur-[1px] animate-[pulse_5s_ease-in-out_infinite_1s]" />
+                    <div className="absolute top-[20%] left-[30%] w-[20px] h-[80%] bg-sky-400/10 rotate-[40deg] blur-[16px]" />
+                    
+                    {/* Soft lightning flash */}
+                    <div className="absolute top-[40%] right-[10%] w-[1px] h-[100%] bg-violet-200 -rotate-[25deg] blur-[1px] animate-[lightning_6s_infinite]" />
+                    <div className="absolute top-[40%] right-[10%] w-[50px] h-[100%] bg-violet-400/5 -rotate-[25deg] blur-[30px] animate-[lightning_6s_infinite]" />
+                </div>
 
                 {/* Glowing orbs */}
                 <div className="absolute top-1/4 left-1/4 w-80 h-80 rounded-full opacity-20 blur-3xl"
@@ -135,29 +139,20 @@ export default function LoginPage() {
                     <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px] lg:hidden"
                         style={{ background: '#8b5cf6' }} />
                     
-                    {/* Premium Tiny Grid Background with Shine (Light & Dark Mode) */}
-                    <div className="absolute inset-0 opacity-50">
-                        {/* Light Mode Grid */}
-                        <div className="absolute inset-0 dark:hidden" 
-                             style={{ 
-                                 backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)', 
-                                 backgroundSize: '24px 24px',
-                                 maskImage: 'radial-gradient(circle at center, black, transparent 80%)',
-                                 WebkitMaskImage: 'radial-gradient(circle at center, black, transparent 80%)'
-                             }} 
-                        />
-                        {/* Dark Mode Grid */}
-                        <div className="absolute inset-0 hidden dark:block" 
-                             style={{ 
-                                 backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)', 
-                                 backgroundSize: '24px 24px',
-                                 maskImage: 'radial-gradient(circle at center, black, transparent 80%)',
-                                 WebkitMaskImage: 'radial-gradient(circle at center, black, transparent 80%)'
-                             }} 
-                        />
+                    {/* Comforting Thunder / Energy Beams (Right Panel) */}
+                    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-50 dark:opacity-40">
+                        {/* Main Beam */}
+                        <div className="absolute top-[-10%] right-[20%] w-[2px] h-[120%] bg-indigo-500/40 dark:bg-indigo-300 -rotate-[15deg] blur-[1px] animate-[pulse_4s_ease-in-out_infinite]" />
+                        <div className="absolute top-[-10%] right-[20%] w-[40px] h-[120%] bg-indigo-500/5 dark:bg-indigo-500/10 -rotate-[15deg] blur-[24px]" />
+                        
+                        {/* Secondary Branch */}
+                        <div className="absolute top-[30%] right-[40%] w-[1px] h-[80%] bg-sky-400/50 dark:bg-sky-200 -rotate-[35deg] blur-[1px] animate-[pulse_5s_ease-in-out_infinite_1s]" />
+                        <div className="absolute top-[30%] right-[40%] w-[30px] h-[80%] bg-sky-400/5 dark:bg-sky-400/10 -rotate-[35deg] blur-[20px]" />
+                        
+                        {/* Lightning flash */}
+                        <div className="absolute top-[10%] left-[10%] w-[1px] h-[100%] bg-violet-400/40 dark:bg-violet-200 rotate-[25deg] blur-[1px] animate-[lightning_7s_infinite]" />
+                        <div className="absolute top-[10%] left-[10%] w-[60px] h-[100%] bg-violet-400/5 dark:bg-violet-400/5 rotate-[25deg] blur-[30px] animate-[lightning_7s_infinite]" />
                     </div>
-                    {/* Shining light sweep effect */}
-                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-primary/5 to-transparent animate-[shimmer_8s_infinite] dark:via-primary/10 opacity-60" />
                 </div>
 
                 <div className="w-full max-w-md relative z-10">
