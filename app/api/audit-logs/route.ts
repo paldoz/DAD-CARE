@@ -17,7 +17,7 @@ const getCachedAuditStats = unstable_cache(
                 a.username,
                 COALESCE(MAX(u.name), MAX(a.name)) as name,
                 COALESCE(MAX(u.role)::text, MAX(a.role)) as role,
-                CASE WHEN length(COALESCE(MAX(u.avatar_url), '')) > 255 THEN NULL ELSE COALESCE(MAX(u.avatar_url), NULL) END as avatar_url,
+                CASE WHEN length(COALESCE(MAX(u.avatar_url), '')) > 100000 THEN NULL ELSE COALESCE(MAX(u.avatar_url), NULL) END as avatar_url,
                 COUNT(a.id) as total_actions,
                 MAX(a.created_at) as last_activity,
                 MAX(CASE WHEN a.action = 'LOGIN' THEN a.created_at END) as last_login,
@@ -66,6 +66,22 @@ export const GET = trackApiRoute('/api/audit-logs', async (request: Request) => 
         const filterDays = parseInt(searchParams.get('days') || '0', 10); // 0 = no limit
         const limit = parseInt(searchParams.get('limit') || '200', 10);
         const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+        // ── CHEAP CHECK MODE: only returns {count, latestId} ──
+        // Called every 60s by the client. Costs 1 tiny index scan instead of fetching rows.
+        // The client only does a full fetch when latestId changes.
+        if (searchParams.get('check') === '1') {
+            const { rows } = await pool.query(
+                `SELECT COUNT(*) as count, MAX(id) as latest_id FROM "AuditLog"`
+            );
+            const res = NextResponse.json({
+                count: parseInt(rows[0]?.count || '0', 10),
+                latestId: rows[0]?.latest_id || null,
+            });
+            // Cache this tiny response for 20s on Vercel Edge — further reduces DB hits
+            res.headers.set('Cache-Control', 's-maxage=20, stale-while-revalidate=10');
+            return res;
+        }
 
         await ensureAuditLogTable();
 

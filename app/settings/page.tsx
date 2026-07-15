@@ -426,8 +426,39 @@ export default function SettingsPage() {
                     }).catch(() => { });
                 }, 300_000);
 
+                // ── Smart audit-log polling ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                // Every 60s: call ?check=1 (≈2 numbers, ~50 bytes from Vercel Edge cache).
+                // Only if latestId changed do we fire the full 50-row query.
+                // If the tab is hidden, we skip entirely — zero wasted DB calls.
+                let lastKnownLatestId: string | null = null;
+
+                const checkForNewLogs = async () => {
+                    if (document.hidden) return; // Tab is backgrounded — skip
+                    try {
+                        const res = await fetch('/api/audit-logs?check=1', { credentials: 'include' });
+                        if (!res.ok) return;
+                        const { latestId } = await res.json();
+                        if (latestId && latestId !== lastKnownLatestId) {
+                            lastKnownLatestId = latestId;
+                            // New entry detected — now fetch the full list (silent, no spinner)
+                            loadAuditLogs(auditFiltersRef.current.user, auditFiltersRef.current.action, true, false);
+                        }
+                    } catch { /* network hiccup — ignore */ }
+                };
+
+                // Also refresh immediately when tab becomes visible again
+                const onVisibilityChange = () => {
+                    if (!document.hidden) checkForNewLogs();
+                };
+                document.addEventListener('visibilitychange', onVisibilityChange);
+
+                const auditPoll = setInterval(checkForNewLogs, 60_000);
+                // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
                 return () => {
                     clearInterval(heartbeat);
+                    clearInterval(auditPoll);
+                    document.removeEventListener('visibilitychange', onVisibilityChange);
                 };
             }
         }
@@ -436,7 +467,7 @@ export default function SettingsPage() {
     const loadAuditLogs = async (userFilter = auditFilterUser, actionFilter = auditFilterAction, silent = false, includeStats = false, days = 0) => {
         if (!silent) setAuditLoading(true);
         try {
-            const params = new URLSearchParams({ limit: '20', stats: includeStats ? 'true' : 'false' });
+            const params = new URLSearchParams({ limit: '50', stats: includeStats ? 'true' : 'false' });
             if (userFilter) params.set('user', userFilter);
             if (actionFilter) params.set('action', actionFilter);
             if (days > 0) params.set('days', String(days)); // limit to last N days
@@ -572,6 +603,34 @@ export default function SettingsPage() {
         }
     };
 
+    // ── Avatar cache helpers ──────────────────────────────────────────────────
+    // Avatars are stored separately from user data so the main user list JSON
+    // never carries big base64 blobs across the network or in localStorage.
+    const AVATAR_CACHE_KEY = 'dadwork_avatars_v2';
+
+    const saveAvatarCache = (userList: typeof users) => {
+        try {
+            const map: Record<string, string> = {};
+            userList.forEach(u => { if (u.avatar_url) map[u.username] = u.avatar_url; });
+            localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify(map));
+        } catch {}
+    };
+
+    const loadAvatarCache = (): Record<string, string> => {
+        try {
+            return JSON.parse(localStorage.getItem(AVATAR_CACHE_KEY) || '{}');
+        } catch { return {}; }
+    };
+
+    const mergeAvatars = (userList: typeof users): typeof users => {
+        const cache = loadAvatarCache();
+        return userList.map(u => ({
+            ...u,
+            avatar_url: u.avatar_url || cache[u.username] || '',
+        }));
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
     const loadUsers = async () => {
         // Show cached data instantly to avoid blank flash
         const cached = localStorage.getItem('dadwork_settings_users');
@@ -579,7 +638,11 @@ export default function SettingsPage() {
         const AGE_LIMIT = 5 * 60 * 1000; // 5 min
         const isStale = !cachedAt || Date.now() - parseInt(cachedAt) > AGE_LIMIT;
         if (cached) {
-            try { setUsers(JSON.parse(cached)); } catch {}
+            try {
+                // Re-merge avatars from the separate avatar cache
+                const parsed = JSON.parse(cached);
+                setUsers(mergeAvatars(parsed));
+            } catch {}
         }
         if (!isStale && cached) return; // Skip network fetch — data is fresh
         setUsersLoading(true);
@@ -587,9 +650,13 @@ export default function SettingsPage() {
             const res = await fetch('/api/users');
             const data = await res.json();
             if (res.ok && Array.isArray(data)) {
-                setUsers(data);
+                // Save avatars to their dedicated cache first
+                saveAvatarCache(data);
+                // Strip avatar blobs from the main user list cache to keep it lean
+                const dataWithoutAvatars = data.map((u: typeof users[0]) => ({ ...u, avatar_url: '' }));
+                setUsers(mergeAvatars(data)); // State gets full data (with avatars)
                 try {
-                    localStorage.setItem('dadwork_settings_users', JSON.stringify(data));
+                    localStorage.setItem('dadwork_settings_users', JSON.stringify(dataWithoutAvatars));
                     localStorage.setItem('dadwork_settings_users_at', String(Date.now()));
                 } catch {}
             }
@@ -792,35 +859,28 @@ export default function SettingsPage() {
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            // Compress image to 150x150 thumbnail so base64 string is tiny (~5-15 KB instead of 2MB)
             const reader = new FileReader();
             reader.onload = (event) => {
                 const img = new Image();
                 img.onload = () => {
+                    // True center-crop square → 80×80 WebP @ 55% quality
+                    // Result: ~3-6 KB per avatar (was 30-80 KB with old approach)
+                    const SIZE = 80;
                     const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 150;
-                    let width = img.width;
-                    let height = img.height;
+                    canvas.width = SIZE;
+                    canvas.height = SIZE;
+                    const ctx = canvas.getContext('2d')!;
 
-                    if (width > height) {
-                        if (width > MAX_SIZE) {
-                            height *= MAX_SIZE / width;
-                            width = MAX_SIZE;
-                        }
-                    } else {
-                        if (height > MAX_SIZE) {
-                            width *= MAX_SIZE / height;
-                            height = MAX_SIZE;
-                        }
-                    }
+                    // Compute center-crop source rect
+                    const srcSide = Math.min(img.width, img.height);
+                    const srcX = (img.width - srcSide) / 2;
+                    const srcY = (img.height - srcSide) / 2;
 
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
+                    ctx.drawImage(img, srcX, srcY, srcSide, srcSide, 0, 0, SIZE, SIZE);
 
-                    // Compress as JPEG with 70% quality (tiny base64 footprint)
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    // Prefer WebP (50% smaller), fall back to JPEG
+                    const supportsWebP = canvas.toDataURL('image/webp').startsWith('data:image/webp');
+                    const dataUrl = canvas.toDataURL(supportsWebP ? 'image/webp' : 'image/jpeg', 0.55);
                     setUserForm(prev => ({ ...prev, avatar_url: dataUrl }));
                 };
                 img.src = event.target?.result as string;
@@ -874,6 +934,15 @@ export default function SettingsPage() {
                     const updatedUser = { ...currentUser, ...responseData };
                     localStorage.setItem('currentUser', JSON.stringify(updatedUser));
                     setCurrentUser(updatedUser);
+                }
+
+                // Immediately update avatar cache so new picture is visible offline
+                if (userForm.avatar_url) {
+                    try {
+                        const avatarCache = JSON.parse(localStorage.getItem('dadwork_avatars_v2') || '{}');
+                        avatarCache[userForm.username] = userForm.avatar_url;
+                        localStorage.setItem('dadwork_avatars_v2', JSON.stringify(avatarCache));
+                    } catch {}
                 }
 
                 loadUsers();
@@ -1852,7 +1921,7 @@ export default function SettingsPage() {
                                                 return (
                                                     <button key={i} onClick={() => openAdminDetail({ username: stat.username, name: stat.name || stat.username, role: stat.role, avatarUrl: stat.avatar_url, isOnline, lastSeen: stat.last_activity ? new Date(stat.last_activity) : undefined })} className="px-4 py-3 flex items-start gap-3 w-full text-left hover:bg-muted/30 active:scale-[0.99] transition-all cursor-pointer">
                                                         <div className="relative shrink-0">
-                                                            {stat.avatar_url && isOnline ? (
+                                                            {stat.avatar_url ? (
                                                                 <Avatar className="w-10 h-10 border border-border/50">
                                                                     <AvatarImage src={stat.avatar_url} className="object-cover" />
                                                                     <AvatarFallback className="text-sm font-black bg-muted uppercase">
@@ -1959,13 +2028,32 @@ export default function SettingsPage() {
                                                 <p className="text-[10px] font-medium text-muted-foreground">Real-time security & event feed</p>
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={handleClearAuditLogs}
-                                            className="px-3 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-500 rounded-xl text-[10px] font-black border border-red-500/30 transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                            RESET ALL
-                                        </button>
+                                    </div>
+                                    
+                                    {/* Audit Header row */}
+                                    <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2 relative z-10">
+                                        <div className="flex items-center gap-2">
+                                            <span className="relative flex h-2 w-2">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                                            </span>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Live · Auto-refresh 30s</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => loadAuditLogs(auditFilterUser, auditFilterAction, false, false)}
+                                                className="h-7 px-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/20 transition-all flex items-center gap-1"
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                Refresh Now
+                                            </button>
+                                            <button
+                                                onClick={handleClearAuditLogs}
+                                                className="h-7 px-2.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 transition-all"
+                                            >
+                                                RESET ALL
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Filters */}

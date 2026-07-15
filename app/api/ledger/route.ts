@@ -267,7 +267,7 @@ export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
                 lastTransactionType: s.last_transaction_type || null,
             }
         });
-        response.headers.set('Cache-Control', 'private, no-cache, no-store, max-age=0, must-revalidate');
+        response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
         return response;
     } catch (error: any) {
         console.error('Fetch Ledger Error:', error);

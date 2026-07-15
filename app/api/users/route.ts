@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const { errorResponse } = await requireSuperAdmin(request);
     if (errorResponse) return errorResponse;
     try {
-        const { rows } = await pool.query('SELECT id, username, name, role, is_active, gender, phone, CASE WHEN length(avatar_url) > 255 THEN NULL ELSE avatar_url END as avatar_url, assigned_customer_ids, created_at, updated_at FROM "User" ORDER BY created_at DESC');
+        const { rows } = await pool.query('SELECT id, username, name, role, is_active, gender, phone, CASE WHEN length(avatar_url) > 100000 THEN NULL ELSE avatar_url END as avatar_url, assigned_customer_ids, created_at, updated_at FROM "User" ORDER BY created_at DESC');
         const res = NextResponse.json(rows);
         res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
         return res;
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
                 true,
                 gender || null,
                 phone || null,
-                (avatar_url && avatar_url.startsWith('data:image')) ? null : (avatar_url || null),
+                (avatar_url && avatar_url.length > 100000) ? null : (avatar_url || null),
                 Array.isArray(assigned_customer_ids) ? assigned_customer_ids : []
             ]
         );
