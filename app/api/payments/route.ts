@@ -48,7 +48,7 @@ export const GET = trackApiRoute('/api/payments', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '200');
+    const limit = parseInt(searchParams.get('limit') || '50');
     const customerId = searchParams.get('customerId');
 
     try {

@@ -3,6 +3,8 @@ import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
+export const dynamic = 'force-dynamic'; // Prevent any Next.js caching
+
 // Returns per-user maqal progress based on assigned_customer_ids.
 //
 // PAIR LOGIC (updated):
@@ -28,7 +30,7 @@ const getCachedMaqalData = unstable_cache(
     async () => {
         // 1. Get all users with assigned_customer_ids
         const { rows: users } = await pool.query(`
-            SELECT id, username, name, assigned_customer_ids, avatar_url
+            SELECT id, username, name, assigned_customer_ids
             FROM "User"
             WHERE assigned_customer_ids IS NOT NULL 
               AND array_length(assigned_customer_ids, 1) > 0
@@ -150,7 +152,7 @@ const getCachedMaqalData = unstable_cache(
         };
     },
     ['maqal-per-user-data'],
-    { revalidate: 300, tags: ['ledger', 'daily-book'] }
+    { revalidate: 0, tags: ['ledger', 'daily-book'] }
 );
 
 export const GET = trackApiRoute('/api/maqal-per-user', async (request: NextRequest) => {
@@ -161,7 +163,7 @@ export const GET = trackApiRoute('/api/maqal-per-user', async (request: NextRequ
         const data = await getCachedMaqalData();
 
         const res = NextResponse.json(data);
-        res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+        res.headers.set('Cache-Control', 'no-store, max-age=0');
         return res;
 
     } catch (error: any) {
