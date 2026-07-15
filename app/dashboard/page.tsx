@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GlobalSearch } from '@/components/global-search';
+import { AnimatedBackground } from '@/components/animated-background';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
@@ -127,9 +128,7 @@ export default function DashboardPage() {
             
             {/* Header / Cover */}
             <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm mb-2">
-                {/* Decorative background elements */}
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
-                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-orange-500/10 rounded-full blur-[80px] pointer-events-none" />
+                <AnimatedBackground />
                 
                 <div className="relative z-10 flex-1">
                     <div className="flex items-center gap-3 mb-2">

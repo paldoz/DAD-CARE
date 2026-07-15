@@ -8,7 +8,6 @@ import { LogOut, ChevronDown } from 'lucide-react';
 import { logout } from '@/lib/session';
 import { subscribeToDailyDates } from '@/lib/hijri-date';
 import { IdleMonitor } from './idle-monitor';
-import { AnimatedBackground } from './animated-background';
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -97,9 +96,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     // Show a premium themed security verification screen during state changes/checks
     if (isAuthenticated === null || (!isAuthenticated && !isLoginPage) || (isAuthenticated && isLoginPage)) {
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-background relative overflow-hidden">
-                <AnimatedBackground />
-                <div className="flex flex-col items-center gap-4 relative z-10">
+            <div className="flex h-screen w-full items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-4">
                     <div className="relative">
                         <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
                         <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-primary/10 shadow-lg">
@@ -126,8 +124,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-8 pb-safe relative">
-                <AnimatedBackground />
+            <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-8 pb-safe">
                 {/* Mobile Header Profile */}
                 {currentUser && (
                     <div className="md:hidden flex items-center justify-between mb-4 border-b border-border/50 pb-3">
@@ -195,9 +192,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
                     </div>
                 )}
                 <IdleMonitor />
-                <div className="relative z-10">
-                    {children}
-                </div>
+                {children}
             </main>
 
             {/* Mobile Bottom Nav */}
