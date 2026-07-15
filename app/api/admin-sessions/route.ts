@@ -56,6 +56,7 @@ export const GET = trackApiRoute('/api/admin-sessions', async (request: Request)
             username: s.username,
             name: s.name,
             role: s.role,
+            avatarUrl: s.avatarUrl || null,
             loginAt: s.loginAt,
             lastSeenAt: new Date(s.lastSeenAt).toISOString(),
             isOnline: (now - s.lastSeenAt) < 5 * 60 * 1000,

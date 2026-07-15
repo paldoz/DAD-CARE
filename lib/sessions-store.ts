@@ -163,9 +163,13 @@ export async function getOnlineSessions(): Promise<SessionData[]> {
         await ensureTable();
         const cutoff = new Date(Date.now() - ONLINE_THRESHOLD_MS);
         const { rows } = await pool.query(
-            `SELECT user_id, username, name, role, login_at, last_seen_at, ip_address FROM "AdminSession"
-             WHERE expires_at > NOW() AND last_seen_at >= $1
-             ORDER BY last_seen_at DESC`,
+            `SELECT s.user_id, s.username, s.name, s.role, s.login_at, s.last_seen_at, s.ip_address,
+                    CASE WHEN u.avatar_url IS NOT NULL AND u.avatar_url LIKE 'http%' AND length(u.avatar_url) < 500
+                         THEN u.avatar_url ELSE NULL END as avatar_url
+             FROM "AdminSession" s
+             LEFT JOIN "User" u ON u.username = s.username
+             WHERE s.expires_at > NOW() AND s.last_seen_at >= $1
+             ORDER BY s.last_seen_at DESC`,
             [cutoff]
         );
         return rows.map(rowToSession);
@@ -177,7 +181,13 @@ export async function getAllSessions(): Promise<SessionData[]> {
     try {
         await ensureTable();
         const { rows } = await pool.query(
-            `SELECT user_id, username, name, role, login_at, last_seen_at, ip_address FROM "AdminSession" WHERE expires_at > NOW() ORDER BY last_seen_at DESC`
+            `SELECT s.user_id, s.username, s.name, s.role, s.login_at, s.last_seen_at, s.ip_address,
+                    CASE WHEN u.avatar_url IS NOT NULL AND u.avatar_url LIKE 'http%' AND length(u.avatar_url) < 500
+                         THEN u.avatar_url ELSE NULL END as avatar_url
+             FROM "AdminSession" s
+             LEFT JOIN "User" u ON u.username = s.username
+             WHERE s.expires_at > NOW()
+             ORDER BY s.last_seen_at DESC`
         );
         return rows.map(rowToSession);
     } catch { return []; }
@@ -191,7 +201,7 @@ function rowToSession(r: any): SessionData {
         username: r.username,
         name: r.name,
         role: r.role,
-        avatarUrl: undefined,   // stripped — never send avatars from session table
+        avatarUrl: r.avatar_url || undefined,  // only real http URLs, never base64
         createdAt: new Date(r.login_at).getTime(),
         lastSeenAt: new Date(r.last_seen_at).getTime(),
         loginAt: new Date(r.login_at).toISOString(),

@@ -3,7 +3,7 @@ import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
-export const dynamic = 'force-dynamic'; // Prevent any Next.js caching
+export const dynamic = 'force-dynamic'; // Always fetch fresh — no caching
 
 // Returns per-user maqal progress based on assigned_customer_ids.
 //
@@ -24,10 +24,8 @@ export const dynamic = 'force-dynamic'; // Prevent any Next.js caching
 //     ACTIVE pair offset = 4  → Jul 2 & Jul 3  ← tracker focuses here
 //     WAITING pair offset = 6 → Jul 4 & Jul 5  ← shown as "coming next"
 //     Auto-advance fires when DailyBook has a Jul 6 entry (offset 8)
-import { unstable_cache } from 'next/cache';
 
-const getCachedMaqalData = unstable_cache(
-    async () => {
+async function getMaqalData() {
         // 1. Get all users with assigned_customer_ids
         const { rows: users } = await pool.query(`
             SELECT id, username, name, assigned_customer_ids
@@ -150,17 +148,14 @@ const getCachedMaqalData = unstable_cache(
             waitingDate2: nextDate2,
             autoAdvanced: hasAutoAdvanceTrigger,
         };
-    },
-    ['maqal-per-user-data'],
-    { revalidate: 0, tags: ['ledger', 'daily-book'] }
-);
+}
 
 export const GET = trackApiRoute('/api/maqal-per-user', async (request: NextRequest) => {
     try {
         const sessionRes = await requireSession(request);
         if (sessionRes instanceof NextResponse) return sessionRes;
 
-        const data = await getCachedMaqalData();
+        const data = await getMaqalData();
 
         const res = NextResponse.json(data);
         res.headers.set('Cache-Control', 'no-store, max-age=0');
