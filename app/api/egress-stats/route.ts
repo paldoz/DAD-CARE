@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireSuperAdmin } from '@/lib/require-session';
-import { getRouteStats } from '@/lib/egress-tracker';
+import { getEgressStats } from '@/lib/egress-tracker';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +8,6 @@ export async function GET(request: Request) {
     const { errorResponse } = await requireSuperAdmin(request);
     if (errorResponse) return errorResponse;
 
-    const stats = getRouteStats();
+    const stats = getEgressStats();
     return NextResponse.json(stats);
 }
