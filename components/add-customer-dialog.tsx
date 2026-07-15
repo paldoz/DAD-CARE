@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { mutate } from 'swr';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,6 +64,8 @@ export function AddCustomerDialog({ onSuccess, trigger, nextId }: AddCustomerPro
             }
 
             toast.success('Customer added!');
+            mutate('/api/dashboard');
+            mutate('/api/customers?lite=true');
             setCustomerId('');
             setName('');
             setGender('');

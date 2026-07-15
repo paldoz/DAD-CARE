@@ -14,7 +14,7 @@ const getBalanceLabel = (totalPaid: number, closingBalance: number): string => {
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -667,6 +667,8 @@ export default function CustomerDetailPage() {
             if (res.ok) {
                 toast.success(`${customer.name} moved to Inactive. Their history is preserved.`);
                 localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+                mutate('/api/dashboard');
+                mutate('/api/customers?lite=true');
                 router.push('/customers');
             } else {
                 const data = await res.json();

@@ -68,9 +68,9 @@ function DialogContent({
           className
         )}
         style={{
-          backgroundColor: resolvedTheme === 'dark' ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.15)',
-          backdropFilter: 'blur(30px) saturate(150%)',
-          WebkitBackdropFilter: 'blur(30px) saturate(150%)',
+          backgroundColor: resolvedTheme === 'dark' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)',
+          backdropFilter: 'blur(10px) saturate(120%)',
+          WebkitBackdropFilter: 'blur(10px) saturate(120%)',
           border: resolvedTheme === 'dark' ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,255,255,0.4)',
           borderRadius: '24px',
           boxShadow: resolvedTheme === 'dark' ? '0 24px 48px -12px rgba(0,0,0,0.5)' : '0 24px 48px -12px rgba(0,0,0,0.1)'
