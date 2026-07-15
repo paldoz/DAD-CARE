@@ -63,7 +63,7 @@ export function GlobalSearch() {
                     }}
                     onFocus={() => setIsOpen(true)}
                     placeholder="Search by name, phone number, or ID..."
-                    className="pl-11 h-14 bg-background/50 backdrop-blur-xl border-2 border-primary/20 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/20 text-base shadow-sm rounded-2xl transition-all"
+                    className="pl-11 h-14 bg-white/40 dark:bg-black/40 backdrop-blur-2xl border-2 border-primary/20 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/20 text-base shadow-sm rounded-2xl transition-all"
                 />
                 {loading && (
                     <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
@@ -73,12 +73,12 @@ export function GlobalSearch() {
             </div>
 
             {isOpen && query.trim() !== '' && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white/70 dark:bg-black/50 backdrop-blur-3xl border border-white/20 dark:border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.4)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute top-full left-0 right-0 mt-2 bg-white/40 dark:bg-black/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                     {filtered.length > 0 ? (
                         <div className="max-h-[60vh] overflow-y-auto p-2 relative">
                             {/* Animated glowing orb behind results for mirroring effect */}
-                            <div className="absolute top-0 right-1/4 w-32 h-32 bg-primary/20 rounded-full blur-[50px] -z-10 pointer-events-none animate-pulse" />
-                            <div className="absolute bottom-0 left-1/4 w-32 h-32 bg-blue-500/10 rounded-full blur-[50px] -z-10 pointer-events-none animate-pulse delay-700" />
+                            <div className="absolute top-0 right-1/4 w-40 h-40 bg-primary/30 dark:bg-primary/40 rounded-full blur-[40px] -z-10 pointer-events-none animate-pulse" />
+                            <div className="absolute bottom-0 left-1/4 w-40 h-40 bg-blue-500/30 dark:bg-blue-500/40 rounded-full blur-[40px] -z-10 pointer-events-none animate-pulse delay-700" />
                             
                             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 px-2 pt-2 relative z-10">Search Results</p>
                             {filtered.map(customer => (
