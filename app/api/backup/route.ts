@@ -5,6 +5,7 @@ import path from 'path';
 import { requireSuperAdmin } from '@/lib/require-session';
 import pool from '@/lib/db';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { rateLimitResponse } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -457,8 +458,14 @@ export const POST = trackApiRoute('/api/backup', async (request: Request) => {
 });
 
 export const GET = trackApiRoute('/api/backup', async (request: Request) => {
+    // Requires SUPER_ADMIN
     const { errorResponse } = await requireSuperAdmin(request);
     if (errorResponse) return errorResponse;
+
+    // Rate Limit: 1 backup allowed per hour per IP/User to protect bandwidth
+    const limited = rateLimitResponse(request, 1, 3_600_000);
+    if (limited) return NextResponse.json({ error: 'Rate limit exceeded. You can only backup the database once per hour.' }, { status: 429 });
+
     const backupDir = path.join('C:', 'Users', 'abdiq', 'OneDrive', 'Desktop', 'dadcare app', 'Backups');
 
     try {

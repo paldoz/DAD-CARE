@@ -418,13 +418,13 @@ export default function SettingsPage() {
                 loadAuditLogs(auditFiltersRef.current.user, auditFiltersRef.current.action, true, true);
                 loadOnlineSessions();
 
-                // ── Heartbeat every 5 minutes (300s) to stay marked ONLINE in the DB ──
+                // ── Heartbeat every 15 minutes (900s) to stay marked ONLINE in the DB ──
                 const heartbeat = setInterval(async () => {
                     fetch('/api/admin-sessions', {
                         method: 'POST',
                         credentials: 'include',
                     }).catch(() => { });
-                }, 300_000);
+                }, 900_000); // 15 mins (Extreme bandwidth saving)
 
                 // ── Smart audit-log polling ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                 // Every 60s: call ?check=1 (≈2 numbers, ~50 bytes from Vercel Edge cache).
@@ -452,12 +452,11 @@ export default function SettingsPage() {
                 };
                 document.addEventListener('visibilitychange', onVisibilityChange);
 
-                const auditPoll = setInterval(checkForNewLogs, 30_000); // 30s — smart check: only ~50 bytes per poll
+                // auditPoll removed completely — user must click "Refresh Now" to save bandwidth
                 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
                 return () => {
                     clearInterval(heartbeat);
-                    clearInterval(auditPoll);
                     document.removeEventListener('visibilitychange', onVisibilityChange);
                 };
             }

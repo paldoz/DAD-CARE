@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
+import { rateLimitResponse } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,10 @@ export async function GET(request: Request) {
     if (session?.role !== 'ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+
+    // Rate Limit: 1 backup allowed per hour per IP/User to protect bandwidth
+    const limited = rateLimitResponse(request, 1, 3_600_000);
+    if (limited) return NextResponse.json({ error: 'Rate limit exceeded. You can only backup the database once per hour.' }, { status: 429 });
 
     try {
         // Fetch only the columns needed — avoids downloading avatar_url blobs etc.
