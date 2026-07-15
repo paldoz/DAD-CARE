@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, User, Phone, Hash, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { useClickAway } from '@/lib/hooks/use-click-away'; // I will check if this exists or just write click away logic
 import useSWR from 'swr';
 
@@ -18,6 +19,7 @@ export function GlobalSearch() {
     const [query, setQuery] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const router = useRouter();
+    const { resolvedTheme } = useTheme();
     const searchRef = useRef<HTMLDivElement>(null);
 
     const { data: customers, isLoading: loading } = useSWR<any[]>('/api/customers?lite=true', fetcher, {
@@ -73,7 +75,14 @@ export function GlobalSearch() {
             </div>
 
             {isOpen && query.trim() !== '' && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-white/40 dark:bg-black/40 backdrop-blur-3xl border border-white/40 dark:border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div 
+                    className="absolute top-full left-0 right-0 mt-2 border border-white/40 dark:border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
+                    style={{
+                        backgroundColor: resolvedTheme === 'dark' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.5)',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)'
+                    }}
+                >
                     {filtered.length > 0 ? (
                         <div className="max-h-[60vh] overflow-y-auto p-2 relative">
                             {/* Animated glowing orb behind results for mirroring effect */}
