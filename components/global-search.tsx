@@ -78,9 +78,9 @@ export function GlobalSearch() {
                 <div 
                     className="absolute top-full left-0 right-0 mt-2 border border-white/40 dark:border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
                     style={{
-                        backgroundColor: resolvedTheme === 'dark' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.05)',
-                        backdropFilter: 'blur(10px) saturate(120%)',
-                        WebkitBackdropFilter: 'blur(10px) saturate(120%)'
+                        backgroundColor: resolvedTheme === 'dark' ? 'rgba(0, 0, 0, 0.02)' : 'rgba(255, 255, 255, 0.02)',
+                        backdropFilter: 'blur(4px)',
+                        WebkitBackdropFilter: 'blur(4px)'
                     }}
                 >
                     {filtered.length > 0 ? (
