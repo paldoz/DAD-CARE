@@ -1852,7 +1852,7 @@ export default function SettingsPage() {
                                                 return (
                                                     <button key={i} onClick={() => openAdminDetail({ username: stat.username, name: stat.name || stat.username, role: stat.role, avatarUrl: stat.avatar_url, isOnline, lastSeen: stat.last_activity ? new Date(stat.last_activity) : undefined })} className="px-4 py-3 flex items-start gap-3 w-full text-left hover:bg-muted/30 active:scale-[0.99] transition-all cursor-pointer">
                                                         <div className="relative shrink-0">
-                                                            {stat.avatar_url ? (
+                                                            {stat.avatar_url && isOnline ? (
                                                                 <Avatar className="w-10 h-10 border border-border/50">
                                                                     <AvatarImage src={stat.avatar_url} className="object-cover" />
                                                                     <AvatarFallback className="text-sm font-black bg-muted uppercase">

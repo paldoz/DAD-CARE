@@ -22,6 +22,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
+import { AnimatedBackground } from '@/components/animated-background';
 
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
@@ -130,8 +131,7 @@ export default function PaymentsPage() {
 
             {/* Header */}
             <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
-                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none" />
+                <AnimatedBackground />
                 <div className="relative z-10 flex-1">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">

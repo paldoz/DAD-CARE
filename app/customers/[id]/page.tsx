@@ -17,7 +17,8 @@ import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { AnimatedBackground } from '@/components/animated-background';
 import {
     ArrowLeft,
     Trash2,
@@ -903,9 +904,10 @@ export default function CustomerDetailPage() {
 
             {/* 2. COMPACT PROFILE CARD */}
             <Card className="glass-card overflow-hidden border relative">
+                <AnimatedBackground />
                 {/* Non-clickable maqal status corner badge */}
                 {maqalStatus && (
-                    <div className={`absolute top-2 right-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black border pointer-events-none select-none ${
+                    <div className={`absolute top-2 right-2 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black border pointer-events-none select-none ${
                         maqalStatus.has_payment
                             ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
                             : 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
@@ -919,7 +921,7 @@ export default function CustomerDetailPage() {
                         {maqalStatus.has_payment ? '✓' : '!'} Maqal
                     </div>
                 )}
-                <CardContent className="p-2.5 sm:p-3">
+                <CardContent className="p-2.5 sm:p-3 relative z-10">
                     <div className="flex items-center gap-2.5">
                         <Avatar className="h-10 w-10 border-2 border-background shadow shrink-0">
                             <AvatarFallback className="text-sm bg-primary text-primary-foreground font-black">

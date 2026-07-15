@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { XIcon } from "lucide-react"
+import { AnimatedBackground } from "@/components/animated-background"
 
 import { cn } from "@/lib/utils"
 
@@ -80,13 +81,18 @@ function DialogContent({
   )
 }
 
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+function DialogHeader({ className, children, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      className={cn("flex flex-col gap-2 text-center sm:text-left relative overflow-hidden -mx-6 -mt-6 p-6 mb-4 border-b border-border/30 bg-primary/5", className)}
       {...props}
-    />
+    >
+      <AnimatedBackground />
+      <div className="relative z-10 flex flex-col gap-2">
+        {children}
+      </div>
+    </div>
   )
 }
 

@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 // Import XLSX dynamically when needed
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react';
+import { AnimatedBackground } from '@/components/animated-background';
 
 interface CustomerStats {
     id: string;
@@ -200,9 +201,7 @@ export default function ReportsPage() {
         <div className="space-y-6 pb-20 max-w-4xl mx-auto w-full px-1 md:px-0">
             {/* Header / Cover */}
             <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-                {/* Decorative background elements */}
-                <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
-                <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none" />
+                <AnimatedBackground />
                 
                 <div className="relative z-10">
                     <div className="flex items-center gap-3 mb-2">

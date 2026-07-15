@@ -1550,14 +1550,15 @@ return (
                     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/5 backdrop-blur-[2px] dark:bg-black/20 p-4 animate-in fade-in duration-200" onClick={() => setCompareModalOpen(false)}>
                         <div className="glass-panel rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden ring-1 ring-border/50" onClick={e => e.stopPropagation()}>
                             {/* Header */}
-                            <div className="flex items-center justify-between p-4 border-b border-border/30 bg-primary/5">
-                                <div className="flex items-center gap-2 text-primary">
+                            <div className="flex items-center justify-between p-4 border-b border-border/30 bg-primary/5 relative overflow-hidden">
+                                <AnimatedBackground />
+                                <div className="flex items-center gap-2 text-primary relative z-10">
                                     <div className="p-1.5 rounded-lg bg-primary/10">
                                         <ArrowRightLeft className="w-4 h-4" />
                                     </div>
                                     <h3 className="font-black uppercase tracking-widest text-xs md:text-sm">Isbarbardhig</h3>
                                 </div>
-                                <button onClick={() => setCompareModalOpen(false)} className="p-1.5 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground transition-colors">
+                                <button onClick={() => setCompareModalOpen(false)} className="p-1.5 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground transition-colors relative z-10">
                                     <X className="w-4 h-4" />
                                 </button>
                             </div>
