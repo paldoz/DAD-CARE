@@ -452,7 +452,7 @@ export default function SettingsPage() {
                 };
                 document.addEventListener('visibilitychange', onVisibilityChange);
 
-                const auditPoll = setInterval(checkForNewLogs, 60_000);
+                const auditPoll = setInterval(checkForNewLogs, 10_000);
                 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
                 return () => {
@@ -2113,17 +2113,15 @@ export default function SettingsPage() {
                                                 const logDate = new Date(log.created_at);
                                                 return (
                                                     <div key={log.id} className="flex items-start gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors group">
-                                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 shadow-inner ${isLogin ? 'bg-emerald-500/20 border border-emerald-500/30'
-                                                                : isLogout ? 'bg-slate-500/20 border border-slate-500/30'
-                                                                    : isFailed ? 'bg-red-500/20 border border-red-500/30'
-                                                                        : isClear ? 'bg-orange-500/20 border border-orange-500/30'
-                                                                            : 'bg-blue-500/20 border border-blue-500/30'
-                                                            }`}>
-                                                            {isLogin ? <LogIn className="w-3 h-3 text-emerald-400" />
-                                                                : isLogout ? <LogOut className="w-3 h-3 text-slate-400" />
-                                                                    : isFailed ? <AlertTriangle className="w-3 h-3 text-red-400" />
-                                                                        : isClear ? <Trash2 className="w-3 h-3 text-orange-400" />
-                                                                            : <Zap className="w-3 h-3 text-blue-400" />}
+                                                        {/* First-letter badge only — no photo */}
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black uppercase shrink-0 mt-0.5 shadow-inner border ${
+                                                            isLogin ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                                                            : isLogout ? 'bg-slate-500/20 border-slate-500/30 text-slate-400'
+                                                            : isFailed ? 'bg-red-500/20 border-red-500/30 text-red-400'
+                                                            : isClear ? 'bg-orange-500/20 border-orange-500/30 text-orange-400'
+                                                            : 'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                                                        }`}>
+                                                            {(log.name || log.username || '?').charAt(0)}
                                                         </div>
                                                         <div className="flex-1 min-w-0 flex flex-col justify-center">
                                                             <div className="flex items-center justify-between flex-wrap gap-2">
