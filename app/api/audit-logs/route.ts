@@ -64,7 +64,7 @@ export const GET = trackApiRoute('/api/audit-logs', async (request: Request) => 
         const filterUser = searchParams.get('user') || '';
         const filterAction = searchParams.get('action') || '';
         const filterDays = parseInt(searchParams.get('days') || '0', 10); // 0 = no limit
-        const limit = parseInt(searchParams.get('limit') || '200', 10);
+        const limit = parseInt(searchParams.get('limit') || '50', 10);
         const offset = parseInt(searchParams.get('offset') || '0', 10);
 
         // ── CHEAP CHECK MODE: only returns {count, latestId} ──
@@ -72,7 +72,7 @@ export const GET = trackApiRoute('/api/audit-logs', async (request: Request) => 
         // The client only does a full fetch when latestId changes.
         if (searchParams.get('check') === '1') {
             const { rows } = await pool.query(
-                `SELECT COUNT(*) as count, MAX(id) as latest_id FROM "AuditLog"`
+                `SELECT COUNT(*) as count, MAX(created_at) as latest_id FROM "AuditLog"`
             );
             const res = NextResponse.json({
                 count: parseInt(rows[0]?.count || '0', 10),
