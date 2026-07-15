@@ -73,9 +73,14 @@ export default function LoginPage() {
             <div className="hidden lg:flex flex-col items-center justify-center flex-1 relative overflow-hidden"
                 style={{ background: 'linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)' }}>
 
-                {/* Animated grid pattern */}
-                <div className="absolute inset-0 opacity-10"
-                    style={{ backgroundImage: 'linear-gradient(#ffffff 1px, transparent 1px), linear-gradient(to right, #ffffff 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+                {/* Animated tiny grid pattern with shine */}
+                <div className="absolute inset-0 opacity-20"
+                    style={{ 
+                        backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px)', 
+                        backgroundSize: '24px 24px',
+                        maskImage: 'radial-gradient(circle at center, black, transparent 70%)',
+                        WebkitMaskImage: 'radial-gradient(circle at center, black, transparent 70%)'
+                    }} />
 
                 {/* Glowing orbs */}
                 <div className="absolute top-1/4 left-1/4 w-80 h-80 rounded-full opacity-20 blur-3xl"
@@ -122,19 +127,37 @@ export default function LoginPage() {
             {/* ── RIGHT PANEL — Login form ── */}
             <div className="flex-1 flex items-center justify-center p-6 lg:p-12 relative">
 
-                {/* Mobile background enhancements */}
-                <div className="absolute inset-0 lg:hidden overflow-hidden pointer-events-none">
+                {/* Background enhancements */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
                     {/* Glowing orb for mobile */}
-                    <div className="absolute top-0 right-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px]"
+                    <div className="absolute top-0 right-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px] lg:hidden"
                         style={{ background: '#6366f1' }} />
-                    <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px]"
+                    <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full opacity-[0.15] blur-[80px] lg:hidden"
                         style={{ background: '#8b5cf6' }} />
                     
-                    {/* Grid */}
-                    <div className="absolute inset-0 opacity-30">
-                        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(to right, #e2e8f0 1px, transparent 1px), linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
-                        <div className="dark:block hidden absolute inset-0" style={{ backgroundImage: 'linear-gradient(to right, #27272a 1px, transparent 1px), linear-gradient(to bottom, #27272a 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
+                    {/* Premium Tiny Grid Background with Shine (Light & Dark Mode) */}
+                    <div className="absolute inset-0 opacity-50">
+                        {/* Light Mode Grid */}
+                        <div className="absolute inset-0 dark:hidden" 
+                             style={{ 
+                                 backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)', 
+                                 backgroundSize: '24px 24px',
+                                 maskImage: 'radial-gradient(circle at center, black, transparent 80%)',
+                                 WebkitMaskImage: 'radial-gradient(circle at center, black, transparent 80%)'
+                             }} 
+                        />
+                        {/* Dark Mode Grid */}
+                        <div className="absolute inset-0 hidden dark:block" 
+                             style={{ 
+                                 backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px)', 
+                                 backgroundSize: '24px 24px',
+                                 maskImage: 'radial-gradient(circle at center, black, transparent 80%)',
+                                 WebkitMaskImage: 'radial-gradient(circle at center, black, transparent 80%)'
+                             }} 
+                        />
                     </div>
+                    {/* Shining light sweep effect */}
+                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-primary/5 to-transparent animate-[shimmer_8s_infinite] dark:via-primary/10 opacity-60" />
                 </div>
 
                 <div className="w-full max-w-md relative z-10">
@@ -218,20 +241,25 @@ export default function LoginPage() {
                             <Button
                                 type="submit"
                                 disabled={loading}
-                                className="w-full h-13 text-base font-bold rounded-xl shadow-lg mt-2 transition-all duration-200 active:scale-[0.97]"
+                                className="w-full h-13 text-base font-bold rounded-xl shadow-lg mt-2 transition-all duration-300 hover:scale-[1.03] active:scale-[0.97] hover:shadow-[0_0_30px_rgba(99,102,241,0.6)] relative overflow-hidden group"
                                 style={{ height: '52px', background: loading ? undefined : 'linear-gradient(135deg, #6366f1, #8b5cf6)', boxShadow: '0 4px 20px rgba(99,102,241,0.35)' }}
                             >
-                                {loading ? (
-                                    <>
-                                        <Loader2 className="w-5 h-5 animate-spin" />
-                                        Signing in...
-                                    </>
-                                ) : (
-                                    <>
-                                        <LogIn className="w-5 h-5" />
-                                        Sign In
-                                    </>
-                                )}
+                                {/* Sweeping shine effect on hover */}
+                                <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                                
+                                <div className="relative flex items-center justify-center gap-2">
+                                    {loading ? (
+                                        <>
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                            Signing in...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <LogIn className="w-5 h-5 group-hover:scale-110 transition-transform duration-300" />
+                                            Sign In
+                                        </>
+                                    )}
+                                </div>
                             </Button>
                         </form>
 
