@@ -371,7 +371,7 @@ const getCachedCustomersFull = unstable_cache(
         return getCustomers(options);
     },
     ['customers-full-data'],
-    { revalidate: 60, tags: ['customers', 'max'] } // Reduced cache time for paginated data
+    { revalidate: 300, tags: ['customers', 'max'] } // 5-min cache — heavy query, reduce DB hits
 );
 
 export const GET = trackApiRoute('/api/customers', async (request: Request) => {

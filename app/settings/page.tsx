@@ -452,7 +452,7 @@ export default function SettingsPage() {
                 };
                 document.addEventListener('visibilitychange', onVisibilityChange);
 
-                const auditPoll = setInterval(checkForNewLogs, 10_000);
+                const auditPoll = setInterval(checkForNewLogs, 30_000); // 30s — smart check: only ~50 bytes per poll
                 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
                 return () => {
@@ -632,39 +632,64 @@ export default function SettingsPage() {
     // ─────────────────────────────────────────────────────────────────────────
 
     const loadUsers = async () => {
-        // Show cached data instantly to avoid blank flash
+        // ── Phase 1: Show cached user list instantly ──────────────────────────────
         const cached = localStorage.getItem('dadwork_settings_users');
         const cachedAt = localStorage.getItem('dadwork_settings_users_at');
-        const AGE_LIMIT = 5 * 60 * 1000; // 5 min
-        const isStale = !cachedAt || Date.now() - parseInt(cachedAt) > AGE_LIMIT;
+        const LIST_AGE_LIMIT = 5 * 60 * 1000; // 5 min
+        const isListStale = !cachedAt || Date.now() - parseInt(cachedAt) > LIST_AGE_LIMIT;
         if (cached) {
             try {
-                // Re-merge avatars from the separate avatar cache
                 const parsed = JSON.parse(cached);
-                setUsers(mergeAvatars(parsed));
+                setUsers(mergeAvatars(parsed)); // Show from localStorage cache instantly
             } catch {}
         }
-        if (!isStale && cached) return; // Skip network fetch — data is fresh
-        setUsersLoading(true);
-        try {
-            const res = await fetch('/api/users');
-            const data = await res.json();
-            if (res.ok && Array.isArray(data)) {
-                // Save avatars to their dedicated cache first
-                saveAvatarCache(data);
-                // Strip avatar blobs from the main user list cache to keep it lean
-                const dataWithoutAvatars = data.map((u: typeof users[0]) => ({ ...u, avatar_url: '' }));
-                setUsers(mergeAvatars(data)); // State gets full data (with avatars)
-                try {
-                    localStorage.setItem('dadwork_settings_users', JSON.stringify(dataWithoutAvatars));
-                    localStorage.setItem('dadwork_settings_users_at', String(Date.now()));
-                } catch {}
+
+        // ── Phase 2: Fetch fresh user list (no avatars — lean) ────────────────────
+        if (!isListStale && cached) {
+            // List is fresh — still check if avatar cache needs refresh (background, no spinner)
+        } else {
+            setUsersLoading(true);
+            try {
+                const res = await fetch('/api/users'); // No avatars — fast & cheap
+                const data = await res.json();
+                if (res.ok && Array.isArray(data)) {
+                    const withAvatars = mergeAvatars(data);
+                    setUsers(withAvatars);
+                    const dataWithoutAvatars = data.map((u: typeof users[0]) => ({ ...u, avatar_url: '' }));
+                    try {
+                        localStorage.setItem('dadwork_settings_users', JSON.stringify(dataWithoutAvatars));
+                        localStorage.setItem('dadwork_settings_users_at', String(Date.now()));
+                    } catch {}
+                }
+            } catch (e) {
+                toast.error('Failed to load users');
+            } finally {
+                setUsersLoading(false);
             }
-        } catch (e) {
-            toast.error('Failed to load users');
-        } finally {
-            setUsersLoading(false);
         }
+
+        // ── Phase 3: Refresh avatar cache only if stale (>24h) or empty ──────────
+        // This runs silently in background — no spinner, no egress if cache is fresh.
+        try {
+            const avatarCachedAt = localStorage.getItem('dadwork_avatars_cached_at');
+            const AVATAR_AGE_LIMIT = 24 * 60 * 60 * 1000; // 24 hours
+            const isAvatarCacheStale = !avatarCachedAt || Date.now() - parseInt(avatarCachedAt) > AVATAR_AGE_LIMIT;
+            const existingAvatarCache = loadAvatarCache();
+            // Force fetch if cache has fewer than 2 avatars (since we know we have multiple admins)
+            const hasMissingAvatars = Object.keys(existingAvatarCache).length < 2;
+
+            if (isAvatarCacheStale || hasMissingAvatars) {
+                // Fetch avatars once per 24 hours — this is the ONLY time avatar blobs are downloaded
+                const avatarRes = await fetch('/api/users?withAvatar=true');
+                const avatarData = await avatarRes.json();
+                if (avatarRes.ok && Array.isArray(avatarData)) {
+                    saveAvatarCache(avatarData); // Save to localStorage
+                    localStorage.setItem('dadwork_avatars_cached_at', String(Date.now()));
+                    // Update users in state with fresh avatars
+                    setUsers(prev => mergeAvatars(prev));
+                }
+            }
+        } catch { /* Silent — avatar load failure is not critical */ }
     };
 
     const loadCustomers = async () => {

@@ -20,9 +20,18 @@ export async function GET(request: Request) {
     const { errorResponse } = await requireSuperAdmin(request);
     if (errorResponse) return errorResponse;
     try {
-        const { rows } = await pool.query('SELECT id, username, name, role, is_active, gender, phone, CASE WHEN length(avatar_url) > 100000 THEN NULL ELSE avatar_url END as avatar_url, assigned_customer_ids, created_at, updated_at FROM "User" ORDER BY created_at DESC');
+        const { searchParams } = new URL(request.url);
+        const withAvatar = searchParams.get('withAvatar') === 'true';
+
+        // Default: strip avatar blobs — they are large and fetched too often.
+        // Only include avatar when explicitly requested (e.g. profile editor).
+        const avatarCol = withAvatar
+            ? `CASE WHEN length(avatar_url) > 100000 THEN NULL ELSE avatar_url END as avatar_url`
+            : `NULL as avatar_url`;
+
+        const { rows } = await pool.query(`SELECT id, username, name, role, is_active, gender, phone, ${avatarCol}, assigned_customer_ids, created_at, updated_at FROM "User" WHERE role IN ('ADMIN', 'SUPER_ADMIN') ORDER BY created_at DESC`);
         const res = NextResponse.json(rows);
-        res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+        res.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=300');
         return res;
     } catch (error: any) {
         console.error('Fetch Users Error:', error);

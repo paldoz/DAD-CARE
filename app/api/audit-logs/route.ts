@@ -120,8 +120,7 @@ export const GET = trackApiRoute('/api/audit-logs', async (request: Request) => 
                 "AuditLog".details, 
                 "AuditLog".ip_address, 
                 "AuditLog".user_agent, 
-                COALESCE("AuditLog".created_at, NOW()) as created_at,
-                CASE WHEN length(COALESCE("User".avatar_url, '')) > 100000 THEN NULL ELSE "User".avatar_url END as avatar_url
+                COALESCE("AuditLog".created_at, NOW()) as created_at
             FROM "AuditLog"
             LEFT JOIN "User" ON "AuditLog".username = "User".username
             ${feedWhere}
