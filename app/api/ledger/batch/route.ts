@@ -2,7 +2,7 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { logAudit } from '@/lib/audit';
-import { revalidateTag } from 'next/cache';
+import { revalidateTag, revalidatePath } from 'next/cache';
 import { recalculateCustomerLedger } from '@/lib/ledger-utils';
 
 export async function DELETE(request: Request) {
@@ -37,7 +37,7 @@ export async function DELETE(request: Request) {
                 WHERE id = ANY($2::uuid[])
                 AND customer_id = $3::uuid
                 AND deleted_at IS NULL
-                RETURNING id
+                RETURNING id, type, reference_date
             `;
             
             const result = await client.query(query, [session?.username || 'unknown', transactionIds, customerId]);
@@ -45,6 +45,22 @@ export async function DELETE(request: Request) {
             if (result.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return NextResponse.json({ error: 'No matching transactions found or they were already deleted.' }, { status: 404 });
+            }
+
+            // Sync with Daily Book
+            for (const row of result.rows) {
+                if (row.type === 'PRODUCT' && row.reference_date) {
+                    await client.query(
+                        `UPDATE "DailyBookItem" i
+                         SET deleted_at = NOW()
+                         FROM "DailyBook" b
+                         WHERE i.daily_book_id = b.id
+                         AND b.date = $1::date
+                         AND i.customer_id = $2
+                         AND i.deleted_at IS NULL`,
+                        [row.reference_date, customerId]
+                    );
+                }
             }
 
             // After deleting, recalculate the customer's ledger once
@@ -57,6 +73,14 @@ export async function DELETE(request: Request) {
             // Bust the Vercel edge cache so the frontend instantly gets accurate data
             // @ts-ignore
             revalidateTag('ledger');
+            // @ts-ignore
+            revalidateTag('customer-daily-entries');
+            try {
+                revalidatePath('/api/daily-book');
+                revalidatePath('/api/daily-book-history');
+                revalidatePath('/api/daily-book-history-full');
+                revalidatePath('/api/daily-book-init');
+            } catch (e) {}
 
             return NextResponse.json({ success: true, message: 'Transactions successfully deleted and balance recalculated.' });
         } catch (dbError: any) {
