@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
-import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft } from 'lucide-react';
+import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
@@ -92,7 +92,7 @@ function DailyBookPageInner() {
     const [entries, setEntries] = useState<{ [key: string]: { kg: number, present: boolean, note: string } }>({});
     const [saving, setSaving] = useState(false);
     const [savedEntries, setSavedEntries] = useState<SavedEntry[]>([]);
-    const [viewMode, setViewMode] = useState<'edit' | 'details'>('edit');
+    const [viewMode, setViewMode] = useState<'edit' | 'details'>('details');
     const [editingDate, setEditingDate] = useState<string | null>(null);
     const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
     const [focusedEntry, setFocusedEntry] = useState<SavedEntry | null>(null);
@@ -118,6 +118,9 @@ function DailyBookPageInner() {
     // Pagination state
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 50; // fixed page size for fastest UI response
+    
+    const [currentUser, setCurrentUser] = useState<any>(null);
+    const [showPriorityOnly, setShowPriorityOnly] = useState(false);
 
     // Debounce hook for search input (300 ms)
     const useDebounce = <T,>(value: T, delay: number): T => {
@@ -137,9 +140,23 @@ function DailyBookPageInner() {
     const { data: initData, isError: initError, mutate: mutateInit } = useDailyBookInit();
     const loadInit = () => mutateInit(); // Used by AddCustomerDialog to refresh after adding a customer
     const dateStr = format(date, 'yyyy-MM-dd');
-    const { data: bookData } = useDailyBookDate(isInitialized ? dateStr : null);
+    // ⚡ Only fetch today's date entries when actually in edit mode — saves ~2–8 KB per load in history mode
+    const { data: bookData } = useDailyBookDate((isInitialized && (viewMode === 'edit' || !!editingDate)) ? dateStr : null);
     const { processedCustomerIds: swrLedgerIds, isLoading: swrLedgerLoading, mutate: mutateLedger } = useLedgerStatusForDate(dateStr);
     const { data: historyData, mutate: mutateHistory, size, setSize, isLoadingMore, isReachingEnd } = useDailyBookHistory();
+
+    useEffect(() => {
+        const stored = localStorage.getItem('currentUser');
+        if (stored) {
+            try { 
+                const parsed = JSON.parse(stored);
+                setCurrentUser(parsed); 
+                if (parsed.role === 'SUPER_ADMIN') {
+                    setViewMode('edit');
+                }
+            } catch (e) {}
+        }
+    }, []);
 
     // Sync SWR Init Data to Local State (Protects Optimistic UI)
     useEffect(() => {
@@ -311,9 +328,8 @@ function DailyBookPageInner() {
             toast.error(e.message || 'Network error while saving');
         } finally {
             setSaving(false);
-            // Force fresh REAL data from server — no optimistic cache
+            // Refresh history and ledger status — but NOT init (customers don't change on save)
             await mutateHistory(undefined, { revalidate: true });
-            await mutateInit();
             mutateLedger();
         }
     };
@@ -444,13 +460,20 @@ function DailyBookPageInner() {
     const sortedEntries = [...filteredEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Use debounced search term for filtering to reduce re‑renders
-    const filteredCustomers = customers.filter(c =>
-      c.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-      c.customer_code.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-    );
+    const filteredCustomers = customers.filter(c => {
+        if (showPriorityOnly && currentUser?.assigned_customer_ids && !currentUser.assigned_customer_ids.includes(c.id)) {
+            return false;
+        }
+        return c.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+               c.customer_code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+    });
 
     // Sort by numeric customer_code (fast numeric sort)
     const sortedCustomers = filteredCustomers.sort((a, b) => {
+      const aIsPriority = currentUser?.assigned_customer_ids?.includes(a.id) ? 1 : 0;
+      const bIsPriority = currentUser?.assigned_customer_ids?.includes(b.id) ? 1 : 0;
+      if (aIsPriority !== bIsPriority) return bIsPriority - aIsPriority;
+
       const codeA = parseInt(a.customer_code.replace(/\D/g, ''), 10) || 0;
       const codeB = parseInt(b.customer_code.replace(/\D/g, ''), 10) || 0;
       return codeA - codeB;
@@ -579,10 +602,12 @@ return (
                                 {editingDate && (
                                     <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} onClick={() => { setEntries({}); setEditingDate(null); setDate(new Date()); }} className="h-8 px-3 text-[10px] font-bold uppercase text-muted-foreground">Cancel</Button>
                                 )}
-                                <Button onClick={handleSave} onPointerDown={(e) => e.preventDefault()} disabled={saving || totalKg === 0} size="sm" className="h-8 px-4 text-[10px] font-black uppercase bg-primary text-primary-foreground shadow-md">
-                                    {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
-                                    {editingDate ? 'Update' : 'Save'}
-                                </Button>
+                                {isSuperAdmin && (
+                                    <Button onClick={handleSave} onPointerDown={(e) => e.preventDefault()} disabled={saving || totalKg === 0} size="sm" className="h-8 px-4 text-[10px] font-black uppercase bg-primary text-primary-foreground shadow-md">
+                                        {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />}
+                                        {editingDate ? 'Update' : 'Save'}
+                                    </Button>
+                                )}
                                 <Button variant="ghost" size="icon" onClick={() => setIsFullScreen(false)} className="h-8 w-8 text-muted-foreground hover:text-foreground">
                                     <Minimize2 className="h-4 w-4" />
                                 </Button>
@@ -590,11 +615,20 @@ return (
                         </div>
 
                         {/* Search bar */}
-                        <div className="shrink-0 px-3 py-2 border-b border-border bg-card/50">
-                            <div className="relative">
+                        <div className="shrink-0 px-3 py-2 border-b border-border bg-card/50 flex gap-2">
+                            <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input placeholder="Search customers..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-10 bg-background border-input focus:border-primary shadow-sm w-full" autoFocus />
                             </div>
+                            <Button 
+                                variant={showPriorityOnly ? "default" : "outline"} 
+                                size="icon"
+                                className="h-10 w-10 shrink-0"
+                                onClick={() => setShowPriorityOnly(!showPriorityOnly)}
+                                title="Show only my priority customers"
+                            >
+                                <Star className={`w-4 h-4 ${showPriorityOnly ? "text-primary-foreground" : "text-amber-500"}`} />
+                            </Button>
                         </div>
 
                         {/* Scrollable customer table — fills all remaining space */}
@@ -626,7 +660,10 @@ return (
                                             </div>
                                             <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
                                                 <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
-                                                    <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">{customer.name}</span>
+                                                    <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
+                                                        {currentUser?.assigned_customer_ids?.includes(customer.id) && <Star className="inline w-3 h-3 text-amber-500 mr-1 pb-0.5" />}
+                                                        {customer.name}
+                                                    </span>
                                                     {entries[customer.id]?.kg > 0 && (
                                                         processedCustomerIds.has(customer.id) ? (
                                                             <span title="Processed in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black leading-none">✓</span>
@@ -724,6 +761,15 @@ return (
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input placeholder="Search customers..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-10 bg-background border-input focus:border-primary shadow-sm" />
                             </div>
+                            <Button 
+                                variant={showPriorityOnly ? "default" : "outline"} 
+                                size="icon"
+                                className="h-10 w-10 shrink-0"
+                                onClick={() => setShowPriorityOnly(!showPriorityOnly)}
+                                title="Show only my priority customers"
+                            >
+                                <Star className={`w-4 h-4 ${showPriorityOnly ? "text-primary-foreground" : "text-amber-500"}`} />
+                            </Button>
                         </div>
 
                         {customers.length === 0 ? (
@@ -758,7 +804,10 @@ return (
                                             </div>
                                             <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
                                                 <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
-                                                    <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">{customer.name}</span>
+                                                    <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
+                                                        {currentUser?.assigned_customer_ids?.includes(customer.id) && <Star className="inline w-3 h-3 text-amber-500 mr-1 pb-0.5" />}
+                                                        {customer.name}
+                                                    </span>
                                                     {entries[customer.id]?.kg > 0 && (
                                                         processedCustomerIds.has(customer.id) ? (
                                                             <span title="Processed in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black leading-none">✓</span>
@@ -847,19 +896,23 @@ return (
                                     )}
                                     <Button 
                                         onClick={handleSave} 
-                                        onPointerDown={(e) => {
-                                            // PREVENT DEFAULT stops the mobile keyboard from closing instantly. 
-                                            // If it closes instantly, the screen resizes, the button moves, 
-                                            // and the browser cancels the click!
-                                            e.preventDefault();
-                                        }}
-                                        disabled={saving || totalKg === 0} 
-                                        size="sm" 
-                                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold uppercase tracking-tight text-[10px] h-10 px-8 shadow-md shadow-primary/20 active:translate-y-0.5 transition-all"
-                                    >
-                                        {saving ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : <Save className="mr-2 h-3 w-3" />}
-                                        {editingDate ? 'Update' : 'Save Entry'}
-                                    </Button>
+                                    {isSuperAdmin && (
+                                        <Button 
+                                            onClick={handleSave} 
+                                            onPointerDown={(e) => {
+                                                // PREVENT DEFAULT stops the mobile keyboard from closing instantly. 
+                                                // If it closes instantly, the screen resizes, the button moves, 
+                                                // and the browser cancels the click!
+                                                e.preventDefault();
+                                            }}
+                                            disabled={saving || totalKg === 0} 
+                                            size="sm" 
+                                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold uppercase tracking-tight text-[10px] h-10 px-8 shadow-md shadow-primary/20 active:translate-y-0.5 transition-all"
+                                        >
+                                            {saving ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : <Save className="mr-2 h-3 w-3" />}
+                                            {editingDate ? 'Update' : 'Save Entry'}
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -879,29 +932,27 @@ return (
                                             <X className="w-5 h-5" />
                                         </Button>
                                     )}
-                                    <Button 
-                                        onClick={handleSave} 
-                                        disabled={saving} 
-                                        className="flex-1 h-12 rounded-xl bg-primary text-primary-foreground font-black uppercase tracking-widest text-sm shadow-lg hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-70"
-                                    >
-                                        {saving ? (
-                                            <div className="flex items-center justify-center gap-2 w-full">
-                                                <Loader2 className="w-5 h-5 animate-spin" />
-                                                <span>{editingDate ? 'Updating...' : 'Saving...'}</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-between w-full px-2">
-                                                <div className="text-left">
-                                                    <p className="text-[10px] opacity-70 leading-none mb-1">Total KG</p>
-                                                    <p className="text-xl leading-none">{Math.round(totalKg)} KG</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 bg-black/10 px-4 py-2 rounded-lg">
-                                                    <Save className="w-4 h-4" />
-                                                    <span>{editingDate ? 'UPDATE' : 'SAVE'}</span>
-                                                </div>
-                                            </div>
+                                    <div className="flex-1 flex items-center justify-between w-full h-12 bg-muted rounded-xl px-2">
+                                        <div className="text-left px-2">
+                                            <p className="text-[10px] text-muted-foreground leading-none mb-1">Total</p>
+                                            <p className="text-lg font-black leading-none">{Math.round(totalKg)} KG</p>
+                                        </div>
+                                        {isSuperAdmin && (
+                                            <button 
+                                                onClick={handleSave} 
+                                                onPointerDown={(e) => e.preventDefault()}
+                                                disabled={saving || totalKg === 0} 
+                                                className="flex-1 max-w-[140px] flex items-center justify-center gap-1.5 h-full rounded-2xl bg-primary text-primary-foreground font-black uppercase tracking-widest text-[11px] shadow-xl shadow-primary/25 active:scale-95 transition-all"
+                                            >
+                                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                                                    <>
+                                                        <Save className="w-4 h-4" />
+                                                        <span>{editingDate ? 'UPDATE' : 'SAVE'}</span>
+                                                    </>
+                                                )}
+                                            </button>
                                         )}
-                                    </Button>
+                                    </div>
                                 </div>
                             </div>
                         )}

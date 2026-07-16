@@ -21,7 +21,7 @@ export const GET = trackApiRoute('/api/admin-sessions', async (request: Request)
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        if (session.role !== 'SUPER_ADMIN') {
+        if (session.role !== 'SUPER_ADMIN' && session.role !== 'ADMIN') {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 

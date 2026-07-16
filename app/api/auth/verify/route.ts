@@ -24,7 +24,11 @@ export async function GET(request: Request) {
             return NextResponse.json({ valid: false }, { status: 401 });
         }
 
-        return NextResponse.json({ valid: true, username: session.username, role: session.role });
+        const res = NextResponse.json({ valid: true, username: session.username, role: session.role });
+        // Cache at the edge for 60s — eliminates a DB hit on every page navigation.
+        // The token itself is in the cookie, so per-user responses are naturally scoped.
+        res.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+        return res;
     } catch {
         return NextResponse.json({ valid: false }, { status: 401 });
     }

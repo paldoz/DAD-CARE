@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { DollarSign, Plus, Loader2, Trash2, Package, ArrowRight, Receipt, Lock, User, Scale, CalendarIcon, TrendingUp, TrendingDown, Info, BookOpen, RefreshCw, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { DollarSign, Plus, Loader2, Trash2, Package, ArrowRight, Receipt, Lock, User, Scale, CalendarIcon, TrendingUp, TrendingDown, Info, BookOpen, RefreshCw, ChevronDown, ChevronUp, CheckCircle2, Star } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,32 @@ const fetcher = async (url: string) => {
     }
     if (!res.ok) throw new Error('Fetch error');
     return res.json();
+};
+
+const dailyEntriesFetcher = async (url: string) => {
+    const res = await fetch(url, { credentials: 'include' });
+    if (res.status === 401) {
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('dadwork_session_token');
+            window.location.href = '/';
+        }
+        const error: any = new Error('Unauthorized');
+        error.status = 401;
+        throw error;
+    }
+    if (!res.ok) throw new Error('Fetch error');
+    const data = await res.json();
+    let allUnprocessedDates = [];
+    try {
+        const headerDates = res.headers.get('x-all-unprocessed-dates');
+        if (headerDates) allUnprocessedDates = JSON.parse(headerDates);
+    } catch (e) {}
+    
+    return {
+        dailyData: data,
+        allUnprocessedDates,
+        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null
+    };
 };
 
 interface DateEntry {
@@ -257,6 +283,14 @@ export default function LedgerPage() {
         currentBalance: Number(ledgerData.summary.currentBalance || 0)
     } : { totalKg: 0, totalPaid: 0, currentBalance: 0 };
 
+    // SWR fetch for customer daily entries to cache the results
+    const [startDate, setStartDate] = useState<string>('');
+    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
+    const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
+        revalidateOnFocus: false,
+        dedupingInterval: 60000,
+    });
+
     const [currentUser, setCurrentUser] = useState<any>(null);
     const [showLastMaqal, setShowLastMaqal] = useState(false);
     const [updateLastMaqal, setUpdateLastMaqal] = useState(false);
@@ -270,8 +304,10 @@ export default function LedgerPage() {
     
     // Custom select state
     const [customerSearch, setCustomerSearch] = useState('');
+    const deferredCustomerSearch = useDeferredValue(customerSearch);
     const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false);
     const [showUnprocessedOnly, setShowUnprocessedOnly] = useState(false);
+    const [showPriorityOnly, setShowPriorityOnly] = useState(false);
     const [lastSavedCustomerId, setLastSavedCustomerId] = useState('');
 
     // Persist processed customer IDs in localStorage so the blue checkmark
@@ -286,6 +322,39 @@ export default function LedgerPage() {
         }
         return new Set<string>();
     });
+
+    // ── Admin priority stars (personal per-admin, DB-backed) ──
+    const { data: priorityData, mutate: mutatePriority } = useSWR(
+        '/api/customer-priority',
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
+    );
+    const priorityIds: Set<string> = useMemo(() =>
+        new Set<string>((priorityData?.priorityIds || currentUser?.assigned_customer_ids || []) as string[]),
+        [priorityData, currentUser]
+    );
+
+    const toggleStar = async (e: React.MouseEvent, customerId: string) => {
+        e.stopPropagation();
+        // Optimistic update
+        const wasStarred = priorityIds.has(customerId);
+        mutatePriority(
+            { priorityIds: wasStarred
+                ? (priorityData?.priorityIds || []).filter((id: string) => id !== customerId)
+                : [...(priorityData?.priorityIds || []), customerId] },
+            false
+        );
+        try {
+            await fetch('/api/customer-priority', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId }),
+            });
+        } catch (e) {
+            mutatePriority(); // revert on error
+        }
+    };
 
     const markCustomerDone = (customerId: string) => {
         setDoneCustomerIds(prev => {
@@ -308,7 +377,6 @@ export default function LedgerPage() {
     const [adjustmentNote, setAdjustmentNote] = useState('');
     const [expandedExtraEntryIds, setExpandedExtraEntryIds] = useState<Set<string>>(new Set());
     const [expandedPaymentIds, setExpandedPaymentIds] = useState<Set<string>>(new Set());
-    const [startDate, setStartDate] = useState<string>('');
     const [allUnprocessedDates, setAllUnprocessedDates] = useState<string[]>([]);
     const [currentMaqalId, setCurrentMaqalId] = useState<number | null>(null);
 
@@ -403,92 +471,62 @@ export default function LedgerPage() {
 
 
     useEffect(() => {
-        if (!selectedCustomerId) {
-            return;
-        }
+        if (!dailyEntriesRaw) return;
 
-        const fetchDailyData = async () => {
-            setFetchingDetails(true);
-            try {
-                const url = new URL(`/api/customer-daily-entries`, window.location.origin);
-                url.searchParams.set('customerId', selectedCustomerId);
-                if (startDate) {
-                    url.searchParams.set('startDate', startDate);
-                }
+        setFetchingDetails(true);
+        try {
+            const { dailyData, allUnprocessedDates, maqalId } = dailyEntriesRaw;
+            setAllUnprocessedDates(allUnprocessedDates);
+            setCurrentMaqalId(maqalId);
+            setCustomerDailyDates(dailyData || []);
+            
+            setDateEntries(prev => {
+                const newExpandedIds = new Set<string>();
+                let newEntries;
 
-                const dailyRes = await fetch(url.toString());
-                if (dailyRes.ok) {
-                    const allDatesHeader = dailyRes.headers.get('x-all-unprocessed-dates');
-                    if (allDatesHeader) {
-                        try {
-                            setAllUnprocessedDates(JSON.parse(allDatesHeader));
-                        } catch (e) {
-                            console.error('Failed to parse all unprocessed dates header', e);
-                        }
-                    }
-                    // Read maqal_id for this pair — used to permanently lock entries to their pair
-                    const maqalIdHeader = dailyRes.headers.get('x-maqal-id');
-                    if (maqalIdHeader) {
-                        setCurrentMaqalId(parseInt(maqalIdHeader, 10));
-                    } else {
-                        setCurrentMaqalId(null);
-                    }
-                    const dailyData = await dailyRes.json();
-                    setCustomerDailyDates(dailyData || []);
-                    setDateEntries(prev => {
-                        const newExpandedIds = new Set<string>();
-                        let newEntries;
-
-                        // If no dates, or just 1 empty row, initialize sequentially with all unprocessed records
-                        if (prev.length === 0 || (prev.length === 1 && !prev[0].date)) {
-                            if (dailyData && dailyData.length > 0) {
-                                newEntries = dailyData.map((d: any, idx: number) => {
-                                    const entryId = (Date.now() + idx).toString();
-                                    const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
-                                    if (shouldExpandExtra) {
-                                        newExpandedIds.add(entryId);
-                                    }
-                                    return entry;
-                                });
-                            } else {
-                                newEntries = [{ id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }];
+                // If no dates, or just 1 empty row, initialize sequentially with all unprocessed records
+                if (prev.length === 0 || (prev.length === 1 && !prev[0].date)) {
+                    if (dailyData && dailyData.length > 0) {
+                        newEntries = dailyData.map((d: any, idx: number) => {
+                            const entryId = (Date.now() + idx).toString();
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
+                            if (shouldExpandExtra) {
+                                newExpandedIds.add(entryId);
                             }
-                        } else {
-                            // Re-sequence existing rows to strictly match unprocessed dates
-                            newEntries = prev.map((entry, idx) => {
-                                const d = dailyData[idx];
-                                if (!d) return { ...entry, date: '' };
-                                const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices);
-                                if (shouldExpandExtra) {
-                                    newExpandedIds.add(entry.id);
-                                }
-                                return parsedEntry;
-                            }).filter(e => e.date !== '');
+                            return entry;
+                        });
+                    } else {
+                        newEntries = [{ id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }];
+                    }
+                } else {
+                    // Re-sequence existing rows to strictly match unprocessed dates
+                    newEntries = prev.map((entry, idx) => {
+                        const d = dailyData[idx];
+                        if (!d) return { ...entry, date: '' };
+                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices);
+                        if (shouldExpandExtra) {
+                            newExpandedIds.add(entry.id);
                         }
-
-                        if (newExpandedIds.size > 0) {
-                            setTimeout(() => {
-                                setExpandedExtraEntryIds(prevExpanded => {
-                                    const combined = new Set(prevExpanded);
-                                    newExpandedIds.forEach(id => combined.add(id));
-                                    return combined;
-                                });
-                            }, 0);
-                        }
-
-                        return newEntries;
-                    });
+                        return parsedEntry;
+                    }).filter(e => e.date !== '');
                 }
-            } catch (err) {
-                console.error('Failed to fetch customer details:', err);
-                toast.error('Failed to load customer data');
-            } finally {
-                setFetchingDetails(false);
-            }
-        };
 
-        fetchDailyData();
-    }, [selectedCustomerId, startDate, defaultPrice, dateSpecificPrices]);
+                if (newExpandedIds.size > 0) {
+                    setTimeout(() => {
+                        setExpandedExtraEntryIds(prevExpanded => {
+                            const combined = new Set(prevExpanded);
+                            newExpandedIds.forEach(id => combined.add(id));
+                            return combined;
+                        });
+                    }, 0);
+                }
+
+                return newEntries;
+            });
+        } finally {
+            setFetchingDetails(false);
+        }
+    }, [dailyEntriesRaw, defaultPrice, dateSpecificPrices]);
 
     const handleCustomerChange = (customerId: string) => {
         setSelectedCustomerId(customerId);
@@ -507,11 +545,16 @@ export default function LedgerPage() {
     const sortedCustomers = useMemo(() => {
         if (!allCustomers) return [];
         return [...allCustomers].sort((a, b) => {
+            // Starred customers always float to the top
+            const aStarred = priorityIds.has(a.id) ? 1 : 0;
+            const bStarred = priorityIds.has(b.id) ? 1 : 0;
+            if (aStarred !== bStarred) return bStarred - aStarred;
+            // Within each group, sort by numeric customer code
             const numA = parseInt(a.customer_code.replace(/[^0-9]/g, '')) || 0;
             const numB = parseInt(b.customer_code.replace(/[^0-9]/g, '')) || 0;
             return numA - numB;
         });
-    }, [allCustomers]);
+    }, [allCustomers, priorityIds]);
 
     const lastReceiptGroup = useMemo(() => {
         if (!history || history.length === 0) return null;
@@ -975,18 +1018,18 @@ export default function LedgerPage() {
             // 4. Refresh data instantly using Optimistic UI (Zero Bandwidth!)
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             
-            // Update the ledger transactions instantly
-            mutateLedger();
+            // Update the ledger transactions optimistically or defer re-fetch (Zero Bandwidth!)
+            mutateLedger(current => current, { revalidate: false });
             
             // Optimistically update the customer sidebar to show they are processed
-            mutateCustomers((current) => {
+            mutateCustomers((current: any) => {
                 if (!current) return current;
-                return current.map(c => 
+                return current.map((c: any) => 
                     c.id === selectedCustomerId 
                         ? { ...c, unprocessed_books_count: 0 } 
                         : c
                 );
-            }, { revalidate: false }); // revalidate: false means DO NOT hit the server!
+            }, { revalidate: false }); // DO NOT hit the server!
             
             setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
             setPaymentEntries([{ id: (Date.now() + 1).toString(), date: '', amount: '' }]);
@@ -1000,49 +1043,9 @@ export default function LedgerPage() {
                 setFetchingDetails(false); // End blink effect
 
                 // Fetch new dates for the SAME customer since we just paid the old maqal
-                const url = new URL(`/api/customer-daily-entries`, window.location.origin);
-                url.searchParams.set('customerId', selectedCustomerId);
-                if (startDate) {
-                    url.searchParams.set('startDate', startDate);
-                }
-
-                fetch(url.toString()).then(res => {
-                    const allDatesHeader = res.headers.get('x-all-unprocessed-dates');
-                    if (allDatesHeader) {
-                        try {
-                            setAllUnprocessedDates(JSON.parse(allDatesHeader));
-                        } catch (e) {}
-                    }
-                    return res.json();
-                }).then(dailyData => {
-                    setCustomerDailyDates(dailyData || []);
-                    setDateEntries(prev => {
-                        const newExpandedIds = new Set<string>();
-                        let newEntries;
-                        if (dailyData && dailyData.length > 0) {
-                            newEntries = dailyData.map((d: any, idx: number) => {
-                                const entryId = (Date.now() + idx).toString();
-                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
-                                if (shouldExpandExtra) {
-                                    newExpandedIds.add(entryId);
-                                }
-                                return entry;
-                            });
-                        } else {
-                            newEntries = [{ id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }];
-                        }
-                        if (newExpandedIds.size > 0) {
-                            setTimeout(() => {
-                                setExpandedExtraEntryIds(prevExpanded => {
-                                    const combined = new Set(prevExpanded);
-                                    newExpandedIds.forEach(id => combined.add(id));
-                                    return combined;
-                                });
-                            }, 0);
-                        }
-                        return newEntries;
-                    });
-                });
+                // Clear the current entries so they reset cleanly when the new data arrives
+                setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
+                mutateDailyEntries();
             } else {
                 // Normal save completed.
                 // Check if this was an all-absent (0 KG) pair — if so, auto-skip through remaining absent pairs
@@ -1189,8 +1192,8 @@ export default function LedgerPage() {
             if (!res.ok) throw new Error(data.error);
             
             setFreshBalance(null);
-            mutateLedger();
-            mutateCustomers();
+            mutateLedger(current => current, { revalidate: true });
+            mutateCustomers(current => current, { revalidate: true });
             toast.success('Receipt voided successfully!');
         } catch (err: any) {
             toast.error(err.message || 'Failed to void receipt');
@@ -1270,7 +1273,7 @@ export default function LedgerPage() {
                                                 variant="outline"
                                                 role="combobox"
                                                 aria-expanded={customerPopoverOpen}
-                                                className="w-full h-14 pl-12 pr-10 rounded-xl border border-border/60 bg-background/50 text-foreground font-bold flex justify-between items-center hover:bg-background/80"
+                                                className="w-full h-14 pl-12 pr-20 rounded-xl border border-border/60 bg-background/50 text-foreground font-bold flex justify-between items-center hover:bg-background/80"
                                             >
                                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                                     <User className={`w-5 h-5 ${selectedCustomerId ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -1283,7 +1286,19 @@ export default function LedgerPage() {
                                                         })()
                                                         : "Select Customer..."}
                                                 </span>
-                                                <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center gap-1.5">
+                                                    {selectedCustomerId && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => toggleStar(e, selectedCustomerId)}
+                                                            className={cn(
+                                                                "p-1 rounded-lg transition-all hover:scale-110 active:scale-95 pointer-events-auto",
+                                                                priorityIds.has(selectedCustomerId) ? "text-amber-400" : "text-muted-foreground/30 hover:text-amber-400/60"
+                                                            )}
+                                                        >
+                                                            <Star className={cn("w-4 h-4", priorityIds.has(selectedCustomerId) && "fill-amber-400")} />
+                                                        </button>
+                                                    )}
                                                     {fetchingDetails ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <ChevronDown className="w-4 h-4 opacity-50" />}
                                                 </div>
                                             </Button>
@@ -1308,14 +1323,29 @@ export default function LedgerPage() {
                                                 >
                                                     ⏳ Dhiman ({unprocessedCustomersCount})
                                                 </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant={showPriorityOnly ? "default" : "outline"}
+                                                    onClick={() => setShowPriorityOnly(!showPriorityOnly)}
+                                                    className={cn(
+                                                        "h-9 px-2 text-[10px] font-black uppercase tracking-tight gap-1 shrink-0 rounded-xl transition-all border-amber-400/40 text-amber-400 hover:bg-amber-400/10",
+                                                        showPriorityOnly && "bg-amber-400 text-amber-950 hover:bg-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.4)]"
+                                                    )}
+                                                >
+                                                    <Star className="w-3 h-3 fill-current" />
+                                                    ({priorityIds.size})
+                                                </Button>
                                             </div>
                                             <div className="max-h-60 overflow-y-auto p-1">
                                                 {(() => {
                                                     const filtered = sortedCustomers.filter(c => {
-                                                        const matchesSearch = c.name.toLowerCase().includes(customerSearch.toLowerCase()) || 
-                                                                             c.customer_code.toLowerCase().includes(customerSearch.toLowerCase());
+                                                        const matchesSearch = c.name.toLowerCase().includes(deferredCustomerSearch.toLowerCase()) || 
+                                                                             c.customer_code.toLowerCase().includes(deferredCustomerSearch.toLowerCase());
                                                         if (showUnprocessedOnly) {
                                                             return matchesSearch && !c.is_target_days_done && (c.unprocessed_books_count || c.total_books_count);
+                                                        }
+                                                        if (showPriorityOnly) {
+                                                            return matchesSearch && priorityIds.has(c.id);
                                                         }
                                                         return matchesSearch;
                                                     });
@@ -1324,14 +1354,14 @@ export default function LedgerPage() {
                                                         return <div className="p-4 text-center text-sm text-muted-foreground">No customers found.</div>;
                                                     }
 
-                                                    const priorities = currentUser?.assigned_customer_ids?.length > 0 ? filtered.filter(c => currentUser.assigned_customer_ids.includes(c.id)) : [];
-                                                    const others = currentUser?.assigned_customer_ids?.length > 0 ? filtered.filter(c => !currentUser.assigned_customer_ids.includes(c.id)) : filtered;
+                                                    const starred = filtered.filter(c => priorityIds.has(c.id));
+                                                    const unstarred = filtered.filter(c => !priorityIds.has(c.id));
 
-                                                    const renderCustomer = (c: any, isPriority: boolean) => (
+                                                    const renderCustomer = (c: any) => (
                                                         <div 
                                                             key={c.id}
                                                             className={cn(
-                                                                "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                                                                "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
                                                                 selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
                                                             )}
                                                             onClick={() => {
@@ -1340,7 +1370,17 @@ export default function LedgerPage() {
                                                                 setCustomerSearch('');
                                                             }}
                                                         >
-                                                            {isPriority && "⭐ "}
+                                                            {/* Clickable star icon */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => toggleStar(e, c.id)}
+                                                                className={cn(
+                                                                    "mr-1.5 shrink-0 rounded-md p-0.5 transition-all hover:scale-110 active:scale-95",
+                                                                    priorityIds.has(c.id) ? "text-amber-400" : "text-muted-foreground/30 hover:text-amber-400/60"
+                                                                )}
+                                                            >
+                                                                <Star className={cn("w-3.5 h-3.5", priorityIds.has(c.id) && "fill-amber-400")} />
+                                                            </button>
                                                             {c.id === lastSavedCustomerId ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (doneCustomerIds.has(c.id) || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : (c.total_books_count ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : '')))}
                                                             {c.name.toUpperCase()} (ID: {c.customer_code})
                                                             {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
@@ -1349,16 +1389,18 @@ export default function LedgerPage() {
 
                                                     return (
                                                         <>
-                                                            {priorities.length > 0 && (
+                                                            {starred.length > 0 && (
                                                                 <>
-                                                                    <div className="px-2 py-1.5 text-xs font-black uppercase text-muted-foreground bg-muted/50 mt-1 mb-1 first:mt-0">⭐ Priority Customers</div>
-                                                                    {priorities.map(c => renderCustomer(c, true))}
+                                                                    <div className="px-2 py-1.5 text-xs font-black uppercase text-amber-500 bg-amber-500/8 mt-1 mb-1 first:mt-0 flex items-center gap-1">
+                                                                        <Star className="w-3 h-3 fill-amber-500" /> Priority
+                                                                    </div>
+                                                                    {starred.map(c => renderCustomer(c))}
                                                                 </>
                                                             )}
-                                                            {others.length > 0 && (
+                                                            {unstarred.length > 0 && (
                                                                 <>
-                                                                    {currentUser?.assigned_customer_ids?.length > 0 && <div className="px-2 py-1.5 text-xs font-black uppercase text-muted-foreground bg-muted/50 mt-2 mb-1">Other Customers</div>}
-                                                                    {others.map(c => renderCustomer(c, false))}
+                                                                    {starred.length > 0 && <div className="px-2 py-1.5 text-xs font-black uppercase text-muted-foreground bg-muted/50 mt-2 mb-1">Other Customers</div>}
+                                                                    {unstarred.map(c => renderCustomer(c))}
                                                                 </>
                                                             )}
                                                         </>

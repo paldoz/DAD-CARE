@@ -111,17 +111,28 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 runningDebt = 0;
             }
 
+            const productDates = entriesToProcess
+                .filter((e: any) => e.type === 'PRODUCT' && e.date)
+                .map((e: any) => e.date);
+
+            const existingProductDates = new Set<string>();
+            if (productDates.length > 0) {
+                const { rows: existing } = await client.query(
+                    `SELECT reference_date::text FROM "Ledger" WHERE customer_id = $1 AND type = 'PRODUCT' AND reference_date = ANY($2::date[]) AND deleted_at IS NULL`,
+                    [customerId, productDates]
+                );
+                existing.forEach(r => existingProductDates.add(r.reference_date.split('T')[0])); // normalize date string
+            }
+
             const now = new Date();
             for (let i = 0; i < entriesToProcess.length; i++) {
                 const item = entriesToProcess[i];
                 const { type, date, kg, price, amount, note } = item;
 
                 if (type === 'PRODUCT' && date) {
-                    const { rows: existing } = await client.query(
-                        `SELECT id FROM "Ledger" WHERE customer_id = $1 AND reference_date = $2 AND type = 'PRODUCT' AND deleted_at IS NULL LIMIT 1`,
-                        [customerId, date]
-                    );
-                    if (existing.length > 0) throw new Error(`Product entry already exists for ${date}`);
+                    if (existingProductDates.has(date)) {
+                        throw new Error(`Product entry already exists for ${date}`);
+                    }
                 }
 
                 let entryAmount = 0;

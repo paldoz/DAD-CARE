@@ -49,7 +49,7 @@ export function useDailyBookInit() {
         {
             revalidateOnFocus: false,
             keepPreviousData: true,
-            dedupingInterval: 300000,
+            dedupingInterval: 900000, // 15 min — customers list changes very rarely
             revalidateIfStale: false,
             revalidateOnReconnect: false,
             shouldRetryOnError: false,

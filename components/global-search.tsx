@@ -18,15 +18,22 @@ const fetcher = async (url: string) => {
 export function GlobalSearch() {
     const [query, setQuery] = useState('');
     const [isOpen, setIsOpen] = useState(false);
+    const [hasInteracted, setHasInteracted] = useState(false);
     const router = useRouter();
     const { resolvedTheme } = useTheme();
     const searchRef = useRef<HTMLDivElement>(null);
 
-    const { data: customers, isLoading: loading } = useSWR<any[]>('/api/customers?lite=true', fetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 300000,
-        revalidateIfStale: false
-    });
+    // ⚡ Lazy fetch — only load customer list after the user has focused the search box.
+    // Before this fix, all customers were fetched on every page load even when nobody uses search.
+    const { data: customers, isLoading: loading } = useSWR<any[]>(
+        hasInteracted ? '/api/customers?lite=true' : null,
+        fetcher,
+        {
+            revalidateOnFocus: false,
+            dedupingInterval: 300000, // 5 min — shared with other hooks calling same URL
+            revalidateIfStale: false,
+        }
+    );
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -63,7 +70,7 @@ export function GlobalSearch() {
                         setQuery(e.target.value);
                         setIsOpen(true);
                     }}
-                    onFocus={() => setIsOpen(true)}
+                    onFocus={() => { setIsOpen(true); setHasInteracted(true); }}
                     placeholder="Search by name, phone number, or ID..."
                     className="pl-11 h-14 bg-white/40 dark:bg-black/40 backdrop-blur-2xl border-2 border-primary/20 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/20 text-base shadow-sm rounded-2xl transition-all"
                 />

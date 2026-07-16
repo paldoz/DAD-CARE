@@ -43,26 +43,39 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
         };
 
-        // ── STEP 1: Get Mogadishu today and compute active/waiting pairs ──
-        const todayRes = await pool.query(`
-            SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today
-        `);
+        // ── PARALLEL QUERIES: Fetch today, max db date, min customer date, and processed dates all at once ──
+        const [todayRes, maxDbRes, startRes, processedRes] = await Promise.all([
+            pool.query(`SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today`),
+            pool.query(`SELECT TO_CHAR(MAX((date AT TIME ZONE 'Africa/Mogadishu')::date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL`),
+            pool.query(`
+                SELECT TO_CHAR(MIN(date_val), 'YYYY-MM-DD') as min_date
+                FROM (
+                    SELECT (db.date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
+                    FROM "DailyBookItem" dbi
+                    JOIN "DailyBook" db ON dbi.daily_book_id = db.id
+                    WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
+                    UNION ALL
+                    SELECT (reference_date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
+                    FROM "Ledger"
+                    WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL AND reference_date IS NOT NULL
+                ) as combined
+            `, [customerId]),
+            pool.query(`
+                SELECT DISTINCT TO_CHAR((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date_str
+                FROM "Ledger"
+                WHERE customer_id = $1
+                  AND type = 'PRODUCT'
+                  AND deleted_at IS NULL
+                  AND reference_date IS NOT NULL
+            `, [customerId])
+        ]);
+
         const todayStr = todayRes.rows[0]?.today as string;
         const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
         const todayOffset = Math.floor((todayMs - epochMs) / 86400000);
-
-        // Active pair: the pair that includes today
         const activePairStart = Math.floor(todayOffset / 2) * 2;
 
-        // ── STEP 2: Find the latest date in DailyBook (globally) ──
-        const maxDbRes = await pool.query(`
-            SELECT TO_CHAR(MAX((date AT TIME ZONE 'Africa/Mogadishu')::date), 'YYYY-MM-DD') as max_date 
-            FROM "DailyBook" 
-            WHERE deleted_at IS NULL
-        `);
         const maxDbDateStr = maxDbRes.rows[0]?.max_date as string | null;
-
-        // Calculate which pair is the latest recorded in the global DailyBook
         let maxDbPairStart = -2; // fallback to before epoch if no books
         if (maxDbDateStr) {
             const maxDbMs = new Date(`${maxDbDateStr}T00:00:00Z`).getTime();
@@ -70,51 +83,19 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             maxDbPairStart = Math.floor(maxDbOffset / 2) * 2;
         }
 
-        // The "ready" pair must have DailyBook entries! 
-        // We cannot process a pair if the notebook hasn't been entered yet.
         const readyPairStartOffset = Math.max(0, Math.min(activePairStart, maxDbPairStart));
-        
-        // Waiting pair is the one IMMEDIATELY AFTER the ready pair
         const waitingPairStart = readyPairStartOffset + 2;
 
-        // ── STEP 3: Find Customer's Earliest Activity Date ──
-        const startQuery = `
-            SELECT TO_CHAR(MIN(date_val), 'YYYY-MM-DD') as min_date
-            FROM (
-                SELECT (db.date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
-                FROM "DailyBookItem" dbi
-                JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-                WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
-                UNION ALL
-                SELECT (reference_date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
-                FROM "Ledger"
-                WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL AND reference_date IS NOT NULL
-            ) as combined
-        `;
-        const { rows: startRows } = await pool.query(startQuery, [customerId]);
-        const minDateStr = startRows[0]?.min_date as string | null;
-
+        const minDateStr = startRes.rows[0]?.min_date as string | null;
         let startOffset = readyPairStartOffset; // Default: only show current pair
         if (minDateStr) {
             const minDateMs = new Date(`${minDateStr}T00:00:00Z`).getTime();
             const minOffset = Math.floor((minDateMs - epochMs) / 86400000);
-            // Snap to the pair that contains this date
             startOffset = Math.floor(minOffset / 2) * 2;
         }
-
-        // Clamp: never go before epoch, never go past readyPairStartOffset
         startOffset = Math.max(0, Math.min(startOffset, readyPairStartOffset));
 
-        // ── STEP 4: Get all dates already in ledger (PRODUCT type) for this customer ──
-        const processedQuery = `
-            SELECT DISTINCT TO_CHAR((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date_str
-            FROM "Ledger"
-            WHERE customer_id = $1
-              AND type = 'PRODUCT'
-              AND deleted_at IS NULL
-              AND reference_date IS NOT NULL
-        `;
-        const { rows: processedRows } = await pool.query(processedQuery, [customerId]);
+        const processedRows = processedRes.rows;
         const processedOffsets = new Set(processedRows.map(r => {
             const ms = new Date(`${(r.date_str as string)}T00:00:00Z`).getTime();
             return Math.floor((ms - epochMs) / 86400000);

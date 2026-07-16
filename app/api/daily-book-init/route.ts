@@ -6,7 +6,7 @@ import { trackApiRoute } from '@/lib/egress-tracker';
 async function getDailyBookInit() {
     // Fetch customers sorted by their numeric customer_code (so #1 comes before #2, etc.)
     const { rows: customers } = await pool.query(`
-      SELECT id, name, customer_code, gender, phone
+      SELECT id, name, customer_code
       FROM "Customer"
       WHERE deleted_at IS NULL
       ORDER BY 
@@ -43,9 +43,9 @@ export const GET = trackApiRoute('/api/daily-book-init', async (request: Request
     try {
         const data = await getDailyBookInit();
         const response = NextResponse.json(data);
-        // Allow Vercel edge to cache for 60s, then serve stale while revalidating in background.
+        // Allow edge/browser to serve stale for up to 10 min while revalidating in bg.
         // Customers list + latestDate change infrequently — this saves a DB hit on every page load.
-        response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+        response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=600');
         return response;
     } catch (error: any) {
         console.error('Daily Book Init Error:', error);

@@ -76,6 +76,10 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
 
+    if (session.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Only Super Admin can save Daily Book entries' }, { status: 403 });
+    }
+
     // Rate limit: max 5 saves per 30 seconds to prevent duplicate submissions
     const limited = rateLimitResponse(request, 5, 30_000);
     if (limited) return limited;
@@ -240,6 +244,10 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
 export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) => {
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
+
+    if (session.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Only Super Admin can delete Daily Book entries' }, { status: 403 });
+    }
     const { searchParams } = new URL(request.url);
     const dateStr = searchParams.get('date');
     if (!dateStr) return NextResponse.json({ error: 'Date required' }, { status: 400 });

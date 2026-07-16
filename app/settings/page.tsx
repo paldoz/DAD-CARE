@@ -418,14 +418,6 @@ export default function SettingsPage() {
                 loadAuditLogs(auditFiltersRef.current.user, auditFiltersRef.current.action, true, true);
                 loadOnlineSessions();
 
-                // ── Heartbeat every 15 minutes (900s) to stay marked ONLINE in the DB ──
-                const heartbeat = setInterval(async () => {
-                    fetch('/api/admin-sessions', {
-                        method: 'POST',
-                        credentials: 'include',
-                    }).catch(() => { });
-                }, 900_000); // 15 mins (Extreme bandwidth saving)
-
                 // ── Smart audit-log polling ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                 // Every 60s: call ?check=1 (≈2 numbers, ~50 bytes from Vercel Edge cache).
                 // Only if latestId changed do we fire the full 50-row query.
@@ -452,13 +444,14 @@ export default function SettingsPage() {
                 };
                 document.addEventListener('visibilitychange', onVisibilityChange);
 
-                // auditPoll removed completely — user must click "Refresh Now" to save bandwidth
-                // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                const auditPoll = setInterval(checkForNewLogs, 60000);
 
                 return () => {
-                    clearInterval(heartbeat);
+                    clearInterval(auditPoll);
                     document.removeEventListener('visibilitychange', onVisibilityChange);
                 };
+            } else if (parsedUser.role === 'ADMIN') {
+                loadOnlineSessions();
             }
         }
     }, []);
@@ -1172,7 +1165,8 @@ export default function SettingsPage() {
     }
 
     const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
-    const isAnyAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+    const isAdmin = currentUser?.role === 'ADMIN';
+    const isAnyAdmin = isSuperAdmin || isAdmin;
 
     return (
         <div className="space-y-4 max-w-4xl mx-auto w-full pb-24" suppressHydrationWarning>
@@ -1258,13 +1252,13 @@ export default function SettingsPage() {
                                 <span className="xs:hidden">🗑️</span>
                             </TabsTrigger>
                         )}
-                        {isSuperAdmin && (
+                        {isAnyAdmin && (
                             <TabsTrigger
                                 value="audit"
                                 className="flex-1 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md rounded-xl text-[11px] font-bold py-2.5 px-1 gap-1.5 transition-all"
                             >
                                 <Activity className="w-3.5 h-3.5 text-red-500" />
-                                <span className="hidden xs:inline">Audit</span>
+                                <span className="hidden xs:inline">{isSuperAdmin ? 'Audit' : 'Online'}</span>
                                 <span className="xs:hidden">🔍</span>
                             </TabsTrigger>
                         )}
@@ -1818,12 +1812,13 @@ export default function SettingsPage() {
                         </TabsContent>
                     )}
 
-                    {/* ── Audit Logs ── */}
-                    {isSuperAdmin && (
+                    {/* ── Audit Logs & Online Users ── */}
+                    {(isSuperAdmin || isAdmin) && (
                         <TabsContent value="audit" className="mt-3">
                             <div className="space-y-3">
 
-                                {/* Master Refresh */}
+                                {/* Master Refresh (Only for Super Admin) */}
+                                {isSuperAdmin && (
                                 <div className="flex justify-end">
                                     <button
                                         onClick={async () => {
@@ -1843,8 +1838,10 @@ export default function SettingsPage() {
                                         Refresh All
                                     </button>
                                 </div>
+                                )}
 
                                 {/* ── Live Online Status Bar ── */}
+                                {(isSuperAdmin || isAdmin) && (
                                 <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
                                     <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-emerald-500/8 to-transparent flex items-center justify-between">
                                         <div className="flex items-center gap-2">
@@ -1921,8 +1918,12 @@ export default function SettingsPage() {
                                         )}
                                     </div>
                                 </div>
+                                )}
 
-                                {/* ── Per-Admin Activity Cards ── */}
+                                {/* ── SUPER_ADMIN ONLY SECTIONS ── */}
+                                {isSuperAdmin && (
+                                    <>
+                                        {/* ── Per-Admin Activity Cards ── */}
                                 {auditUserStats.filter(stat => users.some(u => u.username === stat.username)).length > 0 && (
                                     <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
                                         <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-violet-500/8 to-transparent">
@@ -2185,7 +2186,9 @@ export default function SettingsPage() {
                                             </div>
                                         )}
                                     </div>
-                                </div>
+                                    </div>
+                                    </>
+                                )}
                             </div>
                         </TabsContent>
                     )}

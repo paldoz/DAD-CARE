@@ -86,16 +86,17 @@ async function getCustomers(options: {
                 lpr.customer_id,
                 lpr.first_receipt_created_at,
                 lpr.last_receipt_created_at,
-                COALESCE(
-                    (SELECT MIN(created_at) FROM "Ledger" l_next 
-                     WHERE l_next.customer_id = lpr.customer_id 
-                       AND l_next.type = 'PRODUCT' 
-                       AND l_next.deleted_at IS NULL
-                       AND l_next.created_at > lpr.last_receipt_created_at
-                    ), 
-                    'infinity'::timestamp
-                ) as next_receipt_created_at
+                COALESCE(l_next.created_at, 'infinity'::timestamp) as next_receipt_created_at
             FROM latest_product_receipt_raw lpr
+            LEFT JOIN LATERAL (
+                SELECT created_at FROM "Ledger" 
+                WHERE customer_id = lpr.customer_id 
+                  AND type = 'PRODUCT' 
+                  AND deleted_at IS NULL
+                  AND created_at > lpr.last_receipt_created_at
+                ORDER BY created_at ASC
+                LIMIT 1
+            ) l_next ON true
         ),
         latest_maqal_stats AS (
             SELECT 
@@ -135,16 +136,17 @@ async function getCustomers(options: {
                 spr.customer_id,
                 spr.first_receipt_created_at,
                 spr.last_receipt_created_at,
-                COALESCE(
-                    (SELECT MIN(created_at) FROM "Ledger" l_next 
-                     WHERE l_next.customer_id = spr.customer_id 
-                       AND l_next.type = 'PRODUCT' 
-                       AND l_next.deleted_at IS NULL
-                       AND l_next.created_at > spr.last_receipt_created_at
-                    ), 
-                    'infinity'::timestamp
-                ) as next_receipt_created_at
+                COALESCE(l_next.created_at, 'infinity'::timestamp) as next_receipt_created_at
             FROM selected_product_receipt_raw spr
+            LEFT JOIN LATERAL (
+                SELECT created_at FROM "Ledger" 
+                WHERE customer_id = spr.customer_id 
+                  AND type = 'PRODUCT' 
+                  AND deleted_at IS NULL
+                  AND created_at > spr.last_receipt_created_at
+                ORDER BY created_at ASC
+                LIMIT 1
+            ) l_next ON true
         ),
         selected_maqal_stats AS (
             SELECT 
@@ -393,14 +395,16 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         if (isLite) {
             const rows = await getCachedCustomersLite();
             const res = NextResponse.json(rows);
-            res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+            // 5-min CDN cache — 3 pages call this on load; longer cache = fewer Supabase hits
+            res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
             return res;
         }
 
         if (mode === 'ledger') {
             const rows = await getCachedCustomersLedger();
             const res = NextResponse.json(rows);
-            res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+            // 5-min CDN cache — heavy multi-join query, changes infrequently
+            res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
             return res;
         }
 

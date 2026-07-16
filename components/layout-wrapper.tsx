@@ -43,9 +43,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         return () => unsub();
     }, [pathname, router]);
 
-    // Secret Background Fetcher for Audit Data (Run ONCE per session mount)
+    // Secret Background Fetcher for Data (Run ONCE per session mount)
     useEffect(() => {
-        if (currentUser?.role !== 'SUPER_ADMIN') return;
+        if (!currentUser) return;
+        if (currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'ADMIN') return;
         // Prevent re-running on every page navigation — only fetch once after login
         if (hasFetchedAdminDataRef.current) return;
         hasFetchedAdminDataRef.current = true;
@@ -61,15 +62,45 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
                         if (data.online) localStorage.setItem('dadwork_online_sessions', JSON.stringify(data.online));
                     }).catch(() => { });
 
-                // Prefetch audit stats silently
-                fetch('/api/audit-logs?limit=1&stats=true', { credentials: 'include' })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.userStats) localStorage.setItem('dadwork_audit_stats', JSON.stringify(data.userStats));
-                    }).catch(() => { });
+                // Prefetch audit stats silently if SUPER_ADMIN
+                if (currentUser.role === 'SUPER_ADMIN') {
+                    fetch('/api/audit-logs?limit=1&stats=true', { credentials: 'include' })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.userStats) localStorage.setItem('dadwork_audit_stats', JSON.stringify(data.userStats));
+                        }).catch(() => { });
+                }
             } catch (e) { }
         };
         fetchBackgroundStats();
+    }, [currentUser]);
+
+    // ── Global Heartbeat (Active on all pages) ──
+    useEffect(() => {
+        if (!currentUser) return;
+        
+        const ping = () => {
+            if (document.hidden) return; // Save egress and Vercel usage when tab is hidden
+            fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => { });
+        };
+        
+        // Fire once immediately on load so they appear online right away
+        ping();
+        
+        // The backend marks sessions offline after 5 mins. 
+        // We ping every 4 mins (240_000 ms) to safely keep it alive.
+        const heartbeat = setInterval(ping, 240_000);
+        
+        // Wake up immediately if the user returns to the tab
+        const handleVisibilityChange = () => {
+            if (!document.hidden) ping();
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        return () => {
+            clearInterval(heartbeat);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, [currentUser]);
 
     // Close popup when clicking outside
