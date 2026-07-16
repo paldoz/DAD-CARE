@@ -365,15 +365,16 @@ function DailyBookPageInner() {
         try {
             const res = await fetch(`/api/daily-book?date=${deleteDateStr}`, { method: 'DELETE' });
             if (!res.ok) throw new Error(await res.text());
-            // Remove from local list using date prefix match (handles timestamps vs plain dates)
+            // Optimistically remove from local list instantly — no loading screen
             setSavedEntries(prev => prev.filter(e => e.date.substring(0, 10) !== deleteDateStr));
             toast.success('Moved to Recycle Bin');
             setDeleteConfirmDate(null);
-            
-            // Wait briefly for Vercel edge cache to clear, then force update everything
-            await new Promise(resolve => setTimeout(resolve, 800));
-            mutateInit(); // This updates the history count badge at the top
-            mutateHistory(undefined, { revalidate: true }); // Force fresh fetch after delete
+
+            // Immediately fire both refreshes — no delay needed because revalidatePath
+            // on the server is synchronous and the cache is already cleared by the time
+            // we get the 200 response back from the API.
+            mutateInit();                                     // updates history count badge
+            mutateHistory(undefined, { revalidate: true });  // refreshes the entry list
         } catch (err: any) {
             toast.error('Failed to move to trash: ' + (err.message || 'Server error'));
         } finally {
@@ -570,7 +571,7 @@ return (
                         className={`h-11 rounded-xl px-5 font-black uppercase tracking-wider text-xs transition-all ${viewMode === 'details' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 hover:-translate-y-0.5' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
                     >
                         <FileText className="w-4 h-4 mr-2 text-current opacity-80" />
-                        History <span className="ml-1.5 opacity-70">({Math.max(initData?.historyCount || 0, savedEntries.length)})</span>
+                        History <span className="ml-1.5 opacity-70">({savedEntries.length || initData?.historyCount || 0})</span>
                     </Button>
                 </div>
             </div>
