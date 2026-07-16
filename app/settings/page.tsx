@@ -149,6 +149,16 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(false);
     const [resequenceLoading, setResequenceLoading] = useState(false);
 
+    // Restore & Verify state
+    const [backupFile, setBackupFile] = useState<File | null>(null);
+    const [backupData, setBackupData] = useState<any>(null);
+    const [verifyResult, setVerifyResult] = useState<any>(null);
+    const [verifying, setVerifying] = useState(false);
+    const [restoring, setRestoring] = useState(false);
+    const [restoreConfirmText, setRestoreConfirmText] = useState('');
+    const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+    const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
     // Current User
     const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -1746,7 +1756,208 @@ export default function SettingsPage() {
                                     </div>
                                 </div>
 
+                                {/* ── Restore & Verify ─────────────────────────────── */}
+                                <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
+                                    <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-rose-500/5 to-transparent">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-1.5 rounded-lg bg-rose-500/15">
+                                                <Shield className="w-4 h-4 text-rose-500" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-foreground">🔁 Restore & Verify Backup</h3>
+                                                <p className="text-[10px] text-muted-foreground">Upload a backup JSON, verify its integrity, then restore if needed</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 space-y-3">
+
+                                        {/* File picker */}
+                                        <div
+                                            onClick={() => restoreFileInputRef.current?.click()}
+                                            className="border-2 border-dashed border-border/60 rounded-xl p-5 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/3 transition-all"
+                                        >
+                                            <input
+                                                ref={restoreFileInputRef}
+                                                type="file"
+                                                accept=".json"
+                                                className="hidden"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    if (!file.name.endsWith('.json')) { toast.error('Please select a .json backup file'); return; }
+                                                    setBackupFile(file);
+                                                    setVerifyResult(null);
+                                                    setRestoreConfirmText('');
+                                                    try {
+                                                        const text = await file.text();
+                                                        const parsed = JSON.parse(text);
+                                                        setBackupData(parsed.data || parsed);
+                                                    } catch {
+                                                        toast.error('Could not parse JSON file. Is it a valid backup?');
+                                                        setBackupFile(null);
+                                                    }
+                                                }}
+                                            />
+                                            <HardDrive className="w-6 h-6 text-muted-foreground/40 mx-auto mb-2" />
+                                            {backupFile ? (
+                                                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">📄 {backupFile.name}</p>
+                                            ) : (
+                                                <p className="text-xs text-muted-foreground">Click to select a <strong>.json</strong> backup file</p>
+                                            )}
+                                        </div>
+
+                                        {/* Step 1: Verify */}
+                                        {backupData && !verifyResult && (
+                                            <Button
+                                                onClick={async () => {
+                                                    setVerifying(true);
+                                                    try {
+                                                        const res = await fetch('/api/verify-backup', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({ data: backupData }),
+                                                        });
+                                                        const result = await res.json();
+                                                        setVerifyResult(result);
+                                                        if (result.allPassed) toast.success('✅ Backup verified! All checks passed.');
+                                                        else toast.error('⚠️ Backup has issues. Review the report before restoring.');
+                                                    } catch { toast.error('Verification request failed'); }
+                                                    finally { setVerifying(false); }
+                                                }}
+                                                disabled={verifying}
+                                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-10 rounded-xl"
+                                            >
+                                                {verifying ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Verifying...</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Step 1: Verify Backup Integrity</>}
+                                            </Button>
+                                        )}
+
+                                        {/* Verify Report */}
+                                        {verifyResult && (
+                                            <div className="space-y-2">
+                                                <div className={cn(
+                                                    "rounded-xl p-3 text-xs font-bold",
+                                                    verifyResult.allPassed
+                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 text-emerald-700 dark:text-emerald-300"
+                                                        : "bg-rose-50 dark:bg-rose-950/30 border border-rose-200/60 text-rose-700 dark:text-rose-300"
+                                                )}>
+                                                    {verifyResult.summary}
+                                                </div>
+
+                                                {verifyResult.stats && (
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        {[
+                                                            { label: 'Customers', value: verifyResult.stats.customers },
+                                                            { label: 'Ledger Rows', value: verifyResult.stats.ledger },
+                                                            { label: 'Daily Books', value: verifyResult.stats.dailyBook },
+                                                        ].map(s => (
+                                                            <div key={s.label} className="bg-muted/30 rounded-lg p-2 text-center">
+                                                                <p className="text-base font-black text-foreground">{s.value}</p>
+                                                                <p className="text-[9px] text-muted-foreground">{s.label}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div className="space-y-1.5">
+                                                    {verifyResult.checks?.map((chk: any, i: number) => (
+                                                        <div key={i} className={cn(
+                                                            "flex items-start gap-2 rounded-lg px-3 py-2 text-xs",
+                                                            chk.passed ? "bg-emerald-500/8 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/8 text-rose-700 dark:text-rose-300"
+                                                        )}>
+                                                            {chk.passed ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+                                                            <div>
+                                                                <p className="font-bold">{chk.name}</p>
+                                                                <p className="opacity-80">{chk.detail}</p>
+                                                                {chk.errors?.length > 0 && (
+                                                                    <ul className="mt-1 space-y-0.5 list-disc list-inside opacity-90">
+                                                                        {chk.errors.map((e: string, j: number) => <li key={j} className="text-[10px]">{e}</li>)}
+                                                                    </ul>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="flex gap-2 pt-1">
+                                                    <Button
+                                                        onClick={async () => {
+                                                            setVerifying(true);
+                                                            try {
+                                                                const res = await fetch('/api/verify-backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: backupData }) });
+                                                                setVerifyResult(await res.json());
+                                                            } catch { toast.error('Re-verify failed'); }
+                                                            finally { setVerifying(false); }
+                                                        }}
+                                                        disabled={verifying}
+                                                        variant="outline"
+                                                        className="flex-1 h-9 text-xs rounded-xl"
+                                                    >
+                                                        {verifying ? <Loader2 className="w-3 h-3 animate-spin" /> : '↺ Re-verify'}
+                                                    </Button>
+                                                    <Button
+                                                        onClick={() => { setRestoreConfirmText(''); setShowRestoreConfirm(true); }}
+                                                        disabled={!verifyResult.allPassed}
+                                                        className="flex-1 h-9 text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-xl disabled:opacity-40"
+                                                    >
+                                                        🔁 Step 2: Restore Database
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Restore Confirmation Dialog */}
+                                    <Dialog open={showRestoreConfirm} onOpenChange={setShowRestoreConfirm}>
+                                        <DialogContent className="max-w-sm rounded-2xl">
+                                            <DialogHeader>
+                                                <DialogTitle className="text-rose-600 flex items-center gap-2">
+                                                    <AlertTriangle className="w-5 h-5" />
+                                                    Confirm Full Restore
+                                                </DialogTitle>
+                                                <DialogDescription className="text-xs leading-relaxed">
+                                                    This will <strong>delete ALL current data</strong> and replace it with the backup contents. This cannot be undone. Type <strong>I CONFIRM RESTORE</strong> to proceed.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="space-y-3 pt-2">
+                                                <Input
+                                                    value={restoreConfirmText}
+                                                    onChange={e => setRestoreConfirmText(e.target.value)}
+                                                    placeholder="I CONFIRM RESTORE"
+                                                    className="font-mono text-sm rounded-xl border-rose-300 focus-visible:ring-rose-400"
+                                                />
+                                                <Button
+                                                    onClick={async () => {
+                                                        if (restoreConfirmText !== 'I CONFIRM RESTORE') { toast.error('Type the confirmation text exactly'); return; }
+                                                        setRestoring(true);
+                                                        try {
+                                                            const res = await fetch('/api/restore', {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({ data: backupData, confirm: 'I CONFIRM RESTORE' }),
+                                                            });
+                                                            const result = await res.json();
+                                                            if (res.ok && result.success) {
+                                                                toast.success(`✅ Restore complete! ${result.restored.customers} customers, ${result.restored.ledger} ledger entries restored.`);
+                                                                setShowRestoreConfirm(false);
+                                                                setBackupFile(null); setBackupData(null); setVerifyResult(null); setRestoreConfirmText('');
+                                                            } else {
+                                                                toast.error('Restore failed: ' + (result.error || 'Unknown error'));
+                                                            }
+                                                        } catch { toast.error('Restore request failed'); }
+                                                        finally { setRestoring(false); }
+                                                    }}
+                                                    disabled={restoreConfirmText !== 'I CONFIRM RESTORE' || restoring}
+                                                    className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold h-11 rounded-xl disabled:opacity-40"
+                                                >
+                                                    {restoring ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Restoring...</> : '🔁 Execute Restore'}
+                                                </Button>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+
                                 {/* Export PDF Card (existing) */}
+
                                 <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
                                     <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-amber-500/5 to-transparent">
                                         <div className="flex items-center gap-2.5">

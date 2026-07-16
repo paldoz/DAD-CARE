@@ -894,8 +894,6 @@ return (
                                             Cancel
                                         </Button>
                                     )}
-                                    <Button 
-                                        onClick={handleSave} 
                                     {isSuperAdmin && (
                                         <Button 
                                             onClick={handleSave} 
