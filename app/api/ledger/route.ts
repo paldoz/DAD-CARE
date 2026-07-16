@@ -170,7 +170,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             if (entriesToInsert.length > 0) {
                 await client.query(
                     `INSERT INTO "Ledger" (id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, maqal_id, created_at)
-                     SELECT gen_random_uuid(), * FROM UNNEST($1::uuid[], $2::text[], $3::date[], $4::float8[], $5::float8[], $6::float8[], $7::float8[], $8::float8[], $9::text[], $10::uuid[], $11::integer[], $12::timestamp[])`,
+                     SELECT gen_random_uuid(), * FROM UNNEST($1::uuid[], $2::"LedgerType"[], $3::date[], $4::float8[], $5::float8[], $6::float8[], $7::float8[], $8::float8[], $9::text[], $10::uuid[], $11::integer[], $12::timestamp[])`,
                     [
                         entriesToInsert.map(e => e.customer_id),
                         entriesToInsert.map(e => e.type),
