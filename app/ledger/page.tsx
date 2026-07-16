@@ -1019,7 +1019,7 @@ export default function LedgerPage() {
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             
             // Update the ledger transactions optimistically or defer re-fetch (Zero Bandwidth!)
-            mutateLedger(current => current, { revalidate: false });
+            mutateLedger((current: any) => current, { revalidate: false });
             
             // Optimistically update the customer sidebar to show they are processed
             mutateCustomers((current: any) => {
