@@ -2,40 +2,10 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { unstable_cache } from 'next/cache';
 
-// Get unprocessed daily book entries for a specific customer.
-//
-// ── PAIR RULE ──────────────────────────────────────────────────────────────
-// Dates are paired mathematically using a HARDCODED epoch of 2026-06-28.
-// Pairs: Jun28+Jun29, Jun30+Jul01, Jul02+Jul03, Jul04+Jul05, ...
-//
-// GLOBAL ACTIVE PAIR = the pair whose even-offset start ≤ today's offset.
-//   offset = floor((today - epoch) / 86400000)
-//   activePairStart = floor(offset / 2) * 2
-//
-// WAITING PAIR = the pair AFTER the active pair (not yet unlocked).
-//   waitingPairStart = activePairStart + 2
-//
-// A pair is READY (unlocked) only when the DailyBook has an entry
-// dated >= waitingPairStart. Until then, the waiting pair shows ⏳.
-//
-// The customer form always shows:
-//   1. The OLDEST unprocessed pair (auto-oldest logic)
-//   2. If all done → shows the WAITING pair (isReady: false) so they can see it's coming
-// ──────────────────────────────────────────────────────────────────────────
-
-export const GET = trackApiRoute('/api/customer-daily-entries', async (request: Request) => {
-    const { errorResponse } = await requireSession(request);
-    if (errorResponse) return errorResponse;
-    const { searchParams } = new URL(request.url);
-    const customerId = searchParams.get('customerId');
-
-    if (!customerId) {
-        return NextResponse.json({ error: 'Customer ID required' }, { status: 400 });
-    }
-
-    try {
-        const epochMs = new Date('2026-06-28T00:00:00Z').getTime();
+const fetchCustomerDailyEntriesData = async (customerId: string) => {
+    const epochMs = new Date('2026-06-28T00:00:00Z').getTime();
 
         const pad = (n: number) => String(n).padStart(2, '0');
         const toDateStr = (ms: number) => {
@@ -43,7 +13,6 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
         };
 
-        // ── PARALLEL QUERIES: Fetch today, max db date, min customer date, and processed dates all at once ──
         const [todayRes, maxDbRes, startRes, processedRes] = await Promise.all([
             pool.query(`SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today`),
             pool.query(`SELECT TO_CHAR(MAX((date AT TIME ZONE 'Africa/Mogadishu')::date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL`),
@@ -76,7 +45,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
         const activePairStart = Math.floor(todayOffset / 2) * 2;
 
         const maxDbDateStr = maxDbRes.rows[0]?.max_date as string | null;
-        let maxDbPairStart = -2; // fallback to before epoch if no books
+        let maxDbPairStart = -2;
         if (maxDbDateStr) {
             const maxDbMs = new Date(`${maxDbDateStr}T00:00:00Z`).getTime();
             const maxDbOffset = Math.floor((maxDbMs - epochMs) / 86400000);
@@ -87,7 +56,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
         const waitingPairStart = readyPairStartOffset + 2;
 
         const minDateStr = startRes.rows[0]?.min_date as string | null;
-        let startOffset = readyPairStartOffset; // Default: only show current pair
+        let startOffset = readyPairStartOffset; 
         if (minDateStr) {
             const minDateMs = new Date(`${minDateStr}T00:00:00Z`).getTime();
             const minOffset = Math.floor((minDateMs - epochMs) / 86400000);
@@ -101,10 +70,8 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             return Math.floor((ms - epochMs) / 86400000);
         }));
 
-        // ── STEP 5: Find all unprocessed ready pairs (oldest first) ──
         const unprocessedPairs: number[] = [];
         for (let offset = startOffset; offset <= readyPairStartOffset; offset += 2) {
-            // A pair is unprocessed if EITHER day is missing from the ledger
             if (!processedOffsets.has(offset) || !processedOffsets.has(offset + 1)) {
                 unprocessedPairs.push(offset);
             }
@@ -118,34 +85,25 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             );
         }
 
-        // ── STEP 6: Always append the WAITING pair ──
-        // The waiting pair is always shown regardless of processed status — as ⏳ locked
         const waitingDay1 = toDateStr(epochMs + waitingPairStart * 86400000);
         const waitingDay2 = toDateStr(epochMs + (waitingPairStart + 1) * 86400000);
         allUnprocessedDates.push(waitingDay1, waitingDay2);
 
-        // Oldest unprocessed ready pair to show in the form
         const oldestUnprocessedPairStart = unprocessedPairs.length > 0 ? unprocessedPairs[0] : null;
 
-        // ── STEP 7: Build the response entries ──
         if (oldestUnprocessedPairStart === null) {
-            // The waiting pair maqal_id
             const waitingMaqalId = Math.floor(waitingPairStart / 2) + 1;
             const waitingResult = [
                 { date: waitingDay1, kg: 0, note: 'Notebook', processed: false, isReady: false },
                 { date: waitingDay2, kg: 0, note: 'Notebook', processed: false, isReady: false },
             ];
-            const res = NextResponse.json(waitingResult, {
-                headers: { 
-                    'x-all-unprocessed-dates': JSON.stringify(allUnprocessedDates),
-                    'x-maqal-id': String(waitingMaqalId),
-                }
-            });
-            res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
-            return res;
+            return {
+                result: waitingResult,
+                allUnprocessedDates,
+                maqalId: waitingMaqalId
+            };
         }
 
-        // ── STEP 8: Fetch DB entries for the OLDEST unprocessed pair ──
         const day1Str = toDateStr(epochMs + oldestUnprocessedPairStart * 86400000);
         const day2Str = toDateStr(epochMs + (oldestUnprocessedPairStart + 1) * 86400000);
 
@@ -171,33 +129,58 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
                     kg: Number(item.kg),
                     note: (item.note as string | null) ?? null,
                     processed: false,
-                    isReady: true, // It's in the ready range
+                    isReady: true,
                 });
             }
         }
 
         const result = [];
-        // day1 (e.g. Jul 02)
         if (uniqueDatesMap.has(day1Str)) result.push(uniqueDatesMap.get(day1Str)!);
         else result.push({ date: day1Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
-        // day2 (e.g. Jul 03)
+        
         if (uniqueDatesMap.has(day2Str)) result.push(uniqueDatesMap.get(day2Str)!);
         else result.push({ date: day2Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
 
-        // maqal_id: sequential 1-based ID for this pair (pair offset 0 = maqal 1, offset 2 = maqal 2, etc.)
         const currentMaqalId = Math.floor(oldestUnprocessedPairStart / 2) + 1;
 
-        const res = NextResponse.json(result, {
+        return {
+            result,
+            allUnprocessedDates,
+            maqalId: currentMaqalId
+    };
+
+const getCachedCustomerDailyEntries = (customerId: string) => {
+    return unstable_cache(
+        async () => fetchCustomerDailyEntriesData(customerId),
+        ['customer-daily-entries', customerId],
+        { revalidate: 600, tags: ['customer-daily-entries', 'customers'] }
+    )();
+};
+
+export const GET = trackApiRoute('/api/customer-daily-entries', async (request: Request) => {
+    const { errorResponse } = await requireSession(request);
+    if (errorResponse) return errorResponse;
+    const { searchParams } = new URL(request.url);
+    const customerId = searchParams.get('customerId');
+
+    if (!customerId) {
+        return NextResponse.json({ error: 'Customer ID required' }, { status: 400 });
+    }
+
+    try {
+        const data = await getCachedCustomerDailyEntries(customerId);
+
+        const res = NextResponse.json(data.result, {
             headers: {
-                'x-all-unprocessed-dates': JSON.stringify(allUnprocessedDates),
-                'x-maqal-id': String(currentMaqalId),
+                'x-all-unprocessed-dates': JSON.stringify(data.allUnprocessedDates),
+                'x-maqal-id': String(data.maqalId),
             }
         });
-        res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+        
+        res.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
         return res;
     } catch (error: any) {
         console.error('Fetch Customer Daily Entries Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 });
-

@@ -25,9 +25,10 @@ export const GET = trackApiRoute('/api/admin-sessions', async (request: Request)
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
-        // NOTE: We do NOT touch/heartbeat the session on GET.
-        // The POST handler is the dedicated heartbeat — keeping GET read-only
-        // means it can be cached by Vercel's CDN.
+        // Touch the session on GET too — so loading this page marks you as online immediately
+        if (token) {
+            await touchSession(token);
+        }
 
         const [onlineSessions, allSessions] = await Promise.all([
             getOnlineSessions(),
@@ -70,7 +71,8 @@ export const GET = trackApiRoute('/api/admin-sessions', async (request: Request)
             all: allList,
             totalOnline: onlineList.length,
         });
-        res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+        // No CDN cache — must be fresh every time so "Who's Online" is accurate
+        res.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
         return res;
     } catch (error: any) {
         console.error('Admin Sessions Error:', error);

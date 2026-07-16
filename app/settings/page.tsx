@@ -426,7 +426,14 @@ export default function SettingsPage() {
 
             if (parsedUser.role === 'SUPER_ADMIN') {
                 loadAuditLogs(auditFiltersRef.current.user, auditFiltersRef.current.action, true, true);
-                loadOnlineSessions();
+                loadOnlineSessions(true); // force-load fresh on page open
+
+                // ── Heartbeat: marks THIS user as online every 2 min ────────────────
+                const sendHeartbeat = () => {
+                    fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => {});
+                };
+                sendHeartbeat(); // immediate heartbeat on load
+                const heartbeatInterval = setInterval(sendHeartbeat, 2 * 60 * 1000);
 
                 // ── Smart audit-log polling ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                 // Every 60s: call ?check=1 (≈2 numbers, ~50 bytes from Vercel Edge cache).
@@ -458,10 +465,19 @@ export default function SettingsPage() {
 
                 return () => {
                     clearInterval(auditPoll);
+                    clearInterval(heartbeatInterval);
                     document.removeEventListener('visibilitychange', onVisibilityChange);
                 };
             } else if (parsedUser.role === 'ADMIN') {
-                loadOnlineSessions();
+                loadOnlineSessions(true); // force-load fresh on page open
+
+                // ── Heartbeat for ADMIN too ───────────────────────────────────────
+                const sendHeartbeat = () => {
+                    fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => {});
+                };
+                sendHeartbeat();
+                const heartbeatInterval = setInterval(sendHeartbeat, 2 * 60 * 1000);
+                return () => clearInterval(heartbeatInterval);
             }
         }
     }, []);
@@ -551,12 +567,11 @@ export default function SettingsPage() {
     };
 
     const loadOnlineSessions = async (force = false) => {
-        // Skip the network call if we already have fresh data (<2 min old) in localStorage
+        // Skip the network call if we already have very fresh data (<30s) — avoids duplicate calls
         if (!force) {
             const cachedAt = localStorage.getItem('dadwork_online_sessions_at');
-            const AGE_LIMIT = 2 * 60 * 1000; // 2 minutes
+            const AGE_LIMIT = 30 * 1000; // 30 seconds
             if (cachedAt && Date.now() - parseInt(cachedAt) < AGE_LIMIT) {
-                // Data is fresh enough — no need to hit the server again
                 return;
             }
         }

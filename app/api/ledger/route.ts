@@ -201,15 +201,12 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 
         try {
             // @ts-ignore
-            revalidateTag('customers', 'max');
-            revalidatePath('/api/dashboard');
-            revalidatePath('/api/reports');
-            // Ledger saves do not change the daily book, so no need to bust these caches:
-            // revalidatePath('/api/daily-book-history');
-            // revalidatePath('/api/daily-book-history-full');
-            // revalidatePath('/api/customers');
+            revalidateTag('customers');
+            // @ts-ignore
+            revalidateTag('maqal-latest');   // bust maqal payment-status cache on every payment save
+            // @ts-ignore
+            revalidateTag('dashboard');
             revalidatePath('/api/ledger-by-date');
-            // revalidatePath('/api/daily-book-init');
         } catch (cacheErr) {
             console.error('Failed to revalidate cache:', cacheErr);
         }
@@ -312,10 +309,11 @@ export const DELETE = trackApiRoute('/api/ledger', async (request: Request) => {
         await logAudit(request, 'DELETE_LEDGER_ENTRIES', `Soft deleted ledger entry (ID: ${id || 'ALL'}, Customer: ${customerId || 'UNKNOWN'})`);
 
         try {
-            // revalidateTag('customers', 'max');
-            // revalidatePath('/api/customers');
+            // @ts-ignore
+            revalidateTag('customers');
+            // @ts-ignore
+            revalidateTag('maqal-latest');   // bust maqal cache on undo too
             revalidatePath('/api/ledger-by-date');
-            revalidatePath('/api/daily-book-init');
         } catch (cacheErr) {
             console.error('Failed to revalidate customers tag:', cacheErr);
         }

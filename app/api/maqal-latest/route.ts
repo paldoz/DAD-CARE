@@ -2,12 +2,10 @@ import { NextResponse, NextRequest } from 'next/server';
 import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 
-// Returns the LATEST maqal pair with full customer list and payment status per customer
-export async function GET(request: NextRequest) {
-    try {
-        const sessionRes = await requireSession(request);
-        if (sessionRes instanceof NextResponse) return sessionRes;
+import { unstable_cache } from 'next/cache';
 
+const getCachedMaqalLatest = unstable_cache(
+    async () => {
         const query = `
             WITH past_dates AS (
                 SELECT DISTINCT date::date as db_date
@@ -96,7 +94,19 @@ export async function GET(request: NextRequest) {
         `;
 
         const result = await pool.query(query);
-        const row = result.rows[0];
+        return result.rows[0];
+    },
+    ['maqal-latest-cache'],
+    { revalidate: 300, tags: ['maqal-latest', 'customers'] }
+);
+
+// Returns the LATEST maqal pair with full customer list and payment status per customer
+export async function GET(request: NextRequest) {
+    try {
+        const sessionRes = await requireSession(request);
+        if (sessionRes instanceof NextResponse) return sessionRes;
+
+        const row = await getCachedMaqalLatest();
 
         if (!row || !row.date1) {
             return NextResponse.json({ date1: null, date2: null, customers: [] });
@@ -107,7 +117,7 @@ export async function GET(request: NextRequest) {
             date2: row.date2,
             customers: row.customers || [],
         });
-        res.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+        res.headers.set('Cache-Control', 'private, max-age=300, stale-while-revalidate=600');
         return res;
     } catch (error: any) {
         console.error('Error fetching latest maqal:', error);
