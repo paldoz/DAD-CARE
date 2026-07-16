@@ -241,8 +241,6 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
     }
 });
 
-import { recalculateCustomerLedger } from '@/lib/ledger-utils';
-
 export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) => {
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
