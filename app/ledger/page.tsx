@@ -1192,8 +1192,8 @@ export default function LedgerPage() {
             if (!res.ok) throw new Error(data.error);
             
             setFreshBalance(null);
-            mutateLedger(current => current, { revalidate: true });
-            mutateCustomers(current => current, { revalidate: true });
+            mutateLedger((current: any) => current, { revalidate: true });
+            mutateCustomers((current: any) => current, { revalidate: true });
             toast.success('Receipt voided successfully!');
         } catch (err: any) {
             toast.error(err.message || 'Failed to void receipt');
