@@ -258,7 +258,7 @@ export default function CustomerDetailPage() {
     const handleDeleteReceiptGroup = async (receipt: ReceiptGroup) => {
         setPendingSecurityAction(null);
         setReceiptToDelete(null);
-        setDeletingReceiptId(receipt.receiptId);
+        setDeletingReceiptId(receipt.receiptId ?? null);
         setUpdating(true);
         try {
             const transactionIds = receipt.entries.map(e => e.id);
