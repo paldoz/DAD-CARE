@@ -147,7 +147,8 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
             result,
             allUnprocessedDates,
             maqalId: currentMaqalId
-    };
+        };
+};
 
 const getCachedCustomerDailyEntries = (customerId: string) => {
     return unstable_cache(

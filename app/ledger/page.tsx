@@ -1453,7 +1453,7 @@ export default function LedgerPage() {
                                                     <div className="flex items-center gap-2 mt-1">
                                                         <Label className="text-[10px] font-bold uppercase text-muted-foreground">Auto (Oldest First):</Label>
                                                         <select
-                                                            value={timelineOptions.find(o => o.includes('⏳')) || timelineOptions[timelineOptions.length - 1]}
+                                                            value={timelineOptions.find(o => o.includes('📌')) || timelineOptions.find(o => o.includes('⏳')) || timelineOptions[timelineOptions.length - 1]}
                                                             onChange={() => {}}
                                                             className="h-7 text-xs font-bold rounded-md border border-border/60 bg-muted/20 px-2 cursor-pointer focus:ring-1 focus:ring-primary"
                                                         >
