@@ -233,6 +233,13 @@ export default function CustomerDetailPage() {
 
     const handleUndoTransaction = async (txId: string) => {
         if (!confirm('Are you sure you want to undo this entry? This will recalculate all subsequent balances.')) return;
+        
+        // Optimistic UI update: instantly remove from state
+        const previousTransactions = [...transactions];
+        const remainingTxns = transactions.filter(t => t.id !== txId);
+        setTransactions(remainingTxns);
+        setReceipts(groupTransactionsInfoReceipts(remainingTxns));
+
         try {
             const res = await fetch(`/api/ledger/${txId}`, {
                 method: 'DELETE',
@@ -242,8 +249,12 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to undo');
             toast.success('Entry successfully undone.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            // Fetch in background to correct the balances summary
             loadCustomerData(true);
         } catch (err: any) {
+            // Revert on error
+            setTransactions(previousTransactions);
+            setReceipts(groupTransactionsInfoReceipts(previousTransactions));
             toast.error(err.message);
         }
     };
@@ -251,9 +262,16 @@ export default function CustomerDetailPage() {
     const handleDeleteReceiptGroup = async (receipt: ReceiptGroup) => {
         setPendingSecurityAction(null);
         setReceiptToDelete(null);
-        setUpdating(true);
+        
+        const transactionIds = receipt.entries.map(e => e.id);
+        const previousTransactions = [...transactions];
+        
+        // Optimistic UI update: instantly remove the deleted receipt from state
+        const remainingTxns = transactions.filter(t => !transactionIds.includes(t.id));
+        setTransactions(remainingTxns);
+        setReceipts(groupTransactionsInfoReceipts(remainingTxns));
+
         try {
-            const transactionIds = receipt.entries.map(e => e.id);
             const res = await fetch(`/api/ledger/batch`, {
                 method: 'DELETE',
                 headers: { 
@@ -265,18 +283,14 @@ export default function CustomerDetailPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to delete receipt');
             
-            // Optimistic UI update: instantly remove the deleted receipt from state
-            const remainingTxns = transactions.filter(t => !transactionIds.includes(t.id));
-            setTransactions(remainingTxns);
-            setReceipts(groupTransactionsInfoReceipts(remainingTxns));
-            
             toast.success('Receipt successfully deleted and balance recalculated.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             loadCustomerData(true);
         } catch (err: any) {
+            // Revert on error
+            setTransactions(previousTransactions);
+            setReceipts(groupTransactionsInfoReceipts(previousTransactions));
             toast.error(err.message);
-        } finally {
-            setUpdating(false);
         }
     };
 

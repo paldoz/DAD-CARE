@@ -321,6 +321,9 @@ function DailyBookPageInner() {
             setFocusedEntry(confirmedEntry);
 
             toast.success(editingDate ? 'Entry updated!' : 'Entry saved!', { description: `${Math.round(confirmedEntry.totalKg)} KG recorded for ${dateStr}` });
+            
+            // Signal other tabs (like Dashboard) to instantly update without waiting for cache timers
+            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
 
         } catch (e: any) {
             console.error('Save error:', e);

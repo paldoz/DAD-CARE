@@ -59,7 +59,7 @@ export default function DashboardPage() {
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
         revalidateOnFocus: false,
-        dedupingInterval: 600000,     // 10 min — matches server cache; saves egress
+        dedupingInterval: 600000,     // 10 min — relies on localStorage stale signal to update
         revalidateOnReconnect: false,
         revalidateIfStale: false
     });

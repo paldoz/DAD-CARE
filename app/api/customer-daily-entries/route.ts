@@ -83,7 +83,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             maxDbPairStart = Math.floor(maxDbOffset / 2) * 2;
         }
 
-        const readyPairStartOffset = Math.max(0, Math.min(activePairStart, maxDbPairStart));
+        const readyPairStartOffset = Math.max(0, activePairStart);
         const waitingPairStart = readyPairStartOffset + 2;
 
         const minDateStr = startRes.rows[0]?.min_date as string | null;

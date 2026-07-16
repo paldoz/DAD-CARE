@@ -80,8 +80,7 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        // Cache dashboard data for 10 minutes to save egress (dashboard data is not real-time critical)
-        response.headers.set('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1200');
+        // Next.js unstable_cache and revalidateTag will automatically manage the edge cache headers
         return response;
 
     } catch (error: any) {
