@@ -369,6 +369,10 @@ function DailyBookPageInner() {
             setSavedEntries(prev => prev.filter(e => e.date.substring(0, 10) !== deleteDateStr));
             toast.success('Moved to Recycle Bin');
             setDeleteConfirmDate(null);
+            
+            // Wait briefly for Vercel edge cache to clear, then force update everything
+            await new Promise(resolve => setTimeout(resolve, 800));
+            mutateInit(); // This updates the history count badge at the top
             mutateHistory(undefined, { revalidate: true }); // Force fresh fetch after delete
         } catch (err: any) {
             toast.error('Failed to move to trash: ' + (err.message || 'Server error'));

@@ -241,6 +241,8 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
     }
 });
 
+import { recalculateCustomerLedger } from '@/lib/ledger-utils';
+
 export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) => {
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
@@ -273,7 +275,7 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
 
         const username = session?.username || 'unknown';
 
-        // Soft-delete ALL matching books in parallel (handles duplicates)
+        // 1. Soft-delete ALL matching books and items
         await Promise.all(books.map(async (book) => {
             await pool.query(
                 `UPDATE "DailyBookItem" SET deleted_at = NOW() WHERE daily_book_id = $1 AND deleted_at IS NULL`,
@@ -285,16 +287,39 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
             );
         }));
 
+        // 2. Soft-delete the corresponding Ledger PRODUCT entries for this date
+        const { rows: deletedLedgers } = await pool.query(
+            `UPDATE "Ledger" 
+             SET deleted_at = NOW(), deleted_by = $1 
+             WHERE reference_date = $2::date 
+             AND type = 'PRODUCT' 
+             AND deleted_at IS NULL
+             RETURNING customer_id`,
+            [username, dateStr]
+        );
+
+        // 3. Recalculate ledger for any affected customers in parallel
+        const affectedCustomers = Array.from(new Set(deletedLedgers.map(r => r.customer_id)));
+        await Promise.all(
+            affectedCustomers.map(customerId => recalculateCustomerLedger(customerId))
+        );
+
         await logAudit(request, 'DELETE_DAILY_BOOK', `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s))`);
 
         try {
+            revalidatePath('/api/daily-book');
             revalidatePath('/api/daily-book-history');
             revalidatePath('/api/daily-book-history-full');
+            revalidatePath('/api/daily-book-init');
             revalidatePath('/api/reports');
             // @ts-ignore
             revalidateTag('customers');
             // @ts-ignore
             revalidateTag('dashboard');
+            // @ts-ignore
+            revalidateTag('ledger');
+            // @ts-ignore
+            revalidateTag('customer-daily-entries');
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }

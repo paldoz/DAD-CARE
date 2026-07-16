@@ -266,7 +266,7 @@ export default function CustomerDetailPage() {
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             // Small delay to let Vercel edge cache propagate the revalidateTag bust
             await new Promise(resolve => setTimeout(resolve, 800));
-            await loadCustomerData(true);
+            await loadCustomerData(false);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -296,7 +296,7 @@ export default function CustomerDetailPage() {
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             // Small delay to let Vercel edge cache propagate the revalidateTag bust
             await new Promise(resolve => setTimeout(resolve, 800));
-            await loadCustomerData(true);
+            await loadCustomerData(false);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
