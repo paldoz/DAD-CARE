@@ -4,24 +4,6 @@ import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
 /**
- * Auto-creates the AdminCustomerPriority table if it doesn't exist.
- */
-let tableReady = false;
-async function ensureTable() {
-    if (tableReady) return;
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS "AdminCustomerPriority" (
-            username    TEXT NOT NULL,
-            customer_id TEXT NOT NULL,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            PRIMARY KEY (username, customer_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_acp_username ON "AdminCustomerPriority"(username);
-    `);
-    tableReady = true;
-}
-
-/**
  * GET /api/customer-priority
  * Returns the list of customer_ids that the current admin has starred.
  */
@@ -30,12 +12,12 @@ export const GET = trackApiRoute('/api/customer-priority', async (request: Reque
     if (errorResponse) return errorResponse;
 
     try {
-        await ensureTable();
         const { rows } = await pool.query(
-            `SELECT customer_id FROM "AdminCustomerPriority" WHERE username = $1`,
+            `SELECT assigned_customer_ids FROM "User" WHERE username = $1`,
             [session.username]
         );
-        const res = NextResponse.json({ priorityIds: rows.map(r => r.customer_id) });
+        const priorityIds = rows.length ? (rows[0].assigned_customer_ids || []) : [];
+        const res = NextResponse.json({ priorityIds });
         // Short cache — priority data is personal and rarely changes
         res.headers.set('Cache-Control', 'private, max-age=60');
         return res;
@@ -60,27 +42,24 @@ export const POST = trackApiRoute('/api/customer-priority', async (request: Requ
             return NextResponse.json({ error: 'customerId required' }, { status: 400 });
         }
 
-        await ensureTable();
+        // Fetch current assigned_customer_ids
+        const { rows } = await pool.query(`SELECT assigned_customer_ids FROM "User" WHERE username = $1`, [session.username]);
+        if (!rows.length) {
+            return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        }
 
-        // Check if it's already starred
-        const { rows: existing } = await pool.query(
-            `SELECT 1 FROM "AdminCustomerPriority" WHERE username = $1 AND customer_id = $2`,
-            [session.username, customerId]
-        );
+        let assignedIds: string[] = rows[0].assigned_customer_ids || [];
+        const isStarred = assignedIds.includes(customerId);
 
-        if (existing.length > 0) {
-            // Already starred → unstar it
-            await pool.query(
-                `DELETE FROM "AdminCustomerPriority" WHERE username = $1 AND customer_id = $2`,
-                [session.username, customerId]
-            );
+        if (isStarred) {
+            // Unstar: remove from array
+            assignedIds = assignedIds.filter(id => id !== customerId);
+            await pool.query(`UPDATE "User" SET assigned_customer_ids = $1 WHERE username = $2`, [assignedIds, session.username]);
             return NextResponse.json({ starred: false });
         } else {
-            // Not starred → star it
-            await pool.query(
-                `INSERT INTO "AdminCustomerPriority" (username, customer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-                [session.username, customerId]
-            );
+            // Star: add to array
+            assignedIds.push(customerId);
+            await pool.query(`UPDATE "User" SET assigned_customer_ids = $1 WHERE username = $2`, [assignedIds, session.username]);
             return NextResponse.json({ starred: true });
         }
     } catch (error: any) {

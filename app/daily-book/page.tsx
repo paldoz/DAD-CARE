@@ -120,7 +120,6 @@ function DailyBookPageInner() {
     const pageSize = 50; // fixed page size for fastest UI response
     
     const [currentUser, setCurrentUser] = useState<any>(null);
-    const [showPriorityOnly, setShowPriorityOnly] = useState(false);
 
     // Debounce hook for search input (300 ms)
     const useDebounce = <T,>(value: T, delay: number): T => {
@@ -649,7 +648,6 @@ return (
                                             <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
                                                 <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
                                                     <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
-                                                        {currentUser?.assigned_customer_ids?.includes(customer.id) && <Star className="inline w-3 h-3 text-amber-500 mr-1 pb-0.5" />}
                                                         {customer.name}
                                                     </span>
                                                     {entries[customer.id]?.kg > 0 && (
@@ -784,7 +782,6 @@ return (
                                             <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
                                                 <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
                                                     <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
-                                                        {currentUser?.assigned_customer_ids?.includes(customer.id) && <Star className="inline w-3 h-3 text-amber-500 mr-1 pb-0.5" />}
                                                         {customer.name}
                                                     </span>
                                                     {entries[customer.id]?.kg > 0 && (

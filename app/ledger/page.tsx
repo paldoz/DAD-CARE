@@ -540,6 +540,21 @@ export default function LedgerPage() {
         setAllUnprocessedDates([]);
         setFreshBalance(null);
         setOldMaqalDone(false);
+
+        // Auto-remove star when customer is selected — no manual click needed.
+        // If this customer is currently starred, unstar them automatically on selection.
+        if (priorityIds.has(customerId)) {
+            mutatePriority(
+                { priorityIds: (priorityData?.priorityIds || []).filter((id: string) => id !== customerId) },
+                false
+            );
+            fetch('/api/customer-priority', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId }),
+            }).catch(() => mutatePriority()); // revert on error
+        }
     };
 
     const sortedCustomers = useMemo(() => {

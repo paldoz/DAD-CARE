@@ -47,9 +47,14 @@ async function getCustomers(options: {
     let orderClause = "ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
     let priorityJoin = "";
     if (sort === 'priority' && username) {
-        // Safe string injection because username comes from session, but escape just in case
-        priorityJoin = `LEFT JOIN "AdminCustomerPriority" acp ON acp.customer_id = c.id AND acp.username = '${username.replace(/'/g, "''")}'`;
-        orderClause = "ORDER BY CASE WHEN acp.customer_id IS NOT NULL THEN 0 ELSE 1 END ASC, CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
+        // Use the User table's assigned_customer_ids array to determine priority.
+        // This is the canonical source of truth (set in Settings → Users).
+        const safeUsername = username.replace(/'/g, "''");
+        priorityJoin = `LEFT JOIN LATERAL (
+            SELECT (u.assigned_customer_ids @> ARRAY[c.id::text]) AS is_priority
+            FROM "User" u WHERE u.username = '${safeUsername}' LIMIT 1
+        ) prio ON true`;
+        orderClause = "ORDER BY CASE WHEN prio.is_priority = true THEN 0 ELSE 1 END ASC, CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
     }
     else if (sort === 'best') orderClause = "ORDER BY current_balance ASC, total_paid DESC NULLS LAST";
     else if (sort === 'worst') orderClause = "ORDER BY current_balance DESC NULLS LAST";
