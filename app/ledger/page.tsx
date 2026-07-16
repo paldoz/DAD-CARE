@@ -911,8 +911,11 @@ export default function LedgerPage() {
             return;
         }
 
-        // When reading last maqal (no editing), only payments are allowed
-        const isReadOnlyMode = showLastMaqal && !updateLastMaqal;
+        // When reading last maqal (no editing), only payments are allowed.
+        // BUT: if the last maqal is already fully paid (closingBalance <= 0), 
+        // skip read-only mode so user can save new Reesto for the current pair.
+        const lastMaqalHasDebt = lastReceiptGroup && lastReceiptGroup.closingBalance > 0;
+        const isReadOnlyMode = showLastMaqal && !updateLastMaqal && !!lastMaqalHasDebt;
 
         const validEntries = isReadOnlyMode ? [] : dateEntries.filter(e => 
             e.date && e.isReady !== false && (
