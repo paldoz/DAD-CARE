@@ -251,10 +251,10 @@ export default function LedgerPage() {
 
     // Data state
     const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 300000,   // 5 min (safely mutating on saves)
-        revalidateIfStale: false,
-        revalidateOnReconnect: false,
+        revalidateOnFocus: true,
+        dedupingInterval: 300000,
+        keepPreviousData: true,
+        revalidateIfStale: true
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive);
     
@@ -263,10 +263,11 @@ export default function LedgerPage() {
     
     const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=50` : null;
     const { data: ledgerData, isLoading: fetchingLedger, mutate: mutateLedger } = useSWR(ledgerUrl, fetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 600000,   // 10 min — per-customer ledger, re-fetch on explicit mutate
-        revalidateIfStale: false,
-        revalidateOnReconnect: false,
+        revalidateOnFocus: true,
+        dedupingInterval: 10000,
+        keepPreviousData: true,
+        revalidateIfStale: true,
+        revalidateOnReconnect: true
     });
     
     const history: Transaction[] = (ledgerData?.transactions || []).map((t: any) => ({
@@ -287,8 +288,11 @@ export default function LedgerPage() {
     const [startDate, setStartDate] = useState<string>('');
     const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 60000,
+        revalidateOnFocus: true,
+        dedupingInterval: 10000,
+        keepPreviousData: true,
+        revalidateIfStale: true,
+        revalidateOnReconnect: true
     });
 
     const [currentUser, setCurrentUser] = useState<any>(null);

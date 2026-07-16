@@ -4,6 +4,7 @@ import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
 
 const settingSchema = z.object({
     key: z.string().min(1, 'Key is required'),
@@ -15,7 +16,7 @@ export const GET = trackApiRoute('/api/settings', async (request: Request) => {
     if (errorResponse) return errorResponse;
     try {
         const { rows } = await pool.query('SELECT key, value FROM "Settings"');
-        const settings = rows.reduce((acc, row) => {
+        const settings = rows.reduce((acc: any, row: any) => {
             acc[row.key] = row.value;
             return acc;
         }, {});
@@ -66,6 +67,8 @@ export const POST = trackApiRoute('/api/settings', async (request: Request) => {
         }
 
         await logAudit(request, 'UPDATE_SETTING', `Updated setting ${key} to ${value}`);
+        
+        revalidatePath('/api/settings');
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
@@ -86,6 +89,8 @@ export const DELETE = trackApiRoute('/api/settings', async (request: Request) =>
 
         await pool.query(`DELETE FROM "Settings" WHERE key = $1`, [key]);
         await logAudit(request, 'DELETE_SETTING', `Deleted setting ${key}`);
+        
+        revalidatePath('/api/settings');
 
         return NextResponse.json({ success: true });
     } catch (error: any) {
@@ -93,3 +98,4 @@ export const DELETE = trackApiRoute('/api/settings', async (request: Request) =>
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 });
+

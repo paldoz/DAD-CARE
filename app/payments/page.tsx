@@ -80,11 +80,11 @@ export default function PaymentsPage() {
     const customers = rawCustomers || [];
     
     const { data: rawData, isLoading: loading } = useSWR<PaymentData>('/api/payments?limit=200', fetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 300000,
+        revalidateOnFocus: true,
+        dedupingInterval: 10000,
         keepPreviousData: true,
-        revalidateIfStale: false,
-        revalidateOnReconnect: false,
+        revalidateIfStale: true,
+        revalidateOnReconnect: true,
     });
     const data = rawData || { payments: [], todayTotal: 0, totalAllTime: 0, count: 0 };
 

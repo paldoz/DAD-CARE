@@ -58,10 +58,10 @@ export default function DashboardPage() {
     const [dates, setDates] = useState({ standard: '', hijri: '' });
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 600000,     // 10 min — relies on localStorage stale signal to update
-        revalidateOnReconnect: false,
-        revalidateIfStale: false
+        revalidateOnFocus: true,
+        dedupingInterval: 10000,
+        revalidateOnReconnect: true,
+        revalidateIfStale: true
     });
 
     useEffect(() => {

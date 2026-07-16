@@ -156,7 +156,7 @@ export default function CustomersPage() {
     const { data: customersDataPages, isLoading, size, setSize, mutate: mutateCustomers } = useSWRInfinite<Customer[]>(
         getKey,
         fetcher,
-        { revalidateOnFocus: false, dedupingInterval: 600000, revalidateOnReconnect: false, revalidateIfStale: false }
+        { revalidateOnFocus: true, dedupingInterval: 10000, revalidateOnReconnect: true, revalidateIfStale: true }
     );
     const customers = customersDataPages ? customersDataPages.flat() : [];
 

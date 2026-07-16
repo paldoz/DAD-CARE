@@ -306,7 +306,18 @@ export default function SettingsPage() {
             }
         });
 
-        // 4. Update from active online sessions (real-time heartbeat validation)
+        // 4. Update from all historical sessions (captures last time they were online)
+        allSessions.forEach(session => {
+            const existing = adminsMap.get(session.username);
+            if (existing) {
+                const sessionDate = new Date(session.lastSeenAt);
+                if (!existing.lastSeen || sessionDate > existing.lastSeen) {
+                    existing.lastSeen = sessionDate;
+                }
+            }
+        });
+
+        // 5. Update from active online sessions (real-time heartbeat validation)
         onlineSessions.forEach(session => {
             const existing = adminsMap.get(session.username);
             if (existing) {
