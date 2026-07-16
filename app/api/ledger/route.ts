@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
-import { revalidateTag, revalidatePath } from 'next/cache';
+import { revalidateTag, revalidatePath, unstable_cache } from 'next/cache';
 import pool from '@/lib/db';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
@@ -203,9 +203,11 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             // @ts-ignore
             revalidateTag('customers');
             // @ts-ignore
-            revalidateTag('maqal-latest');   // bust maqal payment-status cache on every payment save
+            revalidateTag('maqal-latest');
             // @ts-ignore
-            revalidateTag('customer-daily-entries'); // bust pair progression cache so new pairs load instantly
+            revalidateTag('customer-daily-entries');
+            // @ts-ignore
+            revalidateTag('ledger');  // bust ledger cache so next open fetches fresh data
             // @ts-ignore
             revalidateTag('dashboard');
             revalidatePath('/api/ledger-by-date');
@@ -220,6 +222,50 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
     }
 });
 
+// ── Cached ledger fetch per customer ──────────────────────────────────────
+const fetchLedgerData = async (customerId: string, limit: number, offset: number) => {
+    const [txnResult, summaryResult] = await Promise.all([
+        pool.query(
+            `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger"
+             WHERE customer_id = $1 AND deleted_at IS NULL
+             ORDER BY created_at DESC, id DESC
+             LIMIT ${limit} OFFSET ${offset}`,
+            [customerId]
+        ),
+        pool.query(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type = 'PRODUCT' THEN kg    ELSE 0 END), 0)::float as total_kg,
+                COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0)::float as total_paid,
+                (SELECT new_debt FROM "Ledger"
+                 WHERE customer_id = $1 AND deleted_at IS NULL
+                 ORDER BY created_at DESC, id DESC LIMIT 1)::float as current_balance,
+                (SELECT type FROM "Ledger"
+                 WHERE customer_id = $1 AND deleted_at IS NULL
+                 ORDER BY created_at DESC, id DESC LIMIT 1) as last_transaction_type
+             FROM "Ledger"
+             WHERE customer_id = $1 AND deleted_at IS NULL`,
+            [customerId]
+        )
+    ]);
+    const s = summaryResult.rows[0] || {};
+    return {
+        transactions: txnResult.rows,
+        summary: {
+            totalKg:             s.total_kg || 0,
+            totalPaid:           s.total_paid || 0,
+            currentBalance:      s.current_balance || 0,
+            lastTransactionType: s.last_transaction_type || null,
+        }
+    };
+};
+
+const getCachedLedger = (customerId: string, limit: number, offset: number) =>
+    unstable_cache(
+        async () => fetchLedgerData(customerId, limit, offset),
+        ['ledger', customerId, String(limit), String(offset)],
+        { revalidate: 600, tags: ['ledger', `ledger-${customerId}`, 'customers'] }
+    )();
+
 export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
@@ -227,57 +273,15 @@ export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     const customerId = searchParams.get('customerId');
     const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500);
     const offset = parseInt(searchParams.get('offset') || '0');
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
 
     if (!customerId) {
         return NextResponse.json({ error: 'Customer ID required' }, { status: 400 });
     }
 
     try {
-        // Build date filter clauses
-        const dateFilters: string[] = [];
-        const params: any[] = [customerId];
-        if (startDate) { params.push(startDate); dateFilters.push(`AND reference_date >= $${params.length}`); }
-        if (endDate)   { params.push(endDate);   dateFilters.push(`AND reference_date <= $${params.length}`); }
-        const dateClause = dateFilters.join(' ');
-
-        // Single parallel query: transactions + summary in one round-trip
-        const [txnResult, summaryResult] = await Promise.all([
-            pool.query(
-                `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger"
-                 WHERE customer_id = $1 AND deleted_at IS NULL ${dateClause}
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT ${limit} OFFSET ${offset}`,
-                params
-            ),
-            pool.query(
-                `SELECT
-                    COALESCE(SUM(CASE WHEN type = 'PRODUCT' THEN kg    ELSE 0 END), 0)::float as total_kg,
-                    COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0)::float as total_paid,
-                    (SELECT new_debt FROM "Ledger"
-                     WHERE customer_id = $1 AND deleted_at IS NULL
-                     ORDER BY created_at DESC, id DESC LIMIT 1)::float as current_balance,
-                    (SELECT type FROM "Ledger"
-                     WHERE customer_id = $1 AND deleted_at IS NULL
-                     ORDER BY created_at DESC, id DESC LIMIT 1) as last_transaction_type
-                 FROM "Ledger"
-                 WHERE customer_id = $1 AND deleted_at IS NULL`,
-                [customerId]
-            )
-        ]);
-
-        const s = summaryResult.rows[0] || {};
-        const response = NextResponse.json({
-            transactions: txnResult.rows,
-            summary: {
-                totalKg:             s.total_kg || 0,
-                totalPaid:           s.total_paid || 0,
-                currentBalance:      s.current_balance || 0,
-                lastTransactionType: s.last_transaction_type || null,
-            }
-        });
-        response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+        const data = await getCachedLedger(customerId, limit, offset);
+        const response = NextResponse.json(data);
+        response.headers.set('Cache-Control', 'private, no-cache, no-store');
         return response;
     } catch (error: any) {
         console.error('Fetch Ledger Error:', error);
@@ -317,6 +321,8 @@ export const DELETE = trackApiRoute('/api/ledger', async (request: Request) => {
             revalidateTag('maqal-latest');   // bust maqal cache on undo too
             // @ts-ignore
             revalidateTag('customer-daily-entries'); // bust pair progression cache so new pairs reload after undo
+            // @ts-ignore
+            revalidateTag('ledger');
             revalidatePath('/api/ledger-by-date');
         } catch (cacheErr) {
             console.error('Failed to revalidate customers tag:', cacheErr);
