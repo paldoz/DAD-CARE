@@ -190,6 +190,8 @@ export default function CustomerDetailPage() {
     const [editCode, setEditCode] = useState('');
     const [editGender, setEditGender] = useState('');
     const [updating, setUpdating] = useState(false);
+    const [undoingTxId, setUndoingTxId] = useState<string | null>(null);
+    const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
     const [pendingSecurityAction, setPendingSecurityAction] = useState<'clear_history' | 'delete_customer' | 'delete_receipt' | null>(null);
     const [receiptToDelete, setReceiptToDelete] = useState<ReceiptGroup | null>(null);
 
@@ -233,6 +235,7 @@ export default function CustomerDetailPage() {
 
     const handleUndoTransaction = async (txId: string) => {
         if (!confirm('Are you sure you want to undo this entry? This will recalculate all subsequent balances.')) return;
+        setUndoingTxId(txId);
         setUpdating(true);
         try {
             const res = await fetch(`/api/ledger/${txId}`, {
@@ -247,6 +250,7 @@ export default function CustomerDetailPage() {
         } catch (err: any) {
             toast.error(err.message);
         } finally {
+            setUndoingTxId(null);
             setUpdating(false);
         }
     };
@@ -254,6 +258,7 @@ export default function CustomerDetailPage() {
     const handleDeleteReceiptGroup = async (receipt: ReceiptGroup) => {
         setPendingSecurityAction(null);
         setReceiptToDelete(null);
+        setDeletingReceiptId(receipt.receiptId);
         setUpdating(true);
         try {
             const transactionIds = receipt.entries.map(e => e.id);
@@ -273,6 +278,7 @@ export default function CustomerDetailPage() {
         } catch (err: any) {
             toast.error(err.message);
         } finally {
+            setDeletingReceiptId(null);
             setUpdating(false);
         }
     };
@@ -1126,7 +1132,7 @@ export default function CustomerDetailPage() {
                                             }} 
                                             className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-500/10 text-red-500/70 hover:text-red-600 transition-colors shrink-0 ml-1"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            {deletingReceiptId === receipt.receiptId ? <Loader2 className="w-4 h-4 animate-spin text-red-500" /> : <Trash2 className="w-4 h-4" />}
                                         </div>
                                     )}
                                     {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
@@ -1318,7 +1324,7 @@ export default function CustomerDetailPage() {
                                                                                 return (
                                                                                     <div className="flex gap-3 mt-1 opacity-60 hover:opacity-100 transition-opacity print:hidden">
                                                                                         <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline"><Pencil className="w-3 h-3"/> Edit</button>
-                                                                                        <button onClick={(ev) => { ev.stopPropagation(); handleUndoTransaction(e.id); }} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline"><Trash2 className="w-3 h-3"/> Undo</button>
+                                                                                        <button onClick={(ev) => { ev.stopPropagation(); handleUndoTransaction(e.id); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
                                                                                     </div>
                                                                                 );
                                                                             }

@@ -205,6 +205,8 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             // @ts-ignore
             revalidateTag('maqal-latest');   // bust maqal payment-status cache on every payment save
             // @ts-ignore
+            revalidateTag('customer-daily-entries'); // bust pair progression cache so new pairs load instantly
+            // @ts-ignore
             revalidateTag('dashboard');
             revalidatePath('/api/ledger-by-date');
         } catch (cacheErr) {
@@ -313,6 +315,8 @@ export const DELETE = trackApiRoute('/api/ledger', async (request: Request) => {
             revalidateTag('customers');
             // @ts-ignore
             revalidateTag('maqal-latest');   // bust maqal cache on undo too
+            // @ts-ignore
+            revalidateTag('customer-daily-entries'); // bust pair progression cache so new pairs reload after undo
             revalidatePath('/api/ledger-by-date');
         } catch (cacheErr) {
             console.error('Failed to revalidate customers tag:', cacheErr);

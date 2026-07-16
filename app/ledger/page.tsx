@@ -1058,9 +1058,23 @@ export default function LedgerPage() {
                 setFetchingDetails(false); // End blink effect
 
                 // Fetch new dates for the SAME customer since we just paid the old maqal
-                // Clear the current entries so they reset cleanly when the new data arrives
-                setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
                 mutateDailyEntries();
+                
+                // SWR might ignore the fetch if the new pairs are identical to the cached ones (which is true when just adding a payment).
+                // So we manually repopulate the screen with the existing next pair instantly to avoid a blank screen!
+                if (dailyEntriesRaw && dailyEntriesRaw.dailyData) {
+                    const newExpandedIds = new Set<string>();
+                    const newEntries = dailyEntriesRaw.dailyData.map((d: any, idx: number) => {
+                        const entryId = (Date.now() + idx).toString();
+                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
+                        if (shouldExpandExtra) newExpandedIds.add(entryId);
+                        return entry;
+                    });
+                    setDateEntries(newEntries);
+                    setExpandedExtraEntryIds(newExpandedIds);
+                } else {
+                    setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
+                }
             } else {
                 // Normal save completed.
                 // Check if this was an all-absent (0 KG) pair — if so, auto-skip through remaining absent pairs
