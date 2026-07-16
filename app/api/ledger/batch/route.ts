@@ -2,11 +2,16 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { logAudit } from '@/lib/audit';
+import { revalidateTag } from 'next/cache';
 import { recalculateCustomerLedger } from '@/lib/ledger-utils';
 
 export async function DELETE(request: Request) {
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
+
+    if (session.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Security: Only Super Admins can permanently delete receipt blocks.' }, { status: 403 });
+    }
 
     try {
         const body = await request.json();
@@ -48,6 +53,10 @@ export async function DELETE(request: Request) {
             await client.query('COMMIT');
 
             await logAudit(request, 'DELETE_RECEIPT_BATCH', `Deleted ${result.rows.length} ledger entries for customer: ${customerId}`);
+
+            // Bust the Vercel edge cache so the frontend instantly gets accurate data
+            // @ts-ignore
+            revalidateTag('ledger');
 
             return NextResponse.json({ success: true, message: 'Transactions successfully deleted and balance recalculated.' });
         } catch (dbError: any) {

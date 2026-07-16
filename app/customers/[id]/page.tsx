@@ -156,6 +156,24 @@ export default function CustomerDetailPage() {
     const isAtLeastAdmin = session?.role === 'SUPER_ADMIN' || session?.role === 'ADMIN';
     const isSuperAdmin = session?.role === 'SUPER_ADMIN';
 
+    // Priority customer IDs for the current admin (used to restrict Undo visibility)
+    const [priorityCustomerIds, setPriorityCustomerIds] = useState<string[]>([]);
+
+    useEffect(() => {
+        // Fetch this admin's assigned/priority customer IDs once on mount
+        fetch('/api/customer-priority', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                if (data?.priorityIds) setPriorityCustomerIds(data.priorityIds);
+            })
+            .catch(() => {});
+    }, []);
+
+    // canUndo:
+    //   SUPER_ADMIN → always true (can undo any customer, any time)
+    //   ADMIN       → only true if this customer is in their priority list
+    const canUndo = isSuperAdmin || (isAtLeastAdmin && priorityCustomerIds.includes(customerId));
+
     // Latest maqal pair status for this customer
     const [maqalStatus, setMaqalStatus] = useState<{ date1: string; date2: string; has_payment: boolean } | null>(null);
 
@@ -246,6 +264,8 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to undo');
             toast.success('Entry successfully undone.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            // Small delay to let Vercel edge cache propagate the revalidateTag bust
+            await new Promise(resolve => setTimeout(resolve, 800));
             await loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
@@ -274,6 +294,8 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to delete receipt');
             toast.success('Receipt successfully deleted and balance recalculated.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            // Small delay to let Vercel edge cache propagate the revalidateTag bust
+            await new Promise(resolve => setTimeout(resolve, 800));
             await loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
@@ -507,7 +529,7 @@ export default function CustomerDetailPage() {
     
     const { data: initialLedgerData, mutate: mutateLedger } = useSWR(baseLedgerUrl, fetcher, {
         revalidateOnFocus: false,
-        dedupingInterval: 300000,
+        dedupingInterval: 0,   // always re-fetch on demand (we control when via mutate)
         revalidateIfStale: false,
         revalidateOnReconnect: false,
     });
@@ -549,10 +571,11 @@ export default function CustomerDetailPage() {
             setHasMore(true);
             setLoading(true);
         }
-        // Pass a timestamp to the base url via SWR cache busting
-        const cacheBusterUrl = `${baseLedgerUrl}&t=${Date.now()}`;
-        const freshData = await fetcher(cacheBusterUrl);
-        mutateLedger(freshData);
+        // Tell SWR: "forget your local cache, go fetch fresh from the server"
+        // The server-side revalidateTag('ledger') has already been called by the API
+        // before this function runs, so the server cache is already busted.
+        // We just need SWR to go re-request from the server.
+        await mutateLedger(undefined, { revalidate: true });
     };
 
     const loadMore = async () => {
@@ -1320,7 +1343,10 @@ export default function CustomerDetailPage() {
                                                                         {(() => {
                                                                             const txTime = new Date(e.created_at || e.reference_date).getTime();
                                                                             const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
-                                                                            if (isAtLeastAdmin && isRecent) {
+                                                                            // Everyone has a 24h time limit (including Super Admin). 
+                                                                            // Regular admins ALSO require it to be their priority customer (canUndo).
+                                                                            const showUndo = canUndo && isRecent;
+                                                                            if (showUndo) {
                                                                                 return (
                                                                                     <div className="flex gap-3 mt-1 opacity-60 hover:opacity-100 transition-opacity print:hidden">
                                                                                         <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline"><Pencil className="w-3 h-3"/> Edit</button>

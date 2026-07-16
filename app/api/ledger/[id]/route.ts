@@ -2,6 +2,7 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { logAudit } from '@/lib/audit';
+import { revalidateTag } from 'next/cache';
 import { recalculateCustomerLedger } from '@/lib/ledger-utils';
 
 export async function DELETE(
@@ -22,7 +23,7 @@ export async function DELETE(
 
         // Fetch the ledger entry to verify it exists and get customer_id
         const { rows } = await client.query(
-            `SELECT id, customer_id, amount, type FROM "Ledger" WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+            `SELECT id, customer_id, amount, type, created_at, reference_date FROM "Ledger" WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
             [ledgerId]
         );
 
@@ -32,6 +33,27 @@ export async function DELETE(
         }
 
         const ledger = rows[0];
+
+        // Rule 1: 24h time limit (Applies to EVERYONE, including Super Admin)
+        const txTime = new Date(ledger.created_at || ledger.reference_date).getTime();
+        const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
+        if (!isRecent) {
+            await client.query('ROLLBACK');
+            return NextResponse.json({ error: 'Security: Entries older than 24 hours cannot be undone by anyone.' }, { status: 403 });
+        }
+
+        if (session.role !== 'SUPER_ADMIN') {
+            // Rule 2: Priority Customer (Only applies to Regular Admins)
+            const { rows: userRows } = await client.query(
+                `SELECT assigned_customer_ids FROM "User" WHERE username = $1`,
+                [session.username]
+            );
+            const priorityIds = userRows.length ? (userRows[0].assigned_customer_ids || []) : [];
+            if (!priorityIds.includes(ledger.customer_id)) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Security: You can only undo entries for your assigned priority customers.' }, { status: 403 });
+            }
+        }
 
         // Soft delete the ledger entry
         await client.query(
@@ -50,6 +72,10 @@ export async function DELETE(
         await client.query('COMMIT');
 
         await logAudit(request, 'UNDO_LEDGER', `Undid ledger entry ${ledgerId} (Amount: ${ledger.amount}) for customer: ${ledger.customer_id}`);
+
+        // Bust the Vercel edge cache so the frontend instantly gets accurate data
+        // @ts-ignore
+        revalidateTag('ledger');
 
         return NextResponse.json({ success: true, message: 'Entry successfully undone' });
     } catch (error: any) {
@@ -132,6 +158,10 @@ export async function PATCH(
         await client.query('COMMIT');
 
         await logAudit(request, 'EDIT_LEDGER', `Edited ledger entry ${ledgerId} (New Amount: ${newAmount}) for customer: ${ledger.customer_id}`);
+
+        // Bust the Vercel edge cache so the frontend instantly gets accurate data
+        // @ts-ignore
+        revalidateTag('ledger');
 
         return NextResponse.json({ 
             success: true, 
