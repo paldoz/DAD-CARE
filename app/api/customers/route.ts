@@ -25,8 +25,9 @@ async function getCustomers(options: {
     search?: string | null;
     tab?: string | null;
     sort?: string | null;
+    username?: string | null;
 }) {
-    const { maqalD1, maqalD2, maxAllTimeDate, page = 1, limit = 20, search, tab = 'active', sort } = options;
+    const { maqalD1, maqalD2, maxAllTimeDate, page = 1, limit = 20, search, tab = 'active', sort, username } = options;
     const offset = (page - 1) * limit;
     
     // Add filtering based on search and tab
@@ -44,7 +45,13 @@ async function getCustomers(options: {
 
     // Add sorting logic
     let orderClause = "ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
-    if (sort === 'best') orderClause = "ORDER BY current_balance ASC, total_paid DESC NULLS LAST";
+    let priorityJoin = "";
+    if (sort === 'priority' && username) {
+        // Safe string injection because username comes from session, but escape just in case
+        priorityJoin = `LEFT JOIN "AdminCustomerPriority" acp ON acp.customer_id = c.id AND acp.username = '${username.replace(/'/g, "''")}'`;
+        orderClause = "ORDER BY CASE WHEN acp.customer_id IS NOT NULL THEN 0 ELSE 1 END ASC, CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
+    }
+    else if (sort === 'best') orderClause = "ORDER BY current_balance ASC, total_paid DESC NULLS LAST";
     else if (sort === 'worst') orderClause = "ORDER BY current_balance DESC NULLS LAST";
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
@@ -275,6 +282,7 @@ async function getCustomers(options: {
         LEFT JOIN latest_payment_stats lps ON c.id = lps.customer_id
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
         LEFT JOIN selected_payment_stats sps ON c.id = sps.customer_id
+        ${priorityJoin}
         ${orderClause}
         LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};
     `;
@@ -377,7 +385,7 @@ const getCachedCustomersFull = unstable_cache(
 );
 
 export const GET = trackApiRoute('/api/customers', async (request: Request) => {
-    const { errorResponse } = await requireSession(request);
+    const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
     const { searchParams } = new URL(request.url);
     const isLite = searchParams.get('lite') === 'true';
@@ -408,7 +416,8 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
             return res;
         }
 
-        const customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort });
+        const usernameForSort = sort === 'priority' ? session?.username : null;
+        const customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
         const res = NextResponse.json(customers);
         res.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=60');
         return res;

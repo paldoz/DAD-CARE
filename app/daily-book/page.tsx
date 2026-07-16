@@ -461,9 +461,6 @@ function DailyBookPageInner() {
 
     // Use debounced search term for filtering to reduce re‑renders
     const filteredCustomers = customers.filter(c => {
-        if (showPriorityOnly && currentUser?.assigned_customer_ids && !currentUser.assigned_customer_ids.includes(c.id)) {
-            return false;
-        }
         return c.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
                c.customer_code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
     });
@@ -620,15 +617,6 @@ return (
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input placeholder="Search customers..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-10 bg-background border-input focus:border-primary shadow-sm w-full" autoFocus />
                             </div>
-                            <Button 
-                                variant={showPriorityOnly ? "default" : "outline"} 
-                                size="icon"
-                                className="h-10 w-10 shrink-0"
-                                onClick={() => setShowPriorityOnly(!showPriorityOnly)}
-                                title="Show only my priority customers"
-                            >
-                                <Star className={`w-4 h-4 ${showPriorityOnly ? "text-primary-foreground" : "text-amber-500"}`} />
-                            </Button>
                         </div>
 
                         {/* Scrollable customer table — fills all remaining space */}
@@ -761,15 +749,6 @@ return (
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input placeholder="Search customers..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-10 bg-background border-input focus:border-primary shadow-sm" />
                             </div>
-                            <Button 
-                                variant={showPriorityOnly ? "default" : "outline"} 
-                                size="icon"
-                                className="h-10 w-10 shrink-0"
-                                onClick={() => setShowPriorityOnly(!showPriorityOnly)}
-                                title="Show only my priority customers"
-                            >
-                                <Star className={`w-4 h-4 ${showPriorityOnly ? "text-primary-foreground" : "text-amber-500"}`} />
-                            </Button>
                         </div>
 
                         {customers.length === 0 ? (
