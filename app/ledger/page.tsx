@@ -387,7 +387,7 @@ export default function LedgerPage() {
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                const res = await fetch('/api/settings');
+                const res = await fetch(`/api/settings?_t=${Date.now()}`, { cache: 'no-store' });
                 const data = await res.json();
                 if (data && data.dadwork_price_per_kg) {
                     setDefaultPrice(data.dadwork_price_per_kg);

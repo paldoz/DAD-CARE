@@ -47,21 +47,8 @@ export async function DELETE(request: Request) {
                 return NextResponse.json({ error: 'No matching transactions found or they were already deleted.' }, { status: 404 });
             }
 
-            // Sync with Daily Book
-            for (const row of result.rows) {
-                if (row.type === 'PRODUCT' && row.reference_date) {
-                    await client.query(
-                        `UPDATE "DailyBookItem" i
-                         SET deleted_at = NOW()
-                         FROM "DailyBook" b
-                         WHERE i.daily_book_id = b.id
-                         AND b.date = $1::date
-                         AND i.customer_id = $2
-                         AND i.deleted_at IS NULL`,
-                        [row.reference_date, customerId]
-                    );
-                }
-            }
+            // NOTE: Deleting a ledger transaction must NOT affect the Daily Book.
+            // The two are fully independent — Daily Book records stay intact.
 
             // After deleting, recalculate the customer's ledger once
             await recalculateCustomerLedger(customerId, client);

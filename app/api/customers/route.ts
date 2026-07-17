@@ -406,83 +406,23 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
 
     try {
         if (isLite) {
-            // TEMPORARY: bypass cache entirely
-            const query = `
-                SELECT 
-                    c.id, c.name, c.customer_code, c.phone,
-                    COALESCE(lb.new_debt, 0)::float as current_balance,
-                    CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive
-                FROM "Customer" c
-                LEFT JOIN LATERAL (
-                    SELECT new_debt
-                    FROM "Ledger"
-                    WHERE customer_id = c.id AND deleted_at IS NULL
-                    ORDER BY created_at DESC, id DESC
-                    LIMIT 1
-                ) lb ON true
-                WHERE 1=1
-                ORDER BY
-                    CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC,
-                    c.name ASC;
-            `;
-            const { rows } = await pool.query(query);
-            const res = NextResponse.json(rows);
-            res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            const customers = await getCachedCustomersLite();
+            const res = NextResponse.json(customers);
+            res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
             return res;
         }
 
         if (mode === 'ledger') {
-            const query = `
-                WITH prev_pair AS (
-                    SELECT
-                        ('2026-06-28'::date + (
-                            GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2
-                        )::int * '1 day'::interval)::date AS date1,
-                        ('2026-06-28'::date + (
-                            GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
-                        )::int * '1 day'::interval)::date AS date2
-                )
-                SELECT
-                    c.id, c.name, c.customer_code,
-                    CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
-                    COALESCE(dbk.total_books_count, 0) as total_books_count,
-                    CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,
-                    CASE
-                        WHEN COALESCE(td.prev_pair_ledger_count, 0) >= 2 THEN true
-                        WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM prev_pair) THEN true
-                        ELSE false
-                    END as is_target_days_done
-                FROM "Customer" c
-                LEFT JOIN (
-                    SELECT customer_id, COUNT(DISTINCT id) as total_books_count, SUM(kg) as total_daily_kg
-                    FROM "DailyBookItem" WHERE kg > 0 AND deleted_at IS NULL GROUP BY customer_id
-                ) dbk ON c.id = dbk.customer_id
-                LEFT JOIN (
-                    SELECT customer_id, SUM(kg) as total_ledger_kg
-                    FROM "Ledger" WHERE type = 'PRODUCT' AND deleted_at IS NULL GROUP BY customer_id
-                ) lk ON c.id = lk.customer_id
-                LEFT JOIN (
-                    SELECT customer_id,
-                        COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as prev_pair_ledger_count
-                    FROM "Ledger"
-                    WHERE type = 'PRODUCT' AND deleted_at IS NULL
-                      AND COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)
-                            IN (SELECT date1 FROM prev_pair UNION SELECT date2 FROM prev_pair)
-                    GROUP BY customer_id
-                ) td ON c.id = td.customer_id
-                ORDER BY c.name ASC;
-            `;
-            const { rows } = await pool.query(query);
-            const res = NextResponse.json(rows);
-            res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            const customers = await getCachedCustomersLedger();
+            const res = NextResponse.json(customers);
+            res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
             return res;
         }
 
         const usernameForSort = sort === 'priority' ? session?.username : null;
-        // TEMPORARY: bypass cache entirely to force fresh DB fetch
-        const customers = await getCustomers({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
+        const customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
         const res = NextResponse.json(customers);
-        res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
         return res;
     } catch (error: any) {
         console.error('Fetch Error:', error);

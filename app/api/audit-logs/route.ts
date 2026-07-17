@@ -158,7 +158,7 @@ export const GET = trackApiRoute('/api/audit-logs', async (request: Request) => 
             userStats,
             actions,
         });
-        // Removed cache headers so audit logs load in real-time immediately
+        res.headers.set('Cache-Control', 's-maxage=10, stale-while-revalidate=10');
         return res;
     } catch (error: any) {
         console.error('Audit Log GET Error:', error);

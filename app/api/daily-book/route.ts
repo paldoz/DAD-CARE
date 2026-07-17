@@ -180,8 +180,15 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
 
                 // Find the new KG from the daily book items payload
                 const dailyItem = items?.find((i: any) => i.customer_id === ledger.customer_id);
-                // If the customer was removed from the daily book, new KG is 0.
-                const newKg = dailyItem ? (Number(dailyItem.kg) || 0) : 0;
+
+                // CRITICAL: If the customer is NOT in the daily book payload at all,
+                // DO NOT touch their ledger. Their ledger entry must stay exactly as it was.
+                // Only sync if the customer IS present in the daily book with a different KG.
+                if (!dailyItem) {
+                    continue; // Customer not in this save — leave their ledger alone
+                }
+
+                const newKg = Number(dailyItem.kg) || 0;
 
                 // Compare rounded to 2 decimal places to avoid tiny float diffs
                 if (Math.abs((ledger.kg || 0) - newKg) > 0.001) {

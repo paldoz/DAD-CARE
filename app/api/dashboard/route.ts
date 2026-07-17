@@ -82,7 +82,7 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        response.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
         return response;
 
     } catch (error: any) {
