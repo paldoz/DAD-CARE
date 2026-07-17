@@ -4,6 +4,8 @@ import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { unstable_cache } from 'next/cache';
 
+export const dynamic = 'force-dynamic';
+
 const getCachedReportsData = unstable_cache(
     async () => {
         const { rows } = await pool.query(`
@@ -86,7 +88,7 @@ export const GET = trackApiRoute('/api/reports', async (request: Request) => {
     try {
         const reportData = await getCachedReportsData();
         const res = NextResponse.json(reportData);
-        res.headers.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=3600');
+        res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         return res;
     } catch (error: any) {
         console.error('Reports API Error:', error);

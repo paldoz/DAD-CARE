@@ -998,7 +998,24 @@ export default function SettingsPage() {
                     } catch {}
                 }
 
-                loadUsers();
+                // Optimistically update the UI so priority customer counts reflect instantly
+                setUsers(prev => {
+                    const newUsers = isEditing 
+                        ? prev.map(u => u.id === responseData.id ? { ...u, ...responseData } : u)
+                        : [responseData, ...prev];
+                    
+                    // Bust the local cache so the next refresh is also fresh
+                    try {
+                        const dataWithoutAvatars = newUsers.map(u => ({ ...u, avatar_url: '' }));
+                        localStorage.setItem('dadwork_settings_users', JSON.stringify(dataWithoutAvatars));
+                        localStorage.setItem('dadwork_settings_users_at', String(Date.now()));
+                    } catch {}
+                    
+                    return newUsers;
+                });
+                
+                // Force a background re-fetch to ensure sync with server
+                setTimeout(() => loadUsers(), 500);
             } else {
                 toast.error(responseData.error || 'Failed to save user');
             }
@@ -2160,123 +2177,7 @@ export default function SettingsPage() {
                                 {/* ── SUPER_ADMIN ONLY SECTIONS ── */}
                                 {isSuperAdmin && (
                                     <>
-                                        {/* ── Per-Admin Activity Cards ── */}
-                                {auditUserStats.filter(stat => users.some(u => u.username === stat.username)).length > 0 && (
-                                    <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
-                                        <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-violet-500/8 to-transparent">
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-1.5 rounded-lg bg-violet-500/15">
-                                                    <Crown className="w-4 h-4 text-violet-500" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-sm font-bold text-foreground">Admin Activity Overview</h3>
-                                                    <p className="text-[10px] text-muted-foreground">Last 24 hours · per admin</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="divide-y divide-border/30">
-                                            {auditUserStats.filter(stat => users.some(u => u.username === stat.username)).map((stat: any, i: number) => {
-                                                const isOnline = onlineSessions.some((s: any) => s.username === stat.username);
-                                                const lastSeen = stat.last_activity ? new Date(stat.last_activity) : null;
-                                                const lastLogin = stat.last_login ? new Date(stat.last_login) : null;
-                                                const isSelf = stat.username === currentUser?.username;
-                                                return (
-                                                    <button key={i} onClick={() => openAdminDetail({ username: stat.username, name: stat.name || stat.username, role: stat.role, avatarUrl: stat.avatar_url, isOnline, lastSeen: stat.last_activity ? new Date(stat.last_activity) : undefined })} className="px-4 py-3 flex items-start gap-3 w-full text-left hover:bg-muted/30 active:scale-[0.99] transition-all cursor-pointer">
-                                                        <div className="relative shrink-0">
-                                                            {stat.avatar_url ? (
-                                                                <Avatar className="w-10 h-10 border border-border/50">
-                                                                    <AvatarImage src={stat.avatar_url} className="object-cover" />
-                                                                    <AvatarFallback className="text-sm font-black bg-muted uppercase">
-                                                                        {(stat.name || stat.username).charAt(0)}
-                                                                    </AvatarFallback>
-                                                                </Avatar>
-                                                            ) : (
-                                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black uppercase shadow-sm ${stat.role === 'SUPER_ADMIN'
-                                                                        ? 'bg-gradient-to-br from-amber-400/30 to-orange-400/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                                                                        : 'bg-gradient-to-br from-blue-500/20 to-indigo-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
-                                                                    }`}>
-                                                                    {(stat.name || stat.username).charAt(0)}
-                                                                </div>
-                                                            )}
-                                                            {isOnline && (
-                                                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card animate-pulse" />
-                                                            )}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <span className="text-xs font-black text-foreground truncate">{stat.name || stat.username}</span>
-                                                                {isSelf && <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-primary/15 text-primary border border-primary/30">YOU</span>}
-                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md ${stat.role === 'SUPER_ADMIN'
-                                                                        ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                                                                        : 'bg-blue-500/15 text-blue-500 border border-blue-500/30'
-                                                                    }`}>{stat.role === 'SUPER_ADMIN' ? '👑 SUPER' : '🛡 ADMIN'}</span>
-                                                                {isOnline
-                                                                    ? <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">● ONLINE</span>
-                                                                    : <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/40">OFFLINE</span>
-                                                                }
-                                                            </div>
-                                                            <p className="text-[10px] text-muted-foreground mt-0.5">@{stat.username}</p>
-                                                            <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 mt-2">
-                                                                <div className="bg-muted/40 rounded-lg px-2 py-1.5 text-center">
-                                                                    <p className="text-[10px] font-black text-foreground">{stat.login_count}</p>
-                                                                    <p className="text-[8px] text-muted-foreground font-bold truncate">Logins</p>
-                                                                </div>
-                                                                <div className="bg-muted/40 rounded-lg px-2 py-1.5 text-center">
-                                                                    <p className="text-[10px] font-black text-foreground">{stat.total_actions}</p>
-                                                                    <p className="text-[8px] text-muted-foreground font-bold truncate">Actions</p>
-                                                                </div>
-                                                                <div className="bg-muted/40 rounded-lg px-2 py-1.5 text-center">
-                                                                    <p className="text-[10px] font-black text-foreground">
-                                                                        {users.find(u => u.username === stat.username)?.assigned_customer_ids?.length || 0}
-                                                                    </p>
-                                                                    <p className="text-[8px] text-muted-foreground font-bold truncate">Customers</p>
-                                                                </div>
-                                                                <div className="bg-muted/40 rounded-lg px-2 py-1.5 text-center">
-                                                                    <p className="text-[10px] font-black text-foreground whitespace-nowrap">
-                                                                        {(() => {
-                                                                            if (!lastLogin) return '-';
-                                                                            const end = isOnline ? new Date() : (lastSeen || new Date());
-                                                                            const diff = end.getTime() - lastLogin.getTime();
-                                                                            if (diff < 0) return '< 1m';
-                                                                            const h = Math.floor(diff / 3600000);
-                                                                            const m = Math.floor((diff % 3600000) / 60000);
-                                                                            return h > 0 ? `${h}h ${m}m` : `${m}m`;
-                                                                        })()}
-                                                                    </p>
-                                                                    <p className="text-[8px] text-muted-foreground font-bold truncate">Time Spent</p>
-                                                                </div>
-                                                                <div className={`rounded-lg px-2 py-1.5 text-center hidden sm:block ${parseInt(stat.failed_logins) > 0
-                                                                        ? 'bg-red-500/10 border border-red-500/20'
-                                                                        : 'bg-muted/40'
-                                                                    }`}>
-                                                                    <p className={`text-[10px] font-black ${parseInt(stat.failed_logins) > 0 ? 'text-red-500' : 'text-foreground'
-                                                                        }`}>{stat.failed_logins}</p>
-                                                                    <p className="text-[8px] text-muted-foreground font-bold truncate">Failed</p>
-                                                                </div>
-                                                            </div>
-                                                            {lastLogin && (
-                                                                <div className="flex items-center gap-1 mt-1.5">
-                                                                    <Clock className="w-2.5 h-2.5 text-muted-foreground/60" />
-                                                                    <span className="text-[9px] text-muted-foreground">
-                                                                        Last login: {lastLogin.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                            {lastSeen && (
-                                                                <div className="flex items-center gap-1 mt-0.5">
-                                                                    <Eye className="w-2.5 h-2.5 text-muted-foreground/60" />
-                                                                    <span className="text-[9px] text-muted-foreground">
-                                                                        Last activity: {lastSeen.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
+                                        {/* ── Per-Admin Activity Cards Removed ── */}
 
                                 {/* ── All-In-One Audit Logs Feed ── */}
                                 <div className="rounded-3xl border border-white/10 bg-background/60 backdrop-blur-xl overflow-hidden shadow-2xl mt-6 relative before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/5 before:to-transparent before:pointer-events-none">

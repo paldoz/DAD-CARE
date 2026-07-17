@@ -4,6 +4,8 @@ import { validateSession } from '@/lib/sessions-store';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { unstable_cache } from 'next/cache';
 
+export const dynamic = 'force-dynamic';
+
 const getDashboardData = unstable_cache(
     async (today: string) => {
         // Combined query for customer count and ledger stats to dramatically reduce Supabase compute
@@ -80,7 +82,7 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        // Next.js unstable_cache and revalidateTag will automatically manage the edge cache headers
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         return response;
 
     } catch (error: any) {
