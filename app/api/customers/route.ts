@@ -205,7 +205,7 @@ async function getCustomers(options: {
             END as is_target_days_done,
             tp.date1::text as pair_date1,
             tp.date2::text as pair_date2,
-            CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
+            false as is_inactive,
             
             -- Latest Maqal
             COALESCE(lms.maqal_total, 0)::float as latest_maqal_total,
@@ -411,7 +411,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
                 SELECT 
                     c.id, c.name, c.customer_code, c.phone,
                     COALESCE(lb.new_debt, 0)::float as current_balance,
-                    CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive
+                    false as is_inactive
                 FROM "Customer" c
                 LEFT JOIN LATERAL (
                     SELECT new_debt
@@ -442,9 +442,9 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
                             GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
                         )::int * '1 day'::interval)::date AS date2
                 )
-                SELECT
+                SELECT 
                     c.id, c.name, c.customer_code,
-                    CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
+                    false as is_inactive,
                     COALESCE(dbk.total_books_count, 0) as total_books_count,
                     CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,
                     CASE
