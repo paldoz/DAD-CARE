@@ -129,7 +129,8 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         if (uniqueDatesMap.has(day2Str)) result.push(uniqueDatesMap.get(day2Str)!);
         else result.push({ date: day2Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
 
-        const currentMaqalId = Math.floor(oldestUnprocessedPairStart / 2) + 1;
+
+
 
         return {
             result,
