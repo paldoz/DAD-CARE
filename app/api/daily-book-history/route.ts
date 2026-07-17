@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import pool from '@/lib/db';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { unstable_cache } from 'next/cache';
 
-// Cache history for 2 minutes — these records almost never change within a minute
-const getCachedHistory = unstable_cache(
-    async (limit: number, offset: number) => {
+export const dynamic = 'force-dynamic'; // Always fresh
+
+const getCachedHistory = async (limit: number, offset: number) => {
         const { rows } = await pool.query(`
             SELECT 
                 db.id, 
@@ -32,10 +31,7 @@ const getCachedHistory = unstable_cache(
             LIMIT $1 OFFSET $2
         `, [limit, offset]);
         return rows;
-    },
-    ['daily-book-history-cache'],
-    { revalidate: 120, tags: ['daily-book-history'] }
-);
+    };
 
 export const GET = trackApiRoute('/api/daily-book-history', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
@@ -68,7 +64,7 @@ export const GET = trackApiRoute('/api/daily-book-history', async (request: Requ
         });
 
         const response = NextResponse.json(history);
-        response.headers.set('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
+        response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
         return response;
     } catch (error: any) {
         console.error('Fetch Daily Book History Error:', error);
