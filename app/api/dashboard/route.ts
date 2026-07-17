@@ -57,7 +57,7 @@ const getDashboardData = unstable_cache(
         };
     },
     ['dashboard-data-cache'],
-    { revalidate: 300, tags: ['dashboard'] }
+    { revalidate: 60, tags: ['dashboard'] }
 );
 
 export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {

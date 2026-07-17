@@ -89,18 +89,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         const waitingDay2 = toDateStr(epochMs + (waitingPairStart + 1) * 86400000);
         allUnprocessedDates.push(waitingDay1, waitingDay2);
 
-        let oldestUnprocessedPairStart = unprocessedPairs.length > 0 ? unprocessedPairs[0] : null;
-
-        // If the customer has processed all available pairs (e.g. up to July 14/15),
-        // DO NOT show the next future pair (e.g. July 16/17) as "Waiting".
-        // Instead, just show the most recent valid pair (readyPairStartOffset).
-        // It will only naturally advance to July 16/17 when the clock strikes July 18.
-        if (oldestUnprocessedPairStart === null) {
-            oldestUnprocessedPairStart = readyPairStartOffset;
-        }
-
-        const day1Str = toDateStr(epochMs + oldestUnprocessedPairStart * 86400000);
-        const day2Str = toDateStr(epochMs + (oldestUnprocessedPairStart + 1) * 86400000);
+        // ALWAYS display the current active pair (e.g. July 14 & 15)
+        // Never show an older unprocessed pair — the tracker locks to the current cycle only.
+        const day1Str = toDateStr(epochMs + readyPairStartOffset * 86400000);
+        const day2Str = toDateStr(epochMs + (readyPairStartOffset + 1) * 86400000);
+        const currentMaqalId = Math.floor(readyPairStartOffset / 2) + 1;
 
         const itemsQuery = `
             SELECT TO_CHAR((db.date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date,
@@ -149,7 +142,7 @@ const getCachedCustomerDailyEntries = (customerId: string) => {
     return unstable_cache(
         async () => fetchCustomerDailyEntriesData(customerId),
         ['customer-daily-entries', customerId],
-        { revalidate: 600, tags: ['customer-daily-entries', 'customers'] }
+        { revalidate: 30, tags: ['customer-daily-entries', 'customers'] }
     )();
 };
 

@@ -325,13 +325,17 @@ function DailyBookPageInner() {
             // Signal other tabs (like Dashboard) to instantly update without waiting for cache timers
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
 
+            // Force-refresh history and init counts immediately so history count shows correct number
+            await Promise.all([
+                mutateHistory(undefined, { revalidate: true }),
+                mutateInit(undefined, { revalidate: true }),
+            ]);
+
         } catch (e: any) {
             console.error('Save error:', e);
             toast.error(e.message || 'Network error while saving');
         } finally {
             setSaving(false);
-            // Refresh history and ledger status — but NOT init (customers don't change on save)
-            await mutateHistory(undefined, { revalidate: true });
             mutateLedger();
         }
     };

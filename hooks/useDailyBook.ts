@@ -49,8 +49,8 @@ export function useDailyBookInit() {
         {
             revalidateOnFocus: false,
             keepPreviousData: true,
-            dedupingInterval: 900000, // 15 min — customers list changes very rarely
-            revalidateIfStale: false,
+            dedupingInterval: 5000,  // 5s — short so refresh after save picks up new data fast
+            revalidateIfStale: true,
             revalidateOnReconnect: false,
             shouldRetryOnError: false,
         }
@@ -67,8 +67,8 @@ export function useDailyBookDate(dateStr: string | null) {
         {
             revalidateOnFocus: false,
             keepPreviousData: true,
-            dedupingInterval: 60000,
-            revalidateIfStale: false,
+            dedupingInterval: 0,  // always re-fetch when mutate() is called
+            revalidateIfStale: true,
             revalidateOnReconnect: false,
             shouldRetryOnError: false,
         }
@@ -111,12 +111,12 @@ export function useDailyBookHistory() {
         getKey,
         fetcher,
         {
-            revalidateFirstPage: false,
-            revalidateOnFocus: false,
-            revalidateOnReconnect: false,
-            revalidateAll: false,
+            revalidateFirstPage: true,
+            revalidateOnFocus: true,   // pick up changes when user tabs back
+            revalidateOnReconnect: true,
+            revalidateAll: true,
             persistSize: true,
-            dedupingInterval: 120000, // 2 min — prevents re-fetch on every mount
+            dedupingInterval: 0,  // always re-fetch when mutate() is called
         }
     );
 

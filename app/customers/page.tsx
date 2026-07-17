@@ -65,8 +65,8 @@ export default function CustomersPage() {
 
     const { data: maqalPairs } = useSWR<any[]>('/api/maqal-pairs', fetcher, { revalidateOnFocus: false, dedupingInterval: 600000, revalidateIfStale: false });
 
-    // Latest pair = latest pair with ≥20 customers who paid (the "qualified" latest)
-    const latestPair = maqalPairs?.find(pair => parseInt(pair.payment_count) >= 20) || null;
+    // Latest pair = the most recently saved pair in the DailyBook (sorted DESC by date, index 0 = newest)
+    const latestPair = maqalPairs?.[0] || null;
 
     // Debounce search input — also resets Load More pagination
     useEffect(() => {
