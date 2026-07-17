@@ -791,7 +791,7 @@ export default function SettingsPage() {
             if (res.ok) {
                 localStorage.setItem('dadwork_date_specific_prices', JSON.stringify(newPrices)); // persist for refresh
                 toast.success('Date-specific prices updated');
-                window.location.reload(); // Autorefresh to clear the screen
+                setDateActionLoading(null);
             } else {
                 const err = await res.json().catch(() => ({}));
                 setDateSpecificPrices(previousPrices); // Rollback
