@@ -113,7 +113,7 @@ async function getMaqalData() {
                       AND COALESCE(prod.reference_date::date, prod.created_at::date) IN ($1::date, $2::date)
                 ) >= 2 as is_processed
             FROM "Customer" c
-            WHERE c.id = ANY($3::uuid[])
+            WHERE c.id = ANY($3::text[])
               AND c.deleted_at IS NULL
         `, [trackerDate1, trackerDate2, allAssignedIds]);
 

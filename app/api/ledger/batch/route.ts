@@ -34,8 +34,8 @@ export async function DELETE(request: Request) {
             const query = `
                 UPDATE "Ledger"
                 SET deleted_at = NOW(), deleted_by = $1
-                WHERE id = ANY($2::uuid[])
-                AND customer_id = $3::uuid
+                WHERE id = ANY($2::text[])
+                AND customer_id = $3::text
                 AND deleted_at IS NULL
                 RETURNING id, type, reference_date
             `;

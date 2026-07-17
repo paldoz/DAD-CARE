@@ -70,7 +70,7 @@ export async function POST(request: Request) {
                 UPDATE "Customer" AS c
                 SET customer_code = data.new_code
                 FROM (
-                    SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS new_code
+                    SELECT unnest($1::text[]) AS id, unnest($2::text[]) AS new_code
                 ) AS data
                 WHERE c.id = data.id
             `, [idsToUpdate, newCodesToUpdate]);

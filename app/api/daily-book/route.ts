@@ -142,7 +142,7 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
                 // Bulk insert using unnest
                 await client.query(
                     `INSERT INTO "DailyBookItem" (id, daily_book_id, customer_id, kg, present, note)
-                     SELECT gen_random_uuid(), * FROM UNNEST($1::uuid[], $2::uuid[], $3::float8[], $4::boolean[], $5::text[])`,
+                     SELECT gen_random_uuid(), * FROM UNNEST($1::text[], $2::text[], $3::float8[], $4::boolean[], $5::text[])`,
                     [
                         itemsToInsert.map((i: any[]) => i[0]),
                         itemsToInsert.map((i: any[]) => i[1]),
