@@ -31,7 +31,7 @@ export async function recalculateCustomerLedger(customerId: string, client: any 
                     ORDER BY created_at ASC, id ASC
                 ) as new_val
             FROM "Ledger"
-            WHERE customer_id = $1::uuid AND deleted_at IS NULL
+            WHERE customer_id = $1::text AND deleted_at IS NULL
         )
         UPDATE "Ledger" l
         SET previous_debt = r.prev, new_debt = r.new_val
@@ -41,7 +41,7 @@ export async function recalculateCustomerLedger(customerId: string, client: any 
 
     const { rows } = await client.query(`
         SELECT new_debt FROM "Ledger"
-        WHERE customer_id = $1::uuid AND deleted_at IS NULL
+        WHERE customer_id = $1::text AND deleted_at IS NULL
         ORDER BY created_at DESC, id DESC LIMIT 1
     `, [customerId]);
 
