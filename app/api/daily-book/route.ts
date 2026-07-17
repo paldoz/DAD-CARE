@@ -285,22 +285,7 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
             );
         }));
 
-        // 2. Soft-delete the corresponding Ledger PRODUCT entries for this date
-        const { rows: deletedLedgers } = await pool.query(
-            `UPDATE "Ledger" 
-             SET deleted_at = NOW(), deleted_by = $1 
-             WHERE reference_date = $2::date 
-             AND type = 'PRODUCT' 
-             AND deleted_at IS NULL
-             RETURNING customer_id`,
-            [username, dateStr]
-        );
-
-        // 3. Recalculate ledger for any affected customers in parallel
-        const affectedCustomers = Array.from(new Set(deletedLedgers.map(r => r.customer_id)));
-        await Promise.all(
-            affectedCustomers.map(customerId => recalculateCustomerLedger(customerId))
-        );
+        // The user specifically requested that deleting a Daily Book MUST NOT delete the Ledger entries.
 
         await logAudit(request, 'DELETE_DAILY_BOOK', `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s))`);
 

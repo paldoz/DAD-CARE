@@ -63,20 +63,7 @@ export async function DELETE(
             [session?.username || 'unknown', ledgerId]
         );
 
-        if (ledger.type === 'PRODUCT' && ledger.reference_date) {
-            // Soft-delete the corresponding DailyBookItem to keep them perfectly in sync
-            await client.query(
-                `UPDATE "DailyBookItem" i
-                 SET deleted_at = NOW()
-                 FROM "DailyBook" b
-                 WHERE i.daily_book_id = b.id
-                 AND b.date = $1::date
-                 AND i.customer_id = $2
-                 AND i.deleted_at IS NULL`,
-                [ledger.reference_date, ledger.customer_id]
-            );
-        }
-
+        // The user specifically requested that deleting a Ledger entry MUST NOT delete the Daily Book entry.
         // Recalculate debt for the customer
         await recalculateCustomerLedger(ledger.customer_id, client);
 
