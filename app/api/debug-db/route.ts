@@ -1,45 +1,52 @@
 import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
-import { validateSession } from '@/lib/sessions-store';
+import { requireSession } from '@/lib/require-session';
 
+// This mimics EXACTLY what /api/customers does
 export async function GET(request: Request) {
-    const results: any = {};
+    const { errorResponse, session } = await requireSession(request);
+    if (errorResponse) return NextResponse.json({ error: 'SESSION_FAILED', session: null });
     
-    // Test 1: Count active customers
-    try {
-        const r = await pool.query('SELECT COUNT(*) FROM "Customer" WHERE deleted_at IS NULL');
-        results.active_count = r.rows[0].count;
-    } catch (e: any) { results.active_count_error = e.message; }
-
-    // Test 2: Check session from cookie (dadwork_session cookie)
-    try {
-        const cookieHeader = request.headers.get('cookie') || '';
-        // Try both cookie names the app might use
-        const tokenMatch = cookieHeader.match(/dadwork_session=([^;]+)/) || 
-                           cookieHeader.match(/session=([^;]+)/);
-        const token = tokenMatch?.[1];
-        if (token) {
-            const session = await validateSession(decodeURIComponent(token));
-            results.session = session ? { username: session.username, role: session.role } : 'INVALID TOKEN';
-        } else {
-            results.session = 'NO SESSION COOKIE - cookies: ' + cookieHeader.slice(0, 200);
-        }
-    } catch (e: any) { results.session_error = e.message; }
-
-    // Test 3: Check AdminSession table count  
-    try {
-        const r = await pool.query('SELECT COUNT(*) FROM "AdminSession" WHERE expires_at > NOW()');
-        results.active_sessions = r.rows[0].count;
-    } catch (e: any) { results.adminsession_error = e.message; }
-
-    // Test 4: Run the exact customers query
     try {
         const { rows } = await pool.query(`
-            SELECT COUNT(*) as total FROM "Customer" WHERE 1=1
+            WITH target_pair AS (
+                SELECT
+                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2)::int * '1 day'::interval)::date AS date1,
+                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1)::int * '1 day'::interval)::date AS date2
+            ),
+            prev_pair AS (
+                SELECT
+                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2)::int * '1 day'::interval)::date AS date1,
+                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1)::int * '1 day'::interval)::date AS date2
+            ),
+            base_customers AS (
+                SELECT c.id, c.name, c.customer_code, c.gender, c.phone, c.created_at, c.deleted_at
+                FROM "Customer" c
+                WHERE 1=1 AND 1=1
+            )
+            SELECT c.id, c.name, c.customer_code,
+                   COALESCE(l.new_debt, 0)::float as current_balance,
+                   CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive
+            FROM base_customers c
+            LEFT JOIN LATERAL (
+                SELECT new_debt, type
+                FROM "Ledger" l1
+                WHERE l1.customer_id = c.id AND l1.deleted_at IS NULL
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            ) l ON true
+            LEFT JOIN prev_pair tp ON true
+            ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC
+            LIMIT 20 OFFSET 0
         `);
-        results.customers_from_query = rows[0].total;
-    } catch (e: any) { results.customers_query_error = e.message; }
-
-    results.timestamp = new Date().toISOString();
-    return NextResponse.json(results);
+        
+        return NextResponse.json({
+            authenticated_as: session?.username,
+            row_count: rows.length,
+            first_customer: rows[0] || null,
+            sql_worked: true
+        });
+    } catch (e: any) {
+        return NextResponse.json({ sql_error: e.message, authenticated_as: session?.username });
+    }
 }
