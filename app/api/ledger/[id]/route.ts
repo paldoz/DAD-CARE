@@ -89,6 +89,8 @@ export async function DELETE(
         revalidateTag('ledger');
         // @ts-ignore
         revalidateTag('customer-daily-entries');
+        // @ts-ignore
+        revalidateTag('dashboard');
         try {
             revalidatePath('/api/daily-book');
             revalidatePath('/api/daily-book-history');
@@ -181,6 +183,8 @@ export async function PATCH(
         // Bust the Vercel edge cache so the frontend instantly gets accurate data
         // @ts-ignore
         revalidateTag('ledger');
+        // @ts-ignore
+        revalidateTag('dashboard');
 
         return NextResponse.json({ 
             success: true, 
