@@ -121,17 +121,14 @@ async function getCustomers(options: {
                 AND COALESCE(l.reference_date::date, l.created_at::date) IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
             GROUP BY lpr.customer_id
         ),
-        latest_payment_stats AS (
-            SELECT 
-                lpr.customer_id,
-                SUM(l.amount)::float as payments_total
-            FROM latest_product_receipt lpr
-            JOIN "Ledger" l ON l.customer_id = lpr.customer_id 
-                AND l.type = 'PAYMENT' 
-                AND l.deleted_at IS NULL
-                AND l.created_at >= lpr.first_receipt_created_at
-                AND l.created_at < lpr.next_receipt_created_at
-            GROUP BY lpr.customer_id
+        latest_prev_debt AS (
+            SELECT
+                customer_id,
+                SUM(amount)::float as prev_debt
+            FROM "Ledger"
+            WHERE type = 'PRODUCT' AND deleted_at IS NULL
+            AND COALESCE(reference_date::date, created_at::date) < (SELECT date1 FROM target_pair)
+            GROUP BY customer_id
         ),
         selected_product_receipt_raw AS (
             SELECT 
@@ -171,17 +168,14 @@ async function getCustomers(options: {
                 ${maqalD1 && maqalD2 ? `AND COALESCE(l.reference_date::date, l.created_at::date) IN ('${maqalD1}', '${maqalD2}')` : `AND 1=0`}
             GROUP BY spr.customer_id
         ),
-        selected_payment_stats AS (
-            SELECT 
-                spr.customer_id,
-                SUM(l.amount)::float as payments_total
-            FROM selected_product_receipt spr
-            JOIN "Ledger" l ON l.customer_id = spr.customer_id 
-                AND l.type = 'PAYMENT' 
-                AND l.deleted_at IS NULL
-                AND l.created_at >= spr.first_receipt_created_at
-                AND l.created_at < spr.next_receipt_created_at
-            GROUP BY spr.customer_id
+        selected_prev_debt AS (
+            SELECT
+                customer_id,
+                SUM(amount)::float as prev_debt
+            FROM "Ledger"
+            WHERE type = 'PRODUCT' AND deleted_at IS NULL
+            ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
+            GROUP BY customer_id
         ),
         base_customers AS (
             SELECT 
@@ -211,7 +205,7 @@ async function getCustomers(options: {
             COALESCE(lms.maqal_total, 0)::float as latest_maqal_total,
             CASE 
                 WHEN COALESCE(lms.maqal_total, 0) = 0 THEN 0
-                ELSE LEAST(100, ROUND((COALESCE(lps.payments_total, 0) / lms.maqal_total) * 100))::int
+                ELSE LEAST(100, ROUND((GREATEST(0, COALESCE(p.total_paid, 0) - COALESCE(lpd.prev_debt, 0)) / lms.maqal_total) * 100))::int
             END as latest_maqal_pct,
             
             -- All Time Maqal
@@ -225,7 +219,7 @@ async function getCustomers(options: {
             COALESCE(sms.maqal_total, 0)::float as selected_maqal_total,
             CASE 
                 WHEN COALESCE(sms.maqal_total, 0) = 0 THEN 0
-                ELSE LEAST(100, ROUND((COALESCE(sps.payments_total, 0) / sms.maqal_total) * 100))::int
+                ELSE LEAST(100, ROUND((GREATEST(0, COALESCE(p.total_paid, 0) - COALESCE(spd.prev_debt, 0)) / sms.maqal_total) * 100))::int
             END as selected_maqal_pct
         FROM base_customers c
         LEFT JOIN LATERAL (
@@ -284,9 +278,9 @@ async function getCustomers(options: {
         ) td ON c.id = td.customer_id
         LEFT JOIN target_pair tp ON true
         LEFT JOIN latest_maqal_stats lms ON c.id = lms.customer_id
-        LEFT JOIN latest_payment_stats lps ON c.id = lps.customer_id
+        LEFT JOIN latest_prev_debt lpd ON c.id = lpd.customer_id
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
-        LEFT JOIN selected_payment_stats sps ON c.id = sps.customer_id
+        LEFT JOIN selected_prev_debt spd ON c.id = spd.customer_id
         ${priorityJoin}
         ${orderClause}
         LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};

@@ -39,22 +39,10 @@ const getCachedMaqalPairs = unstable_cache(
                         FROM "Ledger" prod
                         WHERE prod.type = 'PRODUCT' AND prod.deleted_at IS NULL
                         AND COALESCE(prod.reference_date::date, prod.created_at::date) IN (p.date1, p.date2)
-                        AND EXISTS (
-                            SELECT 1
-                            FROM "Ledger" pay
-                            WHERE pay.customer_id = prod.customer_id
-                              AND pay.type = 'PAYMENT'
-                              AND pay.deleted_at IS NULL
-                              AND pay.created_at >= prod.created_at
-                              AND pay.created_at < COALESCE(
-                                  (SELECT MIN(created_at) FROM "Ledger" next_prod
-                                   WHERE next_prod.customer_id = prod.customer_id
-                                     AND next_prod.type = 'PRODUCT'
-                                     AND next_prod.deleted_at IS NULL
-                                     AND next_prod.created_at > prod.created_at
-                                  ),
-                                  'infinity'::timestamp
-                              )
+                        AND (
+                            COALESCE((SELECT SUM(amount) FROM "Ledger" WHERE customer_id = prod.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL), 0)
+                            > 
+                            COALESCE((SELECT SUM(amount) FROM "Ledger" WHERE customer_id = prod.customer_id AND type = 'PRODUCT' AND deleted_at IS NULL AND COALESCE(reference_date::date, created_at::date) < p.date1), 0)
                         )
                     )
                 ) as has_payments,
@@ -71,22 +59,10 @@ const getCachedMaqalPairs = unstable_cache(
                     FROM "Ledger" prod
                     WHERE prod.type = 'PRODUCT' AND prod.deleted_at IS NULL
                     AND COALESCE(prod.reference_date::date, prod.created_at::date) IN (p.date1, p.date2)
-                    AND EXISTS (
-                        SELECT 1
-                        FROM "Ledger" pay
-                        WHERE pay.customer_id = prod.customer_id
-                          AND pay.type = 'PAYMENT'
-                          AND pay.deleted_at IS NULL
-                          AND pay.created_at >= prod.created_at
-                          AND pay.created_at < COALESCE(
-                              (SELECT MIN(created_at) FROM "Ledger" next_prod
-                               WHERE next_prod.customer_id = prod.customer_id
-                                 AND next_prod.type = 'PRODUCT'
-                                 AND next_prod.deleted_at IS NULL
-                                 AND next_prod.created_at > prod.created_at
-                              ),
-                              'infinity'::timestamp
-                          )
+                    AND (
+                        COALESCE((SELECT SUM(amount) FROM "Ledger" WHERE customer_id = prod.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL), 0)
+                        > 
+                        COALESCE((SELECT SUM(amount) FROM "Ledger" WHERE customer_id = prod.customer_id AND type = 'PRODUCT' AND deleted_at IS NULL AND COALESCE(reference_date::date, created_at::date) < p.date1), 0)
                     )
                 ) as payment_count
             FROM numbered_pairs p
