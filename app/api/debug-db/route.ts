@@ -1,78 +1,45 @@
 import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { validateSession } from '@/lib/sessions-store';
 
-export async function GET() {
+export async function GET(request: Request) {
     const results: any = {};
     
-    // Test 1: Simple count
+    // Test 1: Count active customers
     try {
         const r = await pool.query('SELECT COUNT(*) FROM "Customer" WHERE deleted_at IS NULL');
-        results.simple_count = r.rows[0].count;
-    } catch (e: any) { results.simple_count_error = e.message; }
+        results.active_count = r.rows[0].count;
+    } catch (e: any) { results.active_count_error = e.message; }
 
-    // Test 2: Session table exists
+    // Test 2: Check session from cookie (dadwork_session cookie)
     try {
-        const r = await pool.query('SELECT COUNT(*) FROM "Session"');
-        results.session_count = r.rows[0].count;
+        const cookieHeader = request.headers.get('cookie') || '';
+        // Try both cookie names the app might use
+        const tokenMatch = cookieHeader.match(/dadwork_session=([^;]+)/) || 
+                           cookieHeader.match(/session=([^;]+)/);
+        const token = tokenMatch?.[1];
+        if (token) {
+            const session = await validateSession(decodeURIComponent(token));
+            results.session = session ? { username: session.username, role: session.role } : 'INVALID TOKEN';
+        } else {
+            results.session = 'NO SESSION COOKIE - cookies: ' + cookieHeader.slice(0, 200);
+        }
     } catch (e: any) { results.session_error = e.message; }
 
-    // Test 3: Run actual customers query (minimal version)
+    // Test 3: Check AdminSession table count  
     try {
-        const r = await pool.query(`
-            WITH target_pair AS (
-                SELECT
-                    ('2026-06-28'::date + (
-                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
-                    )::int * '1 day'::interval)::date AS date1,
-                    ('2026-06-28'::date + (
-                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
-                    )::int * '1 day'::interval)::date AS date2
-            ),
-            prev_pair AS (
-                SELECT
-                    ('2026-06-28'::date + (
-                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2
-                    )::int * '1 day'::interval)::date AS date1,
-                    ('2026-06-28'::date + (
-                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
-                    )::int * '1 day'::interval)::date AS date2
-            ),
-            base_customers AS (
-                SELECT c.id, c.name, c.customer_code, c.created_at, c.deleted_at
-                FROM "Customer" c
-                WHERE 1=1
-            )
-            SELECT COUNT(*) FROM base_customers
-        `);
-        results.customers_cte_count = r.rows[0].count;
-    } catch (e: any) { results.customers_cte_error = e.message; }
+        const r = await pool.query('SELECT COUNT(*) FROM "AdminSession" WHERE expires_at > NOW()');
+        results.active_sessions = r.rows[0].count;
+    } catch (e: any) { results.adminsession_error = e.message; }
 
-    // Test 4: Actual full query with limit
+    // Test 4: Run the exact customers query
     try {
-        const r = await pool.query(`
-            WITH target_pair AS (
-                SELECT
-                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2)::int * '1 day'::interval)::date AS date1,
-                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1)::int * '1 day'::interval)::date AS date2
-            ),
-            prev_pair AS (
-                SELECT
-                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2)::int * '1 day'::interval)::date AS date1,
-                    ('2026-06-28'::date + (GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1)::int * '1 day'::interval)::date AS date2
-            )
-            SELECT c.id, c.name
-            FROM "Customer" c
-            LEFT JOIN prev_pair tp ON true
-            WHERE 1=1
-            LIMIT 5
+        const { rows } = await pool.query(`
+            SELECT COUNT(*) as total FROM "Customer" WHERE 1=1
         `);
-        results.full_query_rows = r.rows.length;
-        results.sample = r.rows[0];
-    } catch (e: any) { results.full_query_error = e.message; }
+        results.customers_from_query = rows[0].total;
+    } catch (e: any) { results.customers_query_error = e.message; }
 
-    const dbUrl = process.env.DATABASE_URL || 'NOT SET';
-    results.db_url_start = dbUrl.substring(0, 50) + '...';
     results.timestamp = new Date().toISOString();
-    
     return NextResponse.json(results);
 }
