@@ -773,9 +773,6 @@ export default function SettingsPage() {
     };
 
     const handleSaveDatePrice = async (newPrices: Record<string, string>, loadingKey: string) => {
-        // Optimistic UI Update for instant feedback
-        const previousPrices = { ...dateSpecificPrices };
-        setDateSpecificPrices(newPrices);
         setDateActionLoading(loadingKey);
         
         try {
@@ -790,16 +787,15 @@ export default function SettingsPage() {
             });
             if (res.ok) {
                 localStorage.setItem('dadwork_date_specific_prices', JSON.stringify(newPrices)); // persist for refresh
+                setDateSpecificPrices(newPrices); // Update UI only on success so loading shows
                 toast.success('Date-specific prices updated');
                 setDateActionLoading(null);
             } else {
                 const err = await res.json().catch(() => ({}));
-                setDateSpecificPrices(previousPrices); // Rollback
                 toast.error(`Failed to save date-specific prices: ${err.error || res.statusText}`);
                 setDateActionLoading(null);
             }
         } catch (e) {
-            setDateSpecificPrices(previousPrices); // Rollback
             toast.error('Network error');
             setDateActionLoading(null);
         }
