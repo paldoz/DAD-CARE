@@ -89,19 +89,14 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         const waitingDay2 = toDateStr(epochMs + (waitingPairStart + 1) * 86400000);
         allUnprocessedDates.push(waitingDay1, waitingDay2);
 
-        const oldestUnprocessedPairStart = unprocessedPairs.length > 0 ? unprocessedPairs[0] : null;
+        let oldestUnprocessedPairStart = unprocessedPairs.length > 0 ? unprocessedPairs[0] : null;
 
+        // If the customer has processed all available pairs (e.g. up to July 14/15),
+        // DO NOT show the next future pair (e.g. July 16/17) as "Waiting".
+        // Instead, just show the most recent valid pair (readyPairStartOffset).
+        // It will only naturally advance to July 16/17 when the clock strikes July 18.
         if (oldestUnprocessedPairStart === null) {
-            const waitingMaqalId = Math.floor(waitingPairStart / 2) + 1;
-            const waitingResult = [
-                { date: waitingDay1, kg: 0, note: 'Notebook', processed: false, isReady: false },
-                { date: waitingDay2, kg: 0, note: 'Notebook', processed: false, isReady: false },
-            ];
-            return {
-                result: waitingResult,
-                allUnprocessedDates,
-                maqalId: waitingMaqalId
-            };
+            oldestUnprocessedPairStart = readyPairStartOffset;
         }
 
         const day1Str = toDateStr(epochMs + oldestUnprocessedPairStart * 86400000);
