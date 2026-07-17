@@ -2,7 +2,8 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { unstable_cache } from 'next/cache';
+
+export const dynamic = 'force-dynamic'; // Always fresh — no server cache
 
 const fetchCustomerDailyEntriesData = async (customerId: string) => {
     const epochMs = new Date('2026-06-28T00:00:00Z').getTime();
@@ -139,13 +140,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         };
 };
 
-const getCachedCustomerDailyEntries = (customerId: string) => {
-    return unstable_cache(
-        async () => fetchCustomerDailyEntriesData(customerId),
-        ['customer-daily-entries', customerId],
-        { revalidate: 30, tags: ['customer-daily-entries', 'customers'] }
-    )();
-};
+
 
 export const GET = trackApiRoute('/api/customer-daily-entries', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
@@ -158,7 +153,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
     }
 
     try {
-        const data = await getCachedCustomerDailyEntries(customerId);
+        const data = await fetchCustomerDailyEntriesData(customerId);
 
         const res = NextResponse.json(data.result, {
             headers: {
