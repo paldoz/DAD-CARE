@@ -199,8 +199,8 @@ async function getCustomers(options: {
             COALESCE(dbk.total_books_count, 0) as total_books_count,
             CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,
             CASE
-                WHEN COALESCE(td.prev_pair_ledger_count, 0) >= 2 THEN true
-                WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM prev_pair) THEN true
+                WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
+                WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
                 ELSE false
             END as is_target_days_done,
             tp.date1::text as pair_date1,
@@ -275,14 +275,14 @@ async function getCustomers(options: {
         LEFT JOIN (
             SELECT
                 customer_id,
-                COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as prev_pair_ledger_count
+                COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as target_pair_ledger_count
             FROM "Ledger"
             WHERE type = 'PRODUCT' AND deleted_at IS NULL
               AND COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)
-                    IN (SELECT date1 FROM prev_pair UNION SELECT date2 FROM prev_pair)
+                    IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
             GROUP BY customer_id
         ) td ON c.id = td.customer_id
-        LEFT JOIN prev_pair tp ON true
+        LEFT JOIN target_pair tp ON true
         LEFT JOIN latest_maqal_stats lms ON c.id = lms.customer_id
         LEFT JOIN latest_payment_stats lps ON c.id = lps.customer_id
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
