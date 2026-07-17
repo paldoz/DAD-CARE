@@ -16,11 +16,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
 
         const [todayRes, maxDbRes, startRes, processedRes] = await Promise.all([
             pool.query(`SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today`),
-            pool.query(`SELECT TO_CHAR(MAX((date AT TIME ZONE 'Africa/Mogadishu')::date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL`),
+            pool.query(`SELECT TO_CHAR(MAX(date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL`),
             pool.query(`
                 SELECT TO_CHAR(MIN(date_val), 'YYYY-MM-DD') as min_date
                 FROM (
-                    SELECT (db.date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
+                    SELECT db.date as date_val
                     FROM "DailyBookItem" dbi
                     JOIN "DailyBook" db ON dbi.daily_book_id = db.id
                     WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
@@ -97,12 +97,12 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         const currentMaqalId = Math.floor(readyPairStartOffset / 2) + 1;
 
         const itemsQuery = `
-            SELECT TO_CHAR((db.date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date,
+            SELECT TO_CHAR(db.date, 'YYYY-MM-DD') as date,
                    dbi.kg, dbi.note
             FROM "DailyBookItem" dbi
             JOIN "DailyBook" db ON dbi.daily_book_id = db.id
             WHERE dbi.customer_id = $1
-              AND (db.date AT TIME ZONE 'Africa/Mogadishu')::date IN ($2::date, $3::date)
+              AND db.date IN ($2::date, $3::date)
               AND dbi.deleted_at IS NULL
               AND db.deleted_at IS NULL
             ORDER BY db.date ASC
