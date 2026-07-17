@@ -5,7 +5,7 @@
 
 const { Client } = require('pg');
 
-const NEW_DB = 'postgresql://postgres.omjmjihinxbtilnirsco:ki6pw8TKnb4bqrjC@aws-0-eu-west-1.pooler.supabase.com:6543/postgres';
+const NEW_DB = 'postgresql://postgres.cfepckoviapjbxpauldr:0frWmNafDE1JzS6E@aws-1-eu-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true';
 
 async function setup() {
     const client = new Client({ connectionString: NEW_DB, ssl: { rejectUnauthorized: false } });

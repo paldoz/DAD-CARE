@@ -9,7 +9,7 @@ const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-const NEW_DB = 'postgresql://postgres.omjmjihinxbtilnirsco:ki6pw8TKnb4bqrjC@aws-0-eu-west-1.pooler.supabase.com:6543/postgres';
+const NEW_DB = 'postgresql://postgres.cfepckoviapjbxpauldr:0frWmNafDE1JzS6E@aws-1-eu-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true';
 
 async function importData() {
     // Find the most recent backup file
