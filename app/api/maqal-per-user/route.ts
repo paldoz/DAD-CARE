@@ -136,7 +136,7 @@ async function getMaqalData() {
                 username: user.username,
                 total: customers.length,
                 solved: customers.filter((c: any) => c.has_payment).length,
-                customers,
+                customers: customers.filter((c: any) => !c.has_payment),
             };
         });
 
