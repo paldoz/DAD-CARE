@@ -42,7 +42,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         const todayStr = todayRes.rows[0]?.today as string;
         const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
         const todayOffset = Math.floor((todayMs - epochMs) / 86400000);
-        const activePairStart = Math.floor(todayOffset / 2) * 2;
+        const activePairStart = Math.max(0, Math.floor((todayOffset - 2) / 2) * 2);
 
         const maxDbDateStr = maxDbRes.rows[0]?.max_date as string | null;
         let maxDbPairStart = -2;

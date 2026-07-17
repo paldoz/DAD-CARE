@@ -35,7 +35,7 @@ async function getCustomers(options: {
     if (tab === 'inactive') {
         filterCondition += " AND c.deleted_at IS NOT NULL";
     } else {
-        filterCondition += " AND c.deleted_at IS NULL";
+        filterCondition += ""; // Temporarily removed AND c.deleted_at IS NULL
     }
     
     let searchCondition = "1=1";
@@ -68,19 +68,19 @@ async function getCustomers(options: {
         WITH target_pair AS (
             SELECT
                 ('2026-06-28'::date + (
-                    ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
                 )::int * '1 day'::interval)::date AS date1,
                 ('2026-06-28'::date + (
-                    ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 + 1
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
                 )::int * '1 day'::interval)::date AS date2
         ),
         prev_pair AS (
             SELECT
                 ('2026-06-28'::date + (
-                    ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 2
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2
                 )::int * '1 day'::interval)::date AS date1,
                 ('2026-06-28'::date + (
-                    ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 1
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
                 )::int * '1 day'::interval)::date AS date2
         ),
         latest_product_receipt_raw AS (
@@ -420,7 +420,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
                     ORDER BY created_at DESC, id DESC
                     LIMIT 1
                 ) lb ON true
-                WHERE c.deleted_at IS NULL
+                WHERE 1=1
                 ORDER BY
                     CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC,
                     c.name ASC;
@@ -436,10 +436,10 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
                 WITH prev_pair AS (
                     SELECT
                         ('2026-06-28'::date + (
-                            ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 2
+                            GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2
                         )::int * '1 day'::interval)::date AS date1,
                         ('2026-06-28'::date + (
-                            ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 1
+                            GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
                         )::int * '1 day'::interval)::date AS date2
                 )
                 SELECT
