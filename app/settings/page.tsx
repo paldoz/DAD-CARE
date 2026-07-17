@@ -147,6 +147,7 @@ export default function SettingsPage() {
 
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
     const [loading, setLoading] = useState(false);
+    const [dateActionLoading, setDateActionLoading] = useState<string | null>(null);
     const [resequenceLoading, setResequenceLoading] = useState(false);
 
     // Restore & Verify state
@@ -771,11 +772,11 @@ export default function SettingsPage() {
         }
     };
 
-    const handleSaveDatePrice = async (newPrices: Record<string, string>) => {
+    const handleSaveDatePrice = async (newPrices: Record<string, string>, loadingKey: string) => {
         // Optimistic UI Update for instant feedback
         const previousPrices = { ...dateSpecificPrices };
         setDateSpecificPrices(newPrices);
-        setLoading(true);
+        setDateActionLoading(loadingKey);
         
         try {
             const token = localStorage.getItem('dadwork_session_token') || '';
@@ -790,16 +791,17 @@ export default function SettingsPage() {
             if (res.ok) {
                 localStorage.setItem('dadwork_date_specific_prices', JSON.stringify(newPrices)); // persist for refresh
                 toast.success('Date-specific prices updated');
+                window.location.reload(); // Autorefresh to clear the screen
             } else {
                 const err = await res.json().catch(() => ({}));
                 setDateSpecificPrices(previousPrices); // Rollback
                 toast.error(`Failed to save date-specific prices: ${err.error || res.statusText}`);
+                setDateActionLoading(null);
             }
         } catch (e) {
             setDateSpecificPrices(previousPrices); // Rollback
             toast.error('Network error');
-        } finally {
-            setLoading(false);
+            setDateActionLoading(null);
         }
     };
 
@@ -830,7 +832,7 @@ export default function SettingsPage() {
              if (updated[d]) pruned[d] = updated[d];
         });
         
-        handleSaveDatePrice(pruned);
+        handleSaveDatePrice(pruned, 'add');
         
         // After adding, auto-switch the dropdown to the OTHER date if it's not added yet
         const otherDate = allowedDates.find(d => d !== newDatePrice.date && !pruned[d]);
@@ -840,7 +842,7 @@ export default function SettingsPage() {
     const handleRemoveDatePrice = (dateToRemove: string) => {
         const updated = { ...dateSpecificPrices };
         delete updated[dateToRemove];
-        handleSaveDatePrice(updated);
+        handleSaveDatePrice(updated, `delete-${dateToRemove}`);
     };
 
     // Backup/Export
@@ -1403,9 +1405,10 @@ export default function SettingsPage() {
                                                 </div>
                                                 <Button 
                                                     onClick={handleAddDatePrice}
+                                                    disabled={dateActionLoading !== null}
                                                     className="h-10 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md active:scale-95 transition-all shrink-0"
                                                 >
-                                                    <Plus className="w-4 h-4" />
+                                                    {dateActionLoading === 'add' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                                 </Button>
                                             </div>
 
@@ -1421,9 +1424,10 @@ export default function SettingsPage() {
                                                                 variant="ghost" 
                                                                 size="sm"
                                                                 onClick={() => handleRemoveDatePrice(date)}
+                                                                disabled={dateActionLoading !== null}
                                                                 className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
                                                             >
-                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                                {dateActionLoading === `delete-${date}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                                                             </Button>
                                                         </div>
                                                     ))}
