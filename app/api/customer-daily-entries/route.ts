@@ -62,6 +62,10 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
             const minDateMs = new Date(`${minDateStr}T00:00:00Z`).getTime();
             const minOffset = Math.floor((minDateMs - epochMs) / 86400000);
             startOffset = Math.floor(minOffset / 2) * 2;
+        } else {
+            // FIX: If a customer has no history (like on a fresh database), 
+            // force them to start ONE PAIR in the past so the admin can enter a manual Reesto.
+            startOffset = Math.max(0, readyPairStartOffset - 2);
         }
         startOffset = Math.max(0, Math.min(startOffset, readyPairStartOffset));
 
@@ -90,11 +94,13 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         const waitingDay2 = toDateStr(epochMs + (waitingPairStart + 1) * 86400000);
         allUnprocessedDates.push(waitingDay1, waitingDay2);
 
-        // ALWAYS display the current active pair (e.g. July 14 & 15)
-        // Never show an older unprocessed pair — the tracker locks to the current cycle only.
-        const day1Str = toDateStr(epochMs + readyPairStartOffset * 86400000);
-        const day2Str = toDateStr(epochMs + (readyPairStartOffset + 1) * 86400000);
-        const currentMaqalId = Math.floor(readyPairStartOffset / 2) + 1;
+        // If there are older unprocessed pairs, show the OLDEST one first so they can resolve it.
+        // Otherwise, show the current active pair.
+        const pairToShow = unprocessedPairs.length > 0 ? unprocessedPairs[0] : readyPairStartOffset;
+        
+        const day1Str = toDateStr(epochMs + pairToShow * 86400000);
+        const day2Str = toDateStr(epochMs + (pairToShow + 1) * 86400000);
+        const currentMaqalId = Math.floor(pairToShow / 2) + 1;
 
         const itemsQuery = `
             SELECT TO_CHAR(db.date, 'YYYY-MM-DD') as date,
