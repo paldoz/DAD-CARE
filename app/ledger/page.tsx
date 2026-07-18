@@ -252,8 +252,8 @@ export default function LedgerPage() {
     // Data state
     const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
         revalidateOnFocus: true,
-        dedupingInterval: 300000,
-        keepPreviousData: true,
+        dedupingInterval: 30000,  // ⚡ only 1 req per 30s — saves bandwidth
+        keepPreviousData: true,   // screen never goes blank while loading
         revalidateIfStale: true
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive);
@@ -264,7 +264,7 @@ export default function LedgerPage() {
     const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=50` : null;
     const { data: ledgerData, isLoading: fetchingLedger, mutate: mutateLedger } = useSWR(ledgerUrl, fetcher, {
         revalidateOnFocus: true,
-        dedupingInterval: 10000,
+        dedupingInterval: 2000,   // ⚡ near-instant refresh on re-focus
         keepPreviousData: true,
         revalidateIfStale: true,
         revalidateOnReconnect: true
@@ -289,7 +289,7 @@ export default function LedgerPage() {
     const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
         revalidateOnFocus: true,
-        dedupingInterval: 10000,
+        dedupingInterval: 2000,   // ⚡ near-instant refresh
         keepPreviousData: true,
         revalidateIfStale: true,
         revalidateOnReconnect: true
@@ -1228,6 +1228,7 @@ export default function LedgerPage() {
             if (!res.ok) throw new Error(data.error);
             
             setFreshBalance(null);
+            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             mutateLedger((current: any) => current, { revalidate: true });
             mutateCustomers((current: any) => current, { revalidate: true });
             toast.success('Receipt voided successfully!');

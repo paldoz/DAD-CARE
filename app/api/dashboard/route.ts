@@ -82,7 +82,8 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        response.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
+        // Cache on Vercel edge for 30s — Supabase is only queried once per 30s max
+        response.headers.set('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
         return response;
 
     } catch (error: any) {

@@ -58,10 +58,11 @@ export default function DashboardPage() {
     const [dates, setDates] = useState({ standard: '', hijri: '' });
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
-        revalidateOnFocus: true,
-        dedupingInterval: 2000,
+        revalidateOnFocus: true,     // refresh when tab becomes active
+        dedupingInterval: 30000,     // ⚡ only 1 request per 30s max — saves Vercel calls
         revalidateOnReconnect: true,
-        revalidateIfStale: true
+        revalidateIfStale: true,
+        keepPreviousData: true,      // never blank screen
     });
 
     useEffect(() => {
