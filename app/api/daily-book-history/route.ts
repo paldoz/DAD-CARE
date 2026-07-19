@@ -18,13 +18,20 @@ const getCachedHistory = async (limit: number, offset: number) => {
                             'customer_id', dbi.customer_id,
                             'kg',          dbi.kg,
                             'present',     dbi.present,
-                            'note',        dbi.note
+                            'note',        dbi.note,
+                            'customer',    json_build_object(
+                                'id', c.id,
+                                'name', c.name,
+                                'customer_code', c.customer_code,
+                                'gender', c.gender
+                            )
                         )
                     ) FILTER (WHERE dbi.id IS NOT NULL),
                     '[]'::json
                 ) as items
             FROM "DailyBook" db
             LEFT JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
+            LEFT JOIN "Customer" c ON c.id = dbi.customer_id
             WHERE db.deleted_at IS NULL
             GROUP BY db.id, db.date
             ORDER BY db.date DESC
