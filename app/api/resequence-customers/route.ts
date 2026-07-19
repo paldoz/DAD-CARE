@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
     const { session, errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
-    if (session?.role !== 'SUPER_ADMIN') {
+    if (session?.role !== 'SUPER_ADMIN' && session?.role !== 'ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

@@ -924,9 +924,6 @@ export default function CustomerDetailPage() {
                         </DialogContent>
                     </Dialog>
 
-                    <Button variant="outline" size="sm" className="rounded-full border-red-500/20 text-red-500 hover:bg-red-500/10 h-8 w-8 p-0" onClick={handleDeleteCustomer}>
-                        <Trash2 className="w-3 h-3" />
-                    </Button>
                 </div>
             </div>
 
