@@ -2604,7 +2604,7 @@ export default function SettingsPage() {
                             <div className="flex items-center justify-between">
                                 <Label className="text-foreground text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
                                     <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                                    Priority Customers ({userForm.assigned_customer_ids.length})
+                                    Priority Customers ({userForm.assigned_customer_ids.filter(id => allCustomers.some(c => c.id === id)).length})
                                 </Label>
                             </div>
                             <p className="text-[9px] text-muted-foreground -mt-1">These customers appear first in their lists with a ★ star badge</p>
