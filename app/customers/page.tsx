@@ -187,6 +187,10 @@ export default function CustomersPage() {
             toast.success('Customer restored & IDs updated!');
             // Step 3: Silently refresh the list — no screen freeze
             mutateCustomers(undefined, { revalidate: true });
+            
+            // Instantly refresh priority trackers across the app
+            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            window.dispatchEvent(new Event('dadwork_customers_stale'));
         } catch (err: any) { 
             toast.error(err.message); 
             mutateCustomers(undefined, { revalidate: true });

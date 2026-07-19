@@ -1303,13 +1303,13 @@ export default function SettingsPage() {
                                 <span className="xs:hidden">🗑️</span>
                             </TabsTrigger>
                         )}
-                        {isAnyAdmin && (
+                        {isSuperAdmin && (
                             <TabsTrigger
                                 value="audit"
                                 className="flex-1 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md rounded-xl text-[11px] font-bold py-2.5 px-1 gap-1.5 transition-all"
                             >
                                 <Activity className="w-3.5 h-3.5 text-red-500" />
-                                <span className="hidden xs:inline">{isSuperAdmin ? 'Audit' : 'Online'}</span>
+                                <span className="hidden xs:inline">Audit</span>
                                 <span className="xs:hidden">🔍</span>
                             </TabsTrigger>
                         )}
@@ -2067,7 +2067,7 @@ export default function SettingsPage() {
                     )}
 
                     {/* ── Audit Logs & Online Users ── */}
-                    {(isSuperAdmin || isAdmin) && (
+                    {isSuperAdmin && (
                         <TabsContent value="audit" className="mt-3">
                             <div className="space-y-3">
 

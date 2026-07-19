@@ -58,8 +58,23 @@ export function PriorityTracker() {
 
     useEffect(() => {
         fetchData();
-        // Removed setInterval to prevent continuous background polling which drains Supabase bandwidth.
-        // The data will still refresh when the component mounts or upon manual interaction/cache invalidation.
+        
+        // Listen for customer deletions/restores to update the priority count instantly
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === 'dadwork_customers_stale') {
+                fetchData();
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+        
+        // Also listen for same-tab custom events if triggered manually
+        const handleCustom = () => fetchData();
+        window.addEventListener('dadwork_customers_stale', handleCustom);
+        
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('dadwork_customers_stale', handleCustom);
+        };
     }, []);
 
     const allUsers = data?.users || [];

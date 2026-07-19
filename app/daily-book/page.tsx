@@ -410,6 +410,20 @@ function DailyBookPageInner() {
             setPendingDeleteCustomerId(null);
             // Broadcast stale signal so the dashboard/customer page refreshes its counter
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            window.dispatchEvent(new Event('dadwork_customers_stale')); // Trigger listeners on the SAME tab immediately
+            
+            // Instantly remove from currentUser's local cache so priority counts drop immediately
+            const userStr = localStorage.getItem('currentUser');
+            if (userStr) {
+                try {
+                    const user = JSON.parse(userStr);
+                    if (user.assigned_customer_ids?.includes(pendingDeleteCustomerId)) {
+                        user.assigned_customer_ids = user.assigned_customer_ids.filter((id: string) => id !== pendingDeleteCustomerId);
+                        localStorage.setItem('currentUser', JSON.stringify(user));
+                    }
+                } catch (e) {}
+            }
+
             mutateInit(); // Refresh the init data so the new IDs show up immediately
         } catch (err: any) {
             toast.error('Failed to remove customer: ' + (err.message || 'Server error'), { id: loadingToastId });
