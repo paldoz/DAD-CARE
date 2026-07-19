@@ -32,10 +32,13 @@ async function getCustomers(options: {
     
     // Add filtering based on search and tab
     let filterCondition = "1=1";
-    if (tab === 'inactive') {
+    if (search) {
+        // If searching, show all customers regardless of active/inactive tab
+        filterCondition = "1=1";
+    } else if (tab === 'inactive') {
         filterCondition += " AND c.deleted_at IS NOT NULL";
     } else {
-        filterCondition += ""; // Temporarily removed AND c.deleted_at IS NULL
+        filterCondition += " AND c.deleted_at IS NULL"; // Ensure active tab hides deleted customers
     }
     
     let searchCondition = "1=1";
@@ -45,6 +48,10 @@ async function getCustomers(options: {
 
     // Add sorting logic
     let orderClause = "ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
+    if (tab === 'inactive' && !search) {
+        orderClause = "ORDER BY c.deleted_at DESC NULLS LAST"; // Show recently deleted at the top
+    }
+    
     let priorityJoin = "";
     if (sort === 'priority' && username) {
         // Use the User table's assigned_customer_ids array to determine priority.

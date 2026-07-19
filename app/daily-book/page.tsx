@@ -389,6 +389,8 @@ function DailyBookPageInner() {
     const handleSoftDeleteCustomer = async () => {
         if (!pendingDeleteCustomerId) return;
         setIsDeletingCustomer(true);
+        const loadingToastId = 'deleting-customer';
+        toast.loading('Deleting customer...', { id: loadingToastId });
         try {
             const token = localStorage.getItem('dadwork_session_token') || '';
             const res = await fetch(`/api/customers?id=${pendingDeleteCustomerId}`, {
@@ -402,13 +404,15 @@ function DailyBookPageInner() {
                 method: 'POST',
                 headers: { 'x-session-token': token }
             });
-            if (!fixRes.ok) throw new Error('Customer removed, but failed to re-sequence IDs.');
+            if (!fixRes.ok) console.warn('Customer removed, but failed to re-sequence IDs silently.');
 
-            toast.success('Customer removed & IDs re-sequenced automatically.');
+            toast.success('Customer removed & IDs re-sequenced.', { id: loadingToastId });
             setPendingDeleteCustomerId(null);
+            // Broadcast stale signal so the dashboard/customer page refreshes its counter
+            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             mutateInit(); // Refresh the init data so the new IDs show up immediately
         } catch (err: any) {
-            toast.error('Failed to remove customer: ' + (err.message || 'Server error'));
+            toast.error('Failed to remove customer: ' + (err.message || 'Server error'), { id: loadingToastId });
         } finally {
             setIsDeletingCustomer(false);
         }
@@ -540,7 +544,7 @@ return (
                 onConfirm={handleSoftDeleteCustomer}
                 isProcessing={isDeletingCustomer}
                 title="Remove Customer"
-                description={`⚠️ Are you sure you want to DELETE "${customers.find(c => c.id === pendingDeleteCustomerId)?.name || 'this customer'}"? This will remove them from Daily Book, Ledger, and all priority lists. This action cannot be undone!`}
+                description={`⚠️ Move "${customers.find(c => c.id === pendingDeleteCustomerId)?.name || 'this customer'}" to Inactive? Their history is preserved and they can be recovered anytime from the Customers page.`}
             />
             {/* Header / Cover */}
             <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">

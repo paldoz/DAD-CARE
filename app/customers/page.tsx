@@ -162,48 +162,34 @@ export default function CustomersPage() {
 
     const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
 
-    const handleDeactivate = async (e: React.MouseEvent, customerId: string) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!confirm('Move this customer to Inactive? Their history will be preserved and they can be recovered.')) return;
-        setManagingCustomerId(customerId);
-        
-        // Optimistic UI Update is disabled when paginating to avoid complex state management
-        // mutateCustomers((prev: any) => prev ? prev.map((c: any) => c.id === customerId ? { ...c, is_inactive: true } : c) : [], { revalidate: false });
-        
-        try {
-            const res = await fetch(`/api/customers?id=${customerId}`, {
-                method: 'DELETE',
-                headers: { 'x-session-token': getToken() }
-            });
-            if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-            toast.success('Customer moved to Inactive.');
-            mutateCustomers(undefined, { revalidate: true });
-        } catch (err: any) { 
-            toast.error(err.message); 
-            mutateCustomers(undefined, { revalidate: true }); // Revert on failure
-        }
-        finally { setManagingCustomerId(null); }
-    };
+    // NOTE: Deactivating a customer is now ONLY done from the Daily Book page.
+    // The handleDeactivate function has been intentionally removed from this page.
 
     const handleRestore = async (customerId: string) => {
         if (!confirm('Restore this customer to Active? They will re-appear in all lists with their original ID and history.')) return;
         setManagingCustomerId(customerId);
         
-        // Optimistic UI Update is disabled when paginating to avoid complex state management
-        // mutateCustomers((prev: any) => prev ? prev.map((c: any) => c.id === customerId ? { ...c, is_inactive: false, customer_code: (c.customer_code.startsWith('del_') || c.customer_code.length > 20) ? '...' : c.customer_code } : c) : [], { revalidate: false });
-
         try {
+            // Step 1: Restore the customer (clears deleted_at and assigns a valid code)
             const res = await fetch(`/api/customers?id=${customerId}&restore=true`, {
                 method: 'DELETE',
                 headers: { 'x-session-token': getToken() }
             });
             if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-            toast.success('Customer restored to Active!');
+
+            // Step 2: Auto re-sequence all customer IDs to fill any gaps
+            const fixRes = await fetch('/api/resequence-customers', {
+                method: 'POST',
+                headers: { 'x-session-token': getToken() }
+            });
+            if (!fixRes.ok) console.warn('Restore succeeded but ID re-sequencing failed silently.');
+
+            toast.success('Customer restored & IDs updated!');
+            // Step 3: Silently refresh the list — no screen freeze
             mutateCustomers(undefined, { revalidate: true });
         } catch (err: any) { 
             toast.error(err.message); 
-            mutateCustomers(undefined, { revalidate: true }); // Revert on failure
+            mutateCustomers(undefined, { revalidate: true });
         }
         finally { setManagingCustomerId(null); }
     };
@@ -561,15 +547,16 @@ export default function CustomersPage() {
                                             <button
                                                 onClick={() => handleRestore(customer.id)}
                                                 disabled={managingCustomerId === customer.id}
-                                                className="flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                                className="flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                {managingCustomerId === customer.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-                                                Recover
+                                                {managingCustomerId === customer.id 
+                                                    ? <><Loader2 className="w-3 h-3 animate-spin" /><span>Recovering...</span></>
+                                                    : <><RotateCcw className="w-3 h-3" /><span>Recover</span></>}
                                             </button>
                                             <button
                                                 onClick={() => handlePermanentDelete(customer.id, customer.name)}
                                                 disabled={managingCustomerId === customer.id}
-                                                className="flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                                className="flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Trash2 className="w-3 h-3" />
                                                 Delete Forever
