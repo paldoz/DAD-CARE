@@ -210,8 +210,9 @@ export default function CustomerDetailPage() {
     const [updating, setUpdating] = useState(false);
     const [undoingTxId, setUndoingTxId] = useState<string | null>(null);
     const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
-    const [pendingSecurityAction, setPendingSecurityAction] = useState<'clear_history' | 'delete_customer' | 'delete_receipt' | null>(null);
+    const [pendingSecurityAction, setPendingSecurityAction] = useState<'clear_history' | 'delete_customer' | 'delete_receipt' | 'restore_customer' | null>(null);
     const [receiptToDelete, setReceiptToDelete] = useState<ReceiptGroup | null>(null);
+    const [isRecovering, setIsRecovering] = useState(false);
 
     const [transactionToEdit, setTransactionToEdit] = useState<Transaction | null>(null);
     const [editTxAmount, setEditTxAmount] = useState('');
@@ -705,6 +706,41 @@ export default function CustomerDetailPage() {
         }
     };
 
+    const handleRestoreCustomerRequest = () => {
+        setPendingSecurityAction('restore_customer');
+    };
+
+    const executeRestoreCustomer = async () => {
+        setPendingSecurityAction(null);
+        if (!customer) return;
+        setIsRecovering(true);
+        try {
+            const token = localStorage.getItem('dadwork_session_token') || '';
+            const res = await fetch(`/api/customers?id=${customerId}&restore=true`, {
+                method: 'DELETE',
+                headers: { 'x-session-token': token }
+            });
+            if (!res.ok) throw new Error((await res.json()).error || 'Failed');
+
+            // Auto re-sequence
+            await fetch('/api/resequence-customers', {
+                method: 'POST',
+                headers: { 'x-session-token': token }
+            });
+
+            toast.success(`${customer.name} restored to Active! IDs have been updated.`);
+            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            window.dispatchEvent(new Event('dadwork_customers_stale'));
+            mutate('/api/dashboard');
+            mutate('/api/customers?lite=true');
+            loadCustomerData(true);
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to restore customer');
+        } finally {
+            setIsRecovering(false);
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
@@ -747,16 +783,19 @@ export default function CustomerDetailPage() {
                 onConfirm={() => {
                     if (pendingSecurityAction === 'clear_history') executeClearAllHistory();
                     if (pendingSecurityAction === 'delete_customer') executeDeleteCustomer();
+                    if (pendingSecurityAction === 'restore_customer') executeRestoreCustomer();
                     if (pendingSecurityAction === 'delete_receipt' && receiptToDelete) handleDeleteReceiptGroup(receiptToDelete);
                 }}
                 title={
                     pendingSecurityAction === 'clear_history' ? 'Clear History' : 
                     pendingSecurityAction === 'delete_receipt' ? 'Delete Receipt Block' : 
+                    pendingSecurityAction === 'restore_customer' ? 'Restore Customer' :
                     'Delete Customer'
                 }
                 description={
                     pendingSecurityAction === 'clear_history' ? 'Permanently clear all ledger history for this customer?' : 
                     pendingSecurityAction === 'delete_receipt' ? `Permanently delete ${receiptToDelete?.entries.length} transactions from "${receiptToDelete?.titleString}"?` :
+                    pendingSecurityAction === 'restore_customer' ? `Restore "${customer?.name}" to Active status? They will be given a new valid ID and appear in all active lists.` :
                     `Move "${customer?.name}" to Inactive? Their full history (daily book, ledger) will be preserved. You can recover them from the Inactive tab.`
                 }
                 isProcessing={updating}
@@ -836,6 +875,18 @@ export default function CustomerDetailPage() {
                     <ArrowLeft className="w-3.5 h-3.5" /> Back
                 </Button>
                 <div className="flex gap-2">
+                    {customer?.is_inactive && (
+                        <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="rounded-full gap-1 text-xs h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black tracking-widest shadow-lg animate-pulse" 
+                            onClick={handleRestoreCustomerRequest}
+                            disabled={isRecovering}
+                        >
+                            {isRecovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                            {isRecovering ? 'RECOVERING...' : 'RECOVER'}
+                        </Button>
+                    )}
                     <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
                         <DialogTrigger asChild>
                             <Button variant="outline" size="sm" className="rounded-full gap-1 text-xs h-8 px-2.5" onClick={handleOpenEdit}>

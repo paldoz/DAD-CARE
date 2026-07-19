@@ -321,7 +321,7 @@ const getCachedCustomersLite = unstable_cache(
                 ORDER BY created_at DESC, id DESC
                 LIMIT 1
             ) lb ON true
-            WHERE c.deleted_at IS NULL
+            -- Removed WHERE c.deleted_at IS NULL so lite search returns all customers including inactive
             ORDER BY
                 CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC,
                 c.name ASC;
