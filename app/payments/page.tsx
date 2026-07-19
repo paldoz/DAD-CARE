@@ -80,8 +80,8 @@ export default function PaymentsPage() {
     const customers = rawCustomers || [];
     
     const { data: rawData, isLoading: loading } = useSWR<PaymentData>('/api/payments?limit=200', fetcher, {
-        revalidateOnFocus: true,
-        dedupingInterval: 10000,
+        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
+        dedupingInterval: 60000,      // ⚡ 1 req per min — was 10s (saves ~83% of calls)
         keepPreviousData: true,
         revalidateIfStale: true,
         revalidateOnReconnect: true,

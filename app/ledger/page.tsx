@@ -251,9 +251,9 @@ export default function LedgerPage() {
 
     // Data state
     const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
-        revalidateOnFocus: true,
-        dedupingInterval: 30000,  // ⚡ only 1 req per 30s — saves bandwidth
-        keepPreviousData: true,   // screen never goes blank while loading
+        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
+        dedupingInterval: 60000,      // ⚡ 1 req per min max — was 30s
+        keepPreviousData: true,
         revalidateIfStale: true
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive);
@@ -263,8 +263,8 @@ export default function LedgerPage() {
     
     const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=50` : null;
     const { data: ledgerData, isLoading: fetchingLedger, mutate: mutateLedger } = useSWR(ledgerUrl, fetcher, {
-        revalidateOnFocus: true,
-        dedupingInterval: 2000,   // ⚡ near-instant refresh on re-focus
+        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
+        dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
         keepPreviousData: true,
         revalidateIfStale: true,
         revalidateOnReconnect: true
@@ -288,8 +288,8 @@ export default function LedgerPage() {
     const [startDate, setStartDate] = useState<string>('');
     const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
-        revalidateOnFocus: true,
-        dedupingInterval: 2000,   // ⚡ near-instant refresh
+        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
+        dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
         keepPreviousData: true,
         revalidateIfStale: true,
         revalidateOnReconnect: true
@@ -331,7 +331,7 @@ export default function LedgerPage() {
     const { data: priorityData, mutate: mutatePriority } = useSWR(
         '/api/customer-priority',
         fetcher,
-        { revalidateOnFocus: false, dedupingInterval: 60000 }
+        { revalidateOnFocus: false, dedupingInterval: 120000 } // ⚡ 2min cache — priority rarely changes
     );
     const priorityIds: Set<string> = useMemo(() =>
         new Set<string>((priorityData?.priorityIds || currentUser?.assigned_customer_ids || []) as string[]),

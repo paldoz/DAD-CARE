@@ -49,7 +49,7 @@ export function useDailyBookInit() {
         {
             revalidateOnFocus: false,
             keepPreviousData: true,
-            dedupingInterval: 5000,  // 5s — short so refresh after save picks up new data fast
+            dedupingInterval: 30000,  // ⚡ 30s — was 5s (saves ~83% of reload calls)
             revalidateIfStale: true,
             revalidateOnReconnect: false,
             shouldRetryOnError: false,
@@ -111,12 +111,12 @@ export function useDailyBookHistory() {
         getKey,
         fetcher,
         {
-            revalidateFirstPage: true,
-            revalidateOnFocus: true,   // pick up changes when user tabs back
-            revalidateOnReconnect: true,
-            revalidateAll: true,
+            revalidateFirstPage: false,      // ⚡ don't re-fetch all pages on every mutate
+            revalidateOnFocus: false,        // ⚡ don't re-fetch on every tab-switch
+            revalidateOnReconnect: false,
+            revalidateAll: false,
             persistSize: true,
-            dedupingInterval: 0,  // always re-fetch when mutate() is called
+            dedupingInterval: 30000,         // ⚡ 30s dedup window
         }
     );
 

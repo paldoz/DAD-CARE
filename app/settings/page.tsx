@@ -445,7 +445,7 @@ export default function SettingsPage() {
                     fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => {});
                 };
                 sendHeartbeat(); // immediate heartbeat on load
-                const heartbeatInterval = setInterval(sendHeartbeat, 2 * 60 * 1000);
+                const heartbeatInterval = setInterval(sendHeartbeat, 5 * 60 * 1000); // ⚡ 5min — saves Supabase/Vercel calls
 
                 // ── Smart audit-log polling ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
                 // Every 60s: call ?check=1 (≈2 numbers, ~50 bytes from Vercel Edge cache).
@@ -473,7 +473,7 @@ export default function SettingsPage() {
                 };
                 document.addEventListener('visibilitychange', onVisibilityChange);
 
-                const auditPoll = setInterval(checkForNewLogs, 60000);
+                const auditPoll = setInterval(checkForNewLogs, 300000); // ⚡ 5min — was 1min, saves ~80% of audit polls
 
                 return () => {
                     clearInterval(auditPoll);
@@ -488,7 +488,7 @@ export default function SettingsPage() {
                     fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => {});
                 };
                 sendHeartbeat();
-                const heartbeatInterval = setInterval(sendHeartbeat, 2 * 60 * 1000);
+                const heartbeatInterval = setInterval(sendHeartbeat, 5 * 60 * 1000); // ⚡ 5min — saves Supabase/Vercel calls
                 return () => clearInterval(heartbeatInterval);
             }
         }

@@ -58,11 +58,11 @@ export default function DashboardPage() {
     const [dates, setDates] = useState({ standard: '', hijri: '' });
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
-        revalidateOnFocus: true,     // refresh when tab becomes active
-        dedupingInterval: 30000,     // ⚡ only 1 request per 30s max — saves Vercel calls
+        revalidateOnFocus: false,     // ⚡ use event signal instead of focus-revalidation
+        dedupingInterval: 60000,      // ⚡ 1 req per min max — saves Vercel compute
         revalidateOnReconnect: true,
         revalidateIfStale: true,
-        keepPreviousData: true,      // never blank screen
+        keepPreviousData: true,       // never blank screen
     });
 
     useEffect(() => {
@@ -84,6 +84,10 @@ export default function DashboardPage() {
             }
         };
 
+        const handleCustom = () => {
+            mutateDashboard(undefined, { revalidate: true });
+        };
+
         const handleFocus = () => {
             const staleSignal = localStorage.getItem('dadwork_customers_stale');
             const lastCheck = sessionStorage.getItem('dashboard_last_check');
@@ -94,11 +98,13 @@ export default function DashboardPage() {
         };
 
         window.addEventListener('storage', handleStorage);
+        window.addEventListener('dadwork_customers_stale', handleCustom);
         window.addEventListener('focus', handleFocus);
         handleFocus();
 
         return () => {
             window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('dadwork_customers_stale', handleCustom);
             window.removeEventListener('focus', handleFocus);
         };
     }, [mutateDashboard]);
