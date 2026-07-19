@@ -79,6 +79,7 @@ interface Customer {
     customer_code: string;
     gender?: string;
     phone?: string;
+    is_inactive?: boolean;
 }
 
 interface Transaction {
