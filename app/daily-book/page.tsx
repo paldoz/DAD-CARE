@@ -398,15 +398,8 @@ function DailyBookPageInner() {
                 headers: { 'x-session-token': token },
             });
             if (!res.ok) throw new Error(await res.text());
-            
-            // AUTOMATICALLY FIX IDs right after deleting so there are no gaps
-            const fixRes = await fetch('/api/resequence-customers', {
-                method: 'POST',
-                headers: { 'x-session-token': token }
-            });
-            if (!fixRes.ok) console.warn('Customer removed, but failed to re-sequence IDs silently.');
 
-            toast.success('Customer removed & IDs re-sequenced.', { id: loadingToastId });
+            toast.success('Customer removed.', { id: loadingToastId });
             setPendingDeleteCustomerId(null);
             // Broadcast stale signal so the dashboard/customer page refreshes its counter
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());

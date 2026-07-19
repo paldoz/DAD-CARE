@@ -723,13 +723,7 @@ export default function CustomerDetailPage() {
             });
             if (!res.ok) throw new Error((await res.json()).error || 'Failed');
 
-            // Auto re-sequence
-            await fetch('/api/resequence-customers', {
-                method: 'POST',
-                headers: { 'x-session-token': token }
-            });
-
-            toast.success(`${customer.name} restored to Active! IDs have been updated.`);
+            toast.success(`${customer.name} restored to Active!`);
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             window.dispatchEvent(new Event('dadwork_customers_stale'));
             mutate('/api/dashboard');

@@ -29,13 +29,13 @@ export async function POST(request: Request) {
             WHERE deleted_at IS NOT NULL AND customer_code NOT LIKE 'del_%'
         `);
 
-        // 1. Get all customers sorted by current numeric customer_code
+        // 1. Get all ACTIVE customers sorted by their ORIGINAL creation date
+        // This ensures resequence always restores the original order customers were added
         const { rows } = await client.query(`
-            SELECT id, name, customer_code
+            SELECT id, name, customer_code, created_at
             FROM "Customer"
             WHERE deleted_at IS NULL
-            ORDER BY REGEXP_REPLACE(customer_code, '[^0-9]', '', 'g')::int ASC NULLS LAST,
-                     customer_code ASC
+            ORDER BY created_at ASC, id ASC
         `);
 
         if (rows.length === 0) {
