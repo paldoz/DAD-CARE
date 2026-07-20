@@ -103,7 +103,7 @@ export async function createSession(
     );
 }
 
-export async function validateSession(token: string): Promise<{ userId: string; username: string; role: string } | null> {
+export async function validateSession(token: string): Promise<{ userId: string; username: string; role: string; assigned_customer_ids: string[] } | null> {
     try {
         await ensureTable();
         // Combine SELECT + touch last_seen_at into a single round-trip, AND join with User table to check is_active
@@ -114,7 +114,7 @@ export async function validateSession(token: string): Promise<{ userId: string; 
                 WHERE token = $1 AND expires_at > NOW()
                 RETURNING user_id, username, role
              )
-             SELECT updated.user_id, updated.username, updated.role, u.is_active 
+             SELECT updated.user_id, updated.username, updated.role, u.is_active, u.assigned_customer_ids 
              FROM updated 
              JOIN "User" u ON u.username = updated.username 
              LIMIT 1`,
@@ -129,7 +129,7 @@ export async function validateSession(token: string): Promise<{ userId: string; 
             return null;
         }
         
-        return { userId: r.user_id, username: r.username, role: r.role };
+        return { userId: r.user_id, username: r.username, role: r.role, assigned_customer_ids: r.assigned_customer_ids || [] };
     } catch {
         return null;
     }

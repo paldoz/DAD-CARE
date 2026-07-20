@@ -197,7 +197,8 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             client.release();
         }
 
-        await logAudit(request, 'ADD_LEDGER_ENTRIES', `Added receipt with new debt ${runningDebt} for customer ${customerName}`);
+        // Fire-and-forget audit log — don't block the response
+        logAudit(request, 'ADD_LEDGER_ENTRIES', `Added receipt with new debt ${runningDebt} for customer ${customerName}`).catch(() => {});
 
         try {
             // @ts-ignore
@@ -263,7 +264,7 @@ const getCachedLedger = (customerId: string, limit: number, offset: number) =>
     unstable_cache(
         async () => fetchLedgerData(customerId, limit, offset),
         ['ledger', customerId, String(limit), String(offset)],
-        { revalidate: 600, tags: ['ledger', `ledger-${customerId}`, 'customers'] }
+        { revalidate: 1800, tags: ['ledger', `ledger-${customerId}`, 'customers'] } // 30-min cache, busted on writes
     )();
 
 export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
@@ -312,8 +313,8 @@ export const DELETE = trackApiRoute('/api/ledger', async (request: Request) => {
 
         const result = await pool.query(query, params);
 
-        await logAudit(request, 'DELETE_LEDGER_ENTRIES', `Soft deleted ledger entry (ID: ${id || 'ALL'}, Customer: ${customerId || 'UNKNOWN'})`);
-
+        // Fire-and-forget audit log — don't block the response
+        logAudit(request, 'DELETE_LEDGER_ENTRIES', `Soft deleted ledger entry (ID: ${id || 'ALL'}, Customer: ${customerId || 'UNKNOWN'})`).catch(() => {});
         try {
             // @ts-ignore
             revalidateTag('customers');

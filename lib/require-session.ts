@@ -15,19 +15,19 @@ import { NextResponse } from 'next/server';
 import { validateSession } from '@/lib/sessions-store';
 
 type SessionResult =
-    | { session: { userId: string; username: string; role: string }; errorResponse: null }
+    | { session: { userId: string; username: string; role: string; assigned_customer_ids: string[] }; errorResponse: null }
     | { session: null; errorResponse: NextResponse };
 
 // ── In-memory session cache ──────────────────────────────────────────────────
 // Caches validated sessions for 60 seconds per serverless instance.
 // This prevents a database roundtrip on EVERY API call, which is the #1
 // cause of excessive Supabase connection/query usage.
-// The cache is intentionally short-lived (60s) to respect logouts and
-// kicked users within a reasonable window.
-const SESSION_CACHE_TTL_MS = 60_000; // 60 seconds
+// The cache is intentionally short-lived (5m) to respect logouts and
+// kicked users within a reasonable window, while minimizing DB hits.
+const SESSION_CACHE_TTL_MS = 300_000; // 5 minutes
 
 interface CachedSession {
-    session: { userId: string; username: string; role: string } | null;
+    session: { userId: string; username: string; role: string; assigned_customer_ids: string[] } | null;
     expiresAt: number;
 }
 

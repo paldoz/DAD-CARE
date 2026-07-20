@@ -59,7 +59,7 @@ const getDashboardData = unstable_cache(
         };
     },
     ['dashboard-data-cache'],
-    { revalidate: 60, tags: ['dashboard'] }
+    { revalidate: 600, tags: ['dashboard'] }  // 10-min cache — dashboard is read-only stats
 );
 
 export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
@@ -82,8 +82,8 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        // Cache on Vercel edge for 30s — Supabase is only queried once per 30s max
-        response.headers.set('Cache-Control', 's-maxage=30, stale-while-revalidate=60');
+        // Cache on Vercel edge for 2min — Supabase is only queried once per 10min max
+        response.headers.set('Cache-Control', 's-maxage=120, stale-while-revalidate=480');
         return response;
 
     } catch (error: any) {
