@@ -1375,7 +1375,7 @@ export default function LedgerPage() {
                                             </div>
                                             <div className="max-h-60 overflow-y-auto p-1">
                                                 {(() => {
-                                                    const filtered = sortedCustomers.filter(c => {
+                                                    const filtered = sortedCustomers.filter((c: any) => {
                                                         const matchesSearch = c.name.toLowerCase().includes(deferredCustomerSearch.toLowerCase()) || 
                                                                              c.customer_code.toLowerCase().includes(deferredCustomerSearch.toLowerCase());
                                                         if (showUnprocessedOnly) {
@@ -1386,13 +1386,13 @@ export default function LedgerPage() {
                                                         }
                                                         return matchesSearch;
                                                     });
-                                                    
+
                                                     if (filtered.length === 0) {
                                                         return <div className="p-4 text-center text-sm text-muted-foreground">No customers found.</div>;
                                                     }
 
-                                                    const starred = filtered.filter(c => priorityIds.has(c.id));
-                                                    const unstarred = filtered.filter(c => !priorityIds.has(c.id));
+                                                    const starred = filtered.filter((c: any) => priorityIds.has(c.id));
+                                                    const unstarred = filtered.filter((c: any) => !priorityIds.has(c.id));
 
                                                     const renderCustomer = (c: any) => (
                                                         <div 
@@ -1407,17 +1407,6 @@ export default function LedgerPage() {
                                                                 setCustomerSearch('');
                                                             }}
                                                         >
-                                                            {/* Clickable star icon */}
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => toggleStar(e, c.id)}
-                                                                className={cn(
-                                                                    "mr-1.5 shrink-0 rounded-md p-0.5 transition-all hover:scale-110 active:scale-95",
-                                                                    priorityIds.has(c.id) ? "text-amber-400" : "text-muted-foreground/30 hover:text-amber-400/60"
-                                                                )}
-                                                            >
-                                                                <Star className={cn("w-3.5 h-3.5", priorityIds.has(c.id) && "fill-amber-400")} />
-                                                            </button>
                                                             {c.id === lastSavedCustomerId ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (doneCustomerIds.has(c.id) || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : (c.total_books_count ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : '')))}
                                                             {c.name.toUpperCase()} (ID: {c.customer_code})
                                                             {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
