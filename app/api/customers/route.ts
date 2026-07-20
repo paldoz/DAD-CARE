@@ -406,23 +406,32 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
     const sort = searchParams.get('sort') || null;
 
     try {
+        let customers: any[] = [];
         if (isLite) {
-            const customers = await getCachedCustomersLite();
-            const res = NextResponse.json(customers);
+            const customersLite = await getCachedCustomersLite();
+            const res = NextResponse.json(customersLite);
             res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
             return res;
         }
 
         if (mode === 'ledger') {
-            const customers = await getCachedCustomersLedger();
+            customers = await getCachedCustomersLedger();
+            
+            // Only apply the ADMIN assignment filter in the Ledger page
+            if (session && session.role === 'ADMIN') {
+                const { rows: userRows } = await pool.query('SELECT assigned_customer_ids FROM "User" WHERE id = $1', [session.userId]);
+                const assignedCustomerIds = userRows[0]?.assigned_customer_ids || [];
+                customers = customers.filter((c: any) => assignedCustomerIds.includes(c.id));
+            }
+            
             const res = NextResponse.json(customers);
             res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
             return res;
         }
 
         const usernameForSort = sort === 'priority' ? session?.username : null;
-        const customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
-        const res = NextResponse.json(customers);
+        const customersFull = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
+        const res = NextResponse.json(customersFull);
         res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
         return res;
     } catch (error: any) {
