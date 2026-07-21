@@ -882,93 +882,95 @@ export default function CustomerDetailPage() {
                             {isRecovering ? 'RECOVERING...' : 'RECOVER'}
                         </Button>
                     )}
-                    <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="rounded-full gap-1 text-xs h-8 px-2.5" onClick={handleOpenEdit}>
-                                <Pencil className="w-3 h-3" /> Edit
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px] border-border shadow-2xl">
-                            <DialogHeader>
-                                <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Customer Details</DialogTitle>
-                            </DialogHeader>
-                            <div className="grid gap-6 py-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Name</Label>
-                                    <Input
-                                        id="name"
-                                        value={editName}
-                                        onChange={e => setEditName(e.target.value)}
-                                        className="h-12 font-bold"
-                                    />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
+                    {isSuperAdmin && (
+                        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" size="sm" className="rounded-full gap-1 text-xs h-8 px-2.5" onClick={handleOpenEdit}>
+                                    <Pencil className="w-3 h-3" /> Edit
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[425px] border-border shadow-2xl">
+                                <DialogHeader>
+                                    <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Customer Details</DialogTitle>
+                                </DialogHeader>
+                                <div className="grid gap-6 py-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="code" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Customer Code</Label>
+                                        <Label htmlFor="name" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Name</Label>
                                         <Input
-                                            id="code"
-                                            value={editCode}
-                                            onChange={e => setEditCode(e.target.value)}
-                                            className="h-12 font-mono font-bold"
+                                            id="name"
+                                            value={editName}
+                                            onChange={e => setEditName(e.target.value)}
+                                            className="h-12 font-bold"
                                         />
                                     </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="code" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Customer Code</Label>
+                                            <Input
+                                                id="code"
+                                                value={editCode}
+                                                onChange={e => setEditCode(e.target.value)}
+                                                className="h-12 font-mono font-bold"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="gender" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Gender</Label>
+                                            <Select value={editGender} onValueChange={setEditGender}>
+                                                <SelectTrigger className="h-12 font-bold">
+                                                    <SelectValue placeholder="Gender" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Male">Male</SelectItem>
+                                                    <SelectItem value="Female">Female</SelectItem>
+                                                    <SelectItem value="Other">Other</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="gender" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Gender</Label>
-                                        <Select value={editGender} onValueChange={setEditGender}>
-                                            <SelectTrigger className="h-12 font-bold">
-                                                <SelectValue placeholder="Gender" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="Male">Male</SelectItem>
-                                                <SelectItem value="Female">Female</SelectItem>
-                                                <SelectItem value="Other">Other</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <Label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Phone Number</Label>
+                                        <Input
+                                            id="phone"
+                                            value={editPhone}
+                                            onChange={e => setEditPhone(e.target.value)}
+                                            className="h-12 font-bold"
+                                            placeholder="+252..."
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 pt-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleOpenEdit}
+                                            className="h-8 rounded-lg font-bold text-[10px] uppercase tracking-widest border-border/60 hover:bg-muted"
+                                        >
+                                            <Pencil className="w-3 h-3 mr-1.5 text-muted-foreground" />
+                                            Edit Info
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleClearAllHistory}
+                                            className="h-8 rounded-lg font-bold text-[10px] uppercase tracking-widest border-destructive/20 text-destructive hover:bg-destructive/5 hover:border-destructive/40"
+                                        >
+                                            <RefreshCw className="w-3 h-3 mr-1.5" />
+                                            Clear All History
+                                        </Button>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="phone" className="text-xs font-black uppercase tracking-widest text-muted-foreground">Phone Number</Label>
-                                    <Input
-                                        id="phone"
-                                        value={editPhone}
-                                        onChange={e => setEditPhone(e.target.value)}
-                                        className="h-12 font-bold"
-                                        placeholder="+252..."
-                                    />
-                                </div>
-                                <div className="flex gap-2 pt-2">
+                                <DialogFooter>
                                     <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleOpenEdit}
-                                        className="h-8 rounded-lg font-bold text-[10px] uppercase tracking-widest border-border/60 hover:bg-muted"
+                                        className="w-full h-12 font-black uppercase tracking-widest"
+                                        onClick={handleUpdateCustomer}
+                                        disabled={updating}
                                     >
-                                        <Pencil className="w-3 h-3 mr-1.5 text-muted-foreground" />
-                                        Edit Info
+                                        {updating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                        Save Changes
                                     </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={handleClearAllHistory}
-                                        className="h-8 rounded-lg font-bold text-[10px] uppercase tracking-widest border-destructive/20 text-destructive hover:bg-destructive/5 hover:border-destructive/40"
-                                    >
-                                        <RefreshCw className="w-3 h-3 mr-1.5" />
-                                        Clear All History
-                                    </Button>
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    className="w-full h-12 font-black uppercase tracking-widest"
-                                    onClick={handleUpdateCustomer}
-                                    disabled={updating}
-                                >
-                                    {updating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                    Save Changes
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    )}
 
                 </div>
             </div>

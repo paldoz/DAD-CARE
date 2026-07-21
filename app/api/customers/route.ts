@@ -431,12 +431,6 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         const usernameForSort = sort === 'priority' ? session?.username : null;
         customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
         
-        // Apply the ADMIN assignment filter in the Maqalka Customer Table
-        if (session && session.role === 'ADMIN') {
-            const assignedCustomerIds = session.assigned_customer_ids || [];
-            customers = customers.filter((c: any) => assignedCustomerIds.includes(c.id));
-        }
-
         const res = NextResponse.json(customers);
         res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
         return res;

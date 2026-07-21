@@ -13,6 +13,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import useSWR from 'swr';
 import { AnimatedBackground } from '@/components/animated-background';
+import { useSession } from '@/hooks/useSession';
 
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
@@ -235,6 +236,9 @@ const buildEntryFromDailyRecord = (
 
 
 export default function LedgerPage() {
+    const { session } = useSession();
+    const isSuperAdmin = session?.role === 'SUPER_ADMIN';
+    const isAdmin = session?.role === 'ADMIN';
     const [loading, setLoading] = useState(false);
     const [fetchingDetails, setFetchingDetails] = useState(false);
     const [defaultPrice, setDefaultPrice] = useState('35');
@@ -545,20 +549,7 @@ export default function LedgerPage() {
         setFreshBalance(null);
         setOldMaqalDone(false);
 
-        // Auto-remove star when customer is selected — no manual click needed.
-        // If this customer is currently starred, unstar them automatically on selection.
-        if (priorityIds.has(customerId)) {
-            mutatePriority(
-                { priorityIds: (priorityData?.priorityIds || []).filter((id: string) => id !== customerId) },
-                false
-            );
-            fetch('/api/customer-priority', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ customerId }),
-            }).catch(() => mutatePriority()); // revert on error
-        }
+        // (Removed auto-unstar logic that was dropping priority on selection)
     };
 
     const sortedCustomers = useMemo(() => {
@@ -574,6 +565,15 @@ export default function LedgerPage() {
             return numA - numB;
         });
     }, [allCustomers, priorityIds]);
+
+    // For regular Admins: only show their own Priority customers.
+    // This is driven by the SWR-cached priorityIds which auto-updates when
+    // the Super Admin adds/removes customers from an Admin's priority list.
+    const adminVisibleCustomers = useMemo(() => {
+        if (isSuperAdmin) return sortedCustomers; // Super Admin sees everyone
+        if (isAdmin) return sortedCustomers.filter(c => priorityIds.has(c.id)); // Admin sees priority only
+        return sortedCustomers;
+    }, [isSuperAdmin, isAdmin, sortedCustomers, priorityIds]);
 
     const lastReceiptGroup = useMemo(() => {
         if (!history || history.length === 0) return null;
@@ -908,6 +908,12 @@ export default function LedgerPage() {
 
         if (!selectedCustomerId) {
             toast.error('Please select a customer');
+            return;
+        }
+
+        // Regular admins can only save transactions for their priority customers
+        if (isAdmin && !priorityIds.has(selectedCustomerId)) {
+            toast.error('Access Denied: You can only save transactions for your Priority customers.');
             return;
         }
 
@@ -1324,18 +1330,6 @@ export default function LedgerPage() {
                                                         : "Select Customer..."}
                                                 </span>
                                                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center gap-1.5">
-                                                    {selectedCustomerId && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => toggleStar(e, selectedCustomerId)}
-                                                            className={cn(
-                                                                "p-1 rounded-lg transition-all hover:scale-110 active:scale-95 pointer-events-auto",
-                                                                priorityIds.has(selectedCustomerId) ? "text-amber-400" : "text-muted-foreground/30 hover:text-amber-400/60"
-                                                            )}
-                                                        >
-                                                            <Star className={cn("w-4 h-4", priorityIds.has(selectedCustomerId) && "fill-amber-400")} />
-                                                        </button>
-                                                    )}
                                                     {fetchingDetails ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <ChevronDown className="w-4 h-4 opacity-50" />}
                                                 </div>
                                             </Button>
@@ -1375,7 +1369,7 @@ export default function LedgerPage() {
                                             </div>
                                             <div className="max-h-60 overflow-y-auto p-1">
                                                 {(() => {
-                                                    const filtered = sortedCustomers.filter((c: any) => {
+                                                    const filtered = adminVisibleCustomers.filter((c: any) => {
                                                         const matchesSearch = c.name.toLowerCase().includes(deferredCustomerSearch.toLowerCase()) || 
                                                                              c.customer_code.toLowerCase().includes(deferredCustomerSearch.toLowerCase());
                                                         if (showUnprocessedOnly) {
@@ -2117,14 +2111,20 @@ export default function LedgerPage() {
                                             </div>
                                         </div>
 
-                                        {/* Submit */}
-                                        <Button
-                                            type="submit"
-                                            disabled={loading}
-                                            className="w-full h-10 rounded-lg font-black text-xs uppercase tracking-wider shadow-md"
-                                        >
-                                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Receipt'}
-                                        </Button>
+                                        {/* Submit — Super Admin or Priority Admin only */}
+                                        {isSuperAdmin || (isAdmin && selectedCustomerId && priorityIds.has(selectedCustomerId)) ? (
+                                            <Button
+                                                type="submit"
+                                                disabled={loading}
+                                                className="w-full h-10 rounded-lg font-black text-xs uppercase tracking-wider shadow-md"
+                                            >
+                                                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Receipt'}
+                                            </Button>
+                                        ) : (
+                                            <div className="w-full h-10 rounded-lg border border-border/40 bg-muted/30 flex items-center justify-center text-[11px] font-bold text-muted-foreground uppercase tracking-wider gap-2">
+                                                <Lock className="w-3.5 h-3.5" /> View Only — Priority Required
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </form>
@@ -2143,13 +2143,19 @@ export default function LedgerPage() {
                                 ${Math.round(finalLacagtaGuud).toLocaleString()}
                             </p>
                         </div>
-                        <Button
-                            onClick={handleSubmit}
-                            disabled={loading}
-                            className="h-14 px-8 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-primary/20"
-                        >
-                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Receipt'}
-                        </Button>
+                        {isSuperAdmin || (isAdmin && selectedCustomerId && priorityIds.has(selectedCustomerId)) ? (
+                            <Button
+                                onClick={handleSubmit}
+                                disabled={loading}
+                                className="h-14 px-8 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-primary/20"
+                            >
+                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Receipt'}
+                            </Button>
+                        ) : (
+                            <div className="h-14 px-5 rounded-xl border border-border/30 bg-muted/30 flex items-center justify-center text-[10px] font-bold text-muted-foreground uppercase tracking-wider gap-1.5">
+                                <Lock className="w-3.5 h-3.5" /> View Only
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

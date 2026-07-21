@@ -1283,7 +1283,7 @@ export default function SettingsPage() {
                             <Palette className="w-3.5 h-3.5 text-violet-500" />
                             Theme
                         </TabsTrigger>
-                        {isAnyAdmin && (
+                        {isSuperAdmin && (
                             <TabsTrigger
                                 value="backup"
                                 className="flex-1 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md rounded-xl text-[11px] font-bold py-2.5 px-1 gap-1.5 transition-all"
