@@ -1374,17 +1374,8 @@ export default function LedgerPage() {
                                                         return <div className="p-4 text-center text-sm text-muted-foreground">No customers found.</div>;
                                                     }
 
-                                                    if (!isSuperAdmin) {
-                                                        return (
-                                                            <>
-                                                                {filtered.map(c => renderCustomer(c))}
-                                                            </>
-                                                        );
-                                                    }
-
-                                                    const starred = filtered.filter((c: any) => priorityIds.has(c.id));
-                                                    const unstarred = filtered.filter((c: any) => !priorityIds.has(c.id));
-
+                                                    // CRITICAL: renderCustomer MUST be defined before it is called below.
+                                                    // Defining it after the isSuperAdmin guard caused a Temporal Dead Zone crash.
                                                     const renderCustomer = (c: any) => (
                                                         <div 
                                                             key={c.id}
@@ -1403,6 +1394,17 @@ export default function LedgerPage() {
                                                             {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
                                                         </div>
                                                     );
+
+                                                    if (!isSuperAdmin) {
+                                                        return (
+                                                            <>
+                                                                {filtered.map(c => renderCustomer(c))}
+                                                            </>
+                                                        );
+                                                    }
+
+                                                    const starred = filtered.filter((c: any) => priorityIds.has(c.id));
+                                                    const unstarred = filtered.filter((c: any) => !priorityIds.has(c.id));
 
                                                     return (
                                                         <>
