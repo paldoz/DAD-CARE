@@ -1354,18 +1354,7 @@ export default function LedgerPage() {
                                                 >
                                                     ⏳ Dhiman ({unprocessedCustomersCount})
                                                 </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant={showPriorityOnly ? "default" : "outline"}
-                                                    onClick={() => setShowPriorityOnly(!showPriorityOnly)}
-                                                    className={cn(
-                                                        "h-9 px-2 text-[10px] font-black uppercase tracking-tight gap-1 shrink-0 rounded-xl transition-all border-amber-400/40 text-amber-400 hover:bg-amber-400/10",
-                                                        showPriorityOnly && "bg-amber-400 text-amber-950 hover:bg-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.4)]"
-                                                    )}
-                                                >
-                                                    <Star className="w-3 h-3 fill-current" />
-                                                    ({priorityIds.size})
-                                                </Button>
+
                                             </div>
                                             <div className="max-h-60 overflow-y-auto p-1">
                                                 {(() => {
@@ -1383,6 +1372,14 @@ export default function LedgerPage() {
 
                                                     if (filtered.length === 0) {
                                                         return <div className="p-4 text-center text-sm text-muted-foreground">No customers found.</div>;
+                                                    }
+
+                                                    if (!isSuperAdmin) {
+                                                        return (
+                                                            <>
+                                                                {filtered.map(c => renderCustomer(c))}
+                                                            </>
+                                                        );
                                                     }
 
                                                     const starred = filtered.filter((c: any) => priorityIds.has(c.id));
@@ -1414,13 +1411,13 @@ export default function LedgerPage() {
                                                                     <div className="px-2 py-1.5 text-xs font-black uppercase text-amber-500 bg-amber-500/8 mt-1 mb-1 first:mt-0 flex items-center gap-1">
                                                                         <Star className="w-3 h-3 fill-amber-500" /> Priority
                                                                     </div>
-                                                                    {starred.map(c => renderCustomer(c))}
+                                                                    {starred.map(renderCustomer)}
                                                                 </>
                                                             )}
                                                             {unstarred.length > 0 && (
                                                                 <>
                                                                     {starred.length > 0 && <div className="px-2 py-1.5 text-xs font-black uppercase text-muted-foreground bg-muted/50 mt-2 mb-1">Other Customers</div>}
-                                                                    {unstarred.map(c => renderCustomer(c))}
+                                                                    {unstarred.map(renderCustomer)}
                                                                 </>
                                                             )}
                                                         </>
