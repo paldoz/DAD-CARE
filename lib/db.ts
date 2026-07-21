@@ -19,17 +19,20 @@ if (!globalThis.pool) {
         connectionString,
         ssl: { rejectUnauthorized: false }, 
         
-        // PERFORMANCE FIX: Increased max connections from 1 to 20.
-        // Node.js serverless functions (Vercel/Netlify) can handle concurrent requests.
-        // Limiting to 1 means concurrent requests from 5 admins get queued, causing lag.
-        max: 20, 
+        // VERCEL / SERVERLESS OPTIMIZATION:
+        // Set max connections low (5) per lambda instance. Vercel scales by spinning up 
+        // more lambdas, so keeping this low prevents exhausting the Supabase pooler.
+        max: 5, 
         
-        // Keep connections alive for 10 seconds to avoid thrashing (frequent reconnects) 
-        // while the 5 admins are actively working.
-        idleTimeoutMillis: 10000,
+        // CRITICAL ZOMBIE CONNECTION FIX: 
+        // Vercel serverless functions instantly "freeze" as soon as they send an HTTP response.
+        // If we keep connections open here, they turn into "Zombies" on Supabase's end until TCP timeout.
+        // We set idleTimeoutMillis to 100ms so the connection gracefully closes right after the query,
+        // letting the Supabase Transaction Pooler (Port 6543) handle keeping the actual DB connection warm.
+        idleTimeoutMillis: 100,
         connectionTimeoutMillis: 10000,
         
-        // Allow the Node.js event loop to exit even if a DB connection is technically idle.
+        // Allow the Node.js event loop to exit immediately
         allowExitOnIdle: true,
     });
 }
