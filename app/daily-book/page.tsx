@@ -895,6 +895,7 @@ return (
                                                             </form>
                                                         </PopoverContent>
                                                     </Popover>
+                                                ) : (
                                                     <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors flex items-center gap-1">
                                                         #{customer.customer_code}
                                                         {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
