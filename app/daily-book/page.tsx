@@ -846,7 +846,7 @@ return (
                                                         if (o) setReorderTargetId('');
                                                     }}>
                                                         <PopoverTrigger asChild>
-                                                            <button className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 hover:text-primary transition-colors cursor-pointer flex items-center gap-1">
+                                                            <button className={`text-[10px] md:text-[11px] font-mono font-bold hover:text-primary transition-colors cursor-pointer flex items-center gap-1 ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>
                                                                 #{customer.customer_code}
                                                                 {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
                                                                 {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
@@ -896,7 +896,7 @@ return (
                                                         </PopoverContent>
                                                     </Popover>
                                                 ) : (
-                                                    <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors flex items-center gap-1">
+                                                    <span className={`text-[10px] md:text-[11px] font-mono font-bold group-hover:text-primary transition-colors flex items-center gap-1 ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>
                                                         #{customer.customer_code}
                                                         {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
                                                         {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
@@ -914,7 +914,7 @@ return (
                                             </div>
                                             <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
                                                 <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
-                                                    <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
+                                                    <span className={`font-bold text-[11px] md:text-sm uppercase truncate ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
                                                         {customer.name}
                                                     </span>
                                                     {entries[customer.id]?.kg > 0 && (
