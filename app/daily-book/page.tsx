@@ -1657,6 +1657,51 @@ return (
                 </div>
             )}
 
+            {/* Kabarka popup */}
+            {kabarkaPopupData && (
+                <div
+                    className="daily-popup-backdrop"
+                    onClick={() => setKabarkaPopupData(null)}
+                >
+                    <div className="daily-popup-card" onClick={(e) => e.stopPropagation()}>
+                        {/* accent strip top */}
+                        <div className="daily-popup-strip bg-slate-500" />
+                        {/* header */}
+                        <div className="daily-popup-header">
+                            <div>
+                                <p className="daily-popup-title text-slate-600 dark:text-slate-300">➖ Kabarka Macaamiisha</p>
+                                <p className="daily-popup-sub">
+                                    {format(new Date(kabarkaPopupData.date), 'MMM dd, yyyy')}
+                                    <span className="daily-popup-count bg-slate-500 text-white border-slate-600">{kabarkaPopupData.items.length}</span>
+                                </p>
+                            </div>
+                            <button className="daily-popup-close" onClick={() => setKabarkaPopupData(null)}>
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        {/* list */}
+                        <div className="daily-popup-list">
+                            {kabarkaPopupData.items.map((item, idx) => (
+                                <div key={idx} className="daily-popup-item bg-slate-500/5 border border-slate-500/10" style={{ animationDelay: `${idx * 35}ms` }}>
+                                    <div className="daily-popup-avatar bg-slate-500 text-white shadow-sm">
+                                        {item.customer?.name?.charAt(0)?.toUpperCase() || '?'}
+                                    </div>
+                                    <div className="daily-popup-info">
+                                        <p className="daily-popup-name">{item.customer?.name || 'Unknown'}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase">#{item.customer?.customer_code || '—'}</span>
+                                            <span className="daily-popup-badge bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20">{item.kg} KG</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {/* shimmer footer */}
+                        <div className="daily-popup-shimmer" />
+                    </div>
+                </div>
+            )}
+
             {/* Isbarbardhig (Compare) Modal */}
             {compareModalOpen && (() => {
                 // Auto-select dates if none selected
