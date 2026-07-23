@@ -43,18 +43,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         return () => unsub();
     }, [pathname, router]);
 
-    // Secret Background Fetcher for Data (Run ONCE per session mount)
-    useEffect(() => {
-        if (!currentUser) return;
-        if (currentUser.role !== 'SUPER_ADMIN' && currentUser.role !== 'ADMIN') return;
-        // Prevent re-running on every page navigation — only fetch once after login
-        if (hasFetchedAdminDataRef.current) return;
-        hasFetchedAdminDataRef.current = true;
-
-        const fetchBackgroundStats = async () => {
-            const token = localStorage.getItem('dadwork_session_token') || '';
-            if (!token) return;
-    // Disabled background pre-fetching to save massive amounts of bandwidth
+    // ── Global Heartbeat Completely Disabled ──
+    // Eliminates all background egress and network calls
     useEffect(() => {
         // Disabled to guarantee 0.00 Egress in background.
     }, [currentUser]);
