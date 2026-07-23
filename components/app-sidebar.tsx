@@ -62,7 +62,7 @@ export function AppSidebar() {
         await logout();
         // Note: supabase.auth.signOut() removed — this app uses a custom session system,
         // not Supabase Auth, so the call was hitting the Supabase Auth API unnecessarily.
-        router.push('/login');
+        window.location.href = '/login';
     };
 
 

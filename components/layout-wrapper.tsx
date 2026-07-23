@@ -119,7 +119,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         await logout();
         // Note: supabase.auth.signOut() removed — this app uses a custom session system,
         // not Supabase Auth, so the call was hitting the Auth API unnecessarily.
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     const isLoginPage = pathname === '/login';

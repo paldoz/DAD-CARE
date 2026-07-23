@@ -46,7 +46,7 @@ export function MobileNav() {
     const handleLogout = async () => {
         await logout();
         await supabase.auth.signOut();
-        router.push('/login');
+        window.location.href = '/login';
     };
 
     const isMoreActive = moreItems.some(
