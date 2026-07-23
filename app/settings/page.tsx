@@ -1574,7 +1574,7 @@ export default function SettingsPage() {
                                                     className="flex h-10 w-full sm:w-1/2 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                                 >
                                                     <option value="" disabled>Select Customer...</option>
-                                                    {customers.map(c => (
+                                                    {allCustomers.map(c => (
                                                         <option key={c.id} value={c.id}>
                                                             #{c.customer_code} - {c.name}
                                                         </option>
@@ -1606,7 +1606,7 @@ export default function SettingsPage() {
                                                         <div key={date} className="space-y-1.5">
                                                             <div className="text-xs font-bold text-muted-foreground ml-1">{date}</div>
                                                             {Object.entries(overrides).map(([custId, price]) => {
-                                                                const cust = customers.find(c => c.id === custId);
+                                                                const cust = allCustomers.find(c => c.id === custId);
                                                                 return (
                                                                     <div key={custId} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/40 hover:border-purple-500/30 transition-colors">
                                                                         <div className="flex items-center gap-3">
