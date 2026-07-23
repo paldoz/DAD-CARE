@@ -9,7 +9,7 @@ const getDailyBookInit = unstable_cache(
     async () => {
         // Fetch customers sorted by their numeric customer_code (so #1 comes before #2, etc.)
         const { rows: customers } = await pool.query(`
-          SELECT id, name, customer_code
+          SELECT id, name, customer_code, is_kabarka, is_unassignable
           FROM "Customer"
           WHERE deleted_at IS NULL
           ORDER BY 
