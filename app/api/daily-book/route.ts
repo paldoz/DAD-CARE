@@ -64,7 +64,7 @@ export const GET = trackApiRoute('/api/daily-book', async (request: Request) => 
         );
 
         const res = NextResponse.json({ ...book, items, totalCount, page, pageSize });
-        res.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+        res.headers.set('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
         return res;
     } catch (error: any) {
         console.error('Fetch Book Error:', error);

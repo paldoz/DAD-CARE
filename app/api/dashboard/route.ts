@@ -18,7 +18,7 @@ const getDashboardData = unstable_cache(
                     ORDER BY customer_id, created_at DESC, id DESC
                 )
                 SELECT 
-                    (SELECT count(*)::int FROM "Customer" WHERE deleted_at IS NULL) as total_customers,
+                    (SELECT count(*)::int FROM "Customer" WHERE deleted_at IS NULL AND is_kabarka = false) as total_customers,
                     (SELECT COALESCE(SUM(CASE WHEN new_debt > 0 THEN new_debt ELSE 0 END), 0)::float FROM latest_ledger) as total_debt,
                     (SELECT ABS(COALESCE(SUM(CASE WHEN new_debt < 0 THEN new_debt ELSE 0 END), 0))::float FROM latest_ledger) as total_reesto,
                     (SELECT COALESCE(SUM(amount), 0)::float FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL) as total_paid,

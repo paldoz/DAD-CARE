@@ -28,6 +28,8 @@ interface Customer {
     gender?: string;
     phone?: string;
     avatar_url?: string;
+    is_kabarka?: boolean;
+    is_unassignable?: boolean;
 }
 
 interface DailyBookItem {
@@ -41,6 +43,8 @@ interface DailyBookItem {
         customer_code: string;
         gender?: string;
         avatar_url?: string;
+        is_kabarka?: boolean;
+        is_unassignable?: boolean;
     };
 }
 
@@ -252,6 +256,25 @@ function DailyBookPageInner() {
 
 
 
+    const handleToggleStatus = async (customerId: string, field: 'is_unassignable' | 'is_kabarka', value: boolean, e?: React.FormEvent) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        setIsReordering(true);
+        try {
+            const res = await fetch('/api/customers/toggle-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId, field, value })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to toggle status');
+            toast.success(`Successfully updated ${field === 'is_kabarka' ? 'Kabarka' : 'Assignment'} status!`);
+            setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
+        } catch (err: any) {
+            toast.error(err.message);
+            setIsReordering(false);
+        }
+    };
+
     const handleReorderCustomer = async (customerId: string, e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!reorderTargetId.trim()) return;
@@ -267,10 +290,9 @@ function DailyBookPageInner() {
             toast.success('Customer reordered successfully!');
             setReorderOpenForId(null);
             setReorderTargetId('');
-            window.location.reload(); // Hard refresh to instantly apply DB sorting
+            setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
         } catch (err: any) {
             toast.error(err.message);
-        } finally {
             setIsReordering(false);
         }
     };
@@ -824,11 +846,39 @@ return (
                                                         if (o) setReorderTargetId('');
                                                     }}>
                                                         <PopoverTrigger asChild>
-                                                            <button className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 hover:text-primary transition-colors cursor-pointer">
+                                                            <button className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 hover:text-primary transition-colors cursor-pointer flex items-center gap-1">
                                                                 #{customer.customer_code}
+                                                                {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
+                                                                {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
                                                             </button>
                                                         </PopoverTrigger>
-                                                        <PopoverContent side="right" className="w-auto p-2 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100]">
+                                                        <PopoverContent side="right" className="w-auto p-3 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100] flex flex-col gap-3">
+                                                            <div className="flex flex-col gap-2 border-b border-border/50 pb-3">
+                                                                <div className="flex items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-xs">🚷</span>
+                                                                        <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Hide from Assignments</span>
+                                                                    </div>
+                                                                    <Switch 
+                                                                        checked={!!customer.is_unassignable} 
+                                                                        onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_unassignable', checked)}
+                                                                        disabled={isReordering}
+                                                                        className="scale-75 origin-right"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-xs">➖</span>
+                                                                        <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Kabarka Mode (Extra)</span>
+                                                                    </div>
+                                                                    <Switch 
+                                                                        checked={!!customer.is_kabarka} 
+                                                                        onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_kabarka', checked)}
+                                                                        disabled={isReordering}
+                                                                        className="scale-75 origin-right"
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                             <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2">
                                                                 <span className="text-xs font-bold text-muted-foreground ml-1">Move to #</span>
                                                                 <Input 
@@ -845,8 +895,11 @@ return (
                                                             </form>
                                                         </PopoverContent>
                                                     </Popover>
-                                                ) : (
-                                                    <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors">#{customer.customer_code}</span>
+                                                    <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors flex items-center gap-1">
+                                                        #{customer.customer_code}
+                                                        {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
+                                                        {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
+                                                    </span>
                                                 )}
                                                 {isSuperAdmin && (
                                                     <button
@@ -1333,6 +1386,17 @@ return (
                                                                         >
                                                                             ⚠️ Inta Maqan: {absentItems.length}
                                                                         </button>
+                                                                    );
+                                                                })()}
+
+                                                                {/* 3.5 Kabarka Status */}
+                                                                {(() => {
+                                                                    const kabarkaItems = entry.items.filter(i => i.customer?.is_kabarka && i.kg > 0);
+                                                                    if (kabarkaItems.length === 0) return null;
+                                                                    return (
+                                                                        <span className="inline-flex items-center gap-1 bg-slate-500/10 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wide border border-slate-500/20 shrink-0">
+                                                                            ➖ Kabarka: {kabarkaItems.reduce((s, i) => s + i.kg, 0)}kg
+                                                                        </span>
                                                                     );
                                                                 })()}
 

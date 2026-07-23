@@ -310,7 +310,7 @@ const getCachedCustomersLite = unstable_cache(
         // Old query ran 1 extra DB query per customer (e.g. 50 customers = 50 extra queries).
         const query = `
             SELECT 
-                c.id, c.name, c.customer_code, c.phone,
+                c.id, c.name, c.customer_code, c.phone, c.is_kabarka, c.is_unassignable,
                 COALESCE(lb.new_debt, 0)::float as current_balance,
                 CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive
             FROM "Customer" c
@@ -346,7 +346,7 @@ const getCachedCustomersLedger = unstable_cache(
                     )::int * '1 day'::interval)::date AS date2
             )
             SELECT
-                c.id, c.name, c.customer_code,
+                c.id, c.name, c.customer_code, c.is_kabarka, c.is_unassignable,
                 CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
                 COALESCE(dbk.total_books_count, 0) as total_books_count,
                 CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,

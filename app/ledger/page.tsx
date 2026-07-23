@@ -260,7 +260,7 @@ export default function LedgerPage() {
         keepPreviousData: true,
         revalidateIfStale: true
     });
-    const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive);
+    const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive && !c.is_unassignable);
     
     // Form state
     const [selectedCustomerId, setSelectedCustomerId] = useState('');

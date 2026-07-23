@@ -1199,6 +1199,7 @@ export default function SettingsPage() {
 
     const filteredCustomers = allCustomers.filter(c =>
         !assignedToOthers.has(c.id) &&
+        !c.is_unassignable &&
         (c.name?.toLowerCase().includes(searchCustomer.toLowerCase()) ||
             c.customer_code?.toLowerCase().includes(searchCustomer.toLowerCase()))
     );

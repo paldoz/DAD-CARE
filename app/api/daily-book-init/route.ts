@@ -51,7 +51,7 @@ export const GET = trackApiRoute('/api/daily-book-init', async (request: Request
         const response = NextResponse.json(data);
         // Allow edge/browser to serve stale for up to 10 min while revalidating in bg.
         // Customers list + latestDate change infrequently — this saves a DB hit on every page load.
-        response.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=600');
+        response.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=600');
         return response;
     } catch (error: any) {
         console.error('Daily Book Init Error:', error);

@@ -22,6 +22,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
+import { Switch } from '@/components/ui/switch';
 import { AnimatedBackground } from '@/components/animated-background';
 
 const fetcher = async (url: string) => {
@@ -49,6 +50,8 @@ interface Customer {
     phone?: string;
     avatar_url?: string;
     is_inactive?: boolean;
+    is_kabarka?: boolean;
+    is_unassignable?: boolean;
 }
 
 export default function CustomersPage() {
@@ -225,6 +228,25 @@ export default function CustomersPage() {
         finally { setManagingCustomerId(null); }
     };
 
+    const handleToggleStatus = async (customerId: string, field: 'is_unassignable' | 'is_kabarka', value: boolean, e?: React.FormEvent) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        setIsReordering(true);
+        try {
+            const res = await fetch('/api/customers/toggle-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId, field, value })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to toggle status');
+            toast.success(`Successfully updated ${field === 'is_kabarka' ? 'Kabarka' : 'Assignment'} status!`);
+            setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
+        } catch (err: any) {
+            toast.error(err.message);
+            setIsReordering(false);
+        }
+    };
+
     const handleReorderCustomer = async (customerId: string, e?: React.FormEvent) => {
         if (e) {
             e.preventDefault();
@@ -243,10 +265,9 @@ export default function CustomersPage() {
             toast.success('Customer reordered successfully!');
             setReorderOpenForId(null);
             setReorderTargetId('');
-            window.location.reload(); // Hard refresh to instantly apply DB sorting
+            setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
         } catch (err: any) {
             toast.error(err.message);
-        } finally {
             setIsReordering(false);
         }
     };
@@ -295,8 +316,8 @@ export default function CustomersPage() {
     // Backend now handles all filtering and sorting!
     const filteredCustomers = customers;
 
-    const activeCustomers = customers.filter(c => !(c as any).is_inactive);
-    const inactiveCustomers = customers.filter(c => (c as any).is_inactive);
+    const activeCustomers = customers.filter((c: any) => !c.is_inactive && !c.is_kabarka);
+    const inactiveCustomers = customers.filter((c: any) => c.is_inactive);
 
     return (
         <div className="space-y-4 max-w-2xl mx-auto px-1 md:px-0" suppressHydrationWarning>
@@ -554,7 +575,7 @@ export default function CustomersPage() {
                     </div>
                 ) : (
                     <div className="divide-y divide-border/30">
-                        {customers.map((customer, index) => {
+                        {customers.map((customer: any, index: number) => {
                             const isMale = customer.gender === 'Male';
                             const isFemale = customer.gender === 'Female';
                             const accentColor = isMale ? 'text-blue-400' : isFemale ? 'text-pink-400' : 'text-primary';
@@ -636,12 +657,40 @@ export default function CustomersPage() {
                                                         if (o) setReorderTargetId('');
                                                     }}>
                                                         <PopoverTrigger asChild>
-                                                            <button className="text-[10px] font-bold text-muted-foreground/70 hover:text-primary transition-colors cursor-pointer">
+                                                            <button className="text-[10px] font-bold text-muted-foreground/70 hover:text-primary transition-colors cursor-pointer flex items-center gap-1">
                                                                 #{customer.customer_code}
+                                                                {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
+                                                                {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
                                                             </button>
                                                         </PopoverTrigger>
-                                                        <PopoverContent side="right" className="w-auto p-2 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100]">
-                                                            <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2">
+                                                        <PopoverContent side="right" className="w-auto p-3 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100] flex flex-col gap-3">
+                                                            <div className="flex flex-col gap-2 border-b border-border/50 pb-3" onClick={e => e.stopPropagation()}>
+                                                                <div className="flex items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-xs">🚷</span>
+                                                                        <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Hide from Assignments</span>
+                                                                    </div>
+                                                                    <Switch 
+                                                                        checked={!!customer.is_unassignable} 
+                                                                        onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_unassignable', checked)}
+                                                                        disabled={isReordering}
+                                                                        className="scale-75 origin-right"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex items-center justify-between gap-4">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-xs">➖</span>
+                                                                        <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Kabarka Mode (Extra)</span>
+                                                                    </div>
+                                                                    <Switch 
+                                                                        checked={!!customer.is_kabarka} 
+                                                                        onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_kabarka', checked)}
+                                                                        disabled={isReordering}
+                                                                        className="scale-75 origin-right"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                            <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                                                                 <span className="text-xs font-bold text-muted-foreground ml-1">Move to #</span>
                                                                 <Input 
                                                                     autoFocus 
