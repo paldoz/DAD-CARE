@@ -54,53 +54,9 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         const fetchBackgroundStats = async () => {
             const token = localStorage.getItem('dadwork_session_token') || '';
             if (!token) return;
-            try {
-                // Prefetch online sessions silently
-                fetch('/api/admin-sessions', { credentials: 'include' })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.online) localStorage.setItem('dadwork_online_sessions', JSON.stringify(data.online));
-                    }).catch(() => { });
-
-                // Prefetch audit stats silently if SUPER_ADMIN
-                if (currentUser.role === 'SUPER_ADMIN') {
-                    fetch('/api/audit-logs?limit=1&stats=true', { credentials: 'include' })
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.userStats) localStorage.setItem('dadwork_audit_stats', JSON.stringify(data.userStats));
-                        }).catch(() => { });
-                }
-            } catch (e) { }
-        };
-        fetchBackgroundStats();
-    }, [currentUser]);
-
-    // ── Global Heartbeat (Active on all pages) ──
+    // Disabled background pre-fetching to save massive amounts of bandwidth
     useEffect(() => {
-        if (!currentUser) return;
-        
-        const ping = () => {
-            if (document.hidden) return; // Save egress and Vercel usage when tab is hidden
-            fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => { });
-        };
-        
-        // Fire once immediately on load so they appear online right away
-        ping();
-        
-        // The backend marks sessions offline after 5 mins. 
-        // We ping every 4 mins (240_000 ms) to safely keep it alive.
-        const heartbeat = setInterval(ping, 240_000);
-        
-        // Wake up immediately if the user returns to the tab
-        const handleVisibilityChange = () => {
-            if (!document.hidden) ping();
-        };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        
-        return () => {
-            clearInterval(heartbeat);
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
+        // Disabled to guarantee 0.00 Egress in background.
     }, [currentUser]);
 
     // Close popup when clicking outside

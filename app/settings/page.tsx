@@ -467,56 +467,15 @@ export default function SettingsPage() {
                 loadAuditLogs(auditFiltersRef.current.user, auditFiltersRef.current.action, true, true);
                 loadOnlineSessions(true); // force-load fresh on page open
 
-                // ── Heartbeat: marks THIS user as online every 2 min ────────────────
-                const sendHeartbeat = () => {
-                    fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => {});
-                };
-                sendHeartbeat(); // immediate heartbeat on load
-                const heartbeatInterval = setInterval(sendHeartbeat, 5 * 60 * 1000); // ⚡ 5min — saves Supabase/Vercel calls
-
-                // ── Smart audit-log polling ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-                // Every 60s: call ?check=1 (≈2 numbers, ~50 bytes from Vercel Edge cache).
-                // Only if latestId changed do we fire the full 50-row query.
-                // If the tab is hidden, we skip entirely — zero wasted DB calls.
-                let lastKnownLatestId: string | null = null;
-
-                const checkForNewLogs = async () => {
-                    if (document.hidden) return; // Tab is backgrounded — skip
-                    try {
-                        const res = await fetch('/api/audit-logs?check=1', { credentials: 'include' });
-                        if (!res.ok) return;
-                        const { latestId } = await res.json();
-                        if (latestId && latestId !== lastKnownLatestId) {
-                            lastKnownLatestId = latestId;
-                            // New entry detected — now fetch the full list (silent, no spinner)
-                            loadAuditLogs(auditFiltersRef.current.user, auditFiltersRef.current.action, true, false);
-                        }
-                    } catch { /* network hiccup — ignore */ }
-                };
-
-                // Also refresh immediately when tab becomes visible again
-                const onVisibilityChange = () => {
-                    if (!document.hidden) checkForNewLogs();
-                };
-                document.addEventListener('visibilitychange', onVisibilityChange);
-
-                const auditPoll = setInterval(checkForNewLogs, 300000); // ⚡ 5min — was 1min, saves ~80% of audit polls
-
-                return () => {
-                    clearInterval(auditPoll);
-                    clearInterval(heartbeatInterval);
-                    document.removeEventListener('visibilitychange', onVisibilityChange);
-                };
+                // ── Heartbeat and Polling Completely Disabled to conserve Egress ──
+                // User must manually hit "Refresh" buttons to see live data.
+                
+                return () => {};
             } else if (parsedUser.role === 'ADMIN') {
                 loadOnlineSessions(true); // force-load fresh on page open
-
-                // ── Heartbeat for ADMIN too ───────────────────────────────────────
-                const sendHeartbeat = () => {
-                    fetch('/api/admin-sessions', { method: 'POST', credentials: 'include' }).catch(() => {});
-                };
-                sendHeartbeat();
-                const heartbeatInterval = setInterval(sendHeartbeat, 5 * 60 * 1000); // ⚡ 5min — saves Supabase/Vercel calls
-                return () => clearInterval(heartbeatInterval);
+                
+                // ── Heartbeat Completely Disabled ──
+                return () => {};
             }
         }
     }, []);
