@@ -22,7 +22,7 @@ export const GET = trackApiRoute('/api/settings', async (request: Request) => {
         }, {});
 
         const res = NextResponse.json(settings);
-        res.headers.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+        res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return res;
     } catch (error: any) {
         console.error('Settings GET Error:', error);

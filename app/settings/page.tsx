@@ -154,7 +154,8 @@ export default function SettingsPage() {
     }, [maqalPairDates]);
 
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
-    const [newOverride, setNewOverride] = useState({ date: allowedDates[0], customerId: '', price: '' });
+    const [newOverride, setNewOverride] = useState<{date: string, customerIds: string[], price: string}>({ date: allowedDates[0], customerIds: [], price: '' });
+    const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [dateActionLoading, setDateActionLoading] = useState<string | null>(null);
     const [resequenceLoading, setResequenceLoading] = useState(false);
@@ -841,16 +842,10 @@ export default function SettingsPage() {
         
         let updated = { ...dateSpecificPrices, [newDatePrice.date]: newDatePrice.price };
         
-        // Prune older dates so it's strictly limited to the allowed dates
-        const pruned: Record<string, string> = {};
-        allowedDates.forEach(d => {
-             if (updated[d]) pruned[d] = updated[d];
-        });
-        
-        handleSaveDatePrice(pruned, 'add');
+        handleSaveDatePrice(updated, 'add');
         
         // After adding, auto-switch the dropdown to the OTHER date if it's not added yet
-        const otherDate = allowedDates.find(d => d !== newDatePrice.date && !pruned[d]);
+        const otherDate = allowedDates.find(d => d !== newDatePrice.date && !updated[d]);
         setNewDatePrice({ date: otherDate || allowedDates[0], price: '' });
     };
 
@@ -889,8 +884,8 @@ export default function SettingsPage() {
     };
 
     const handleAddOverride = () => {
-        if (!newOverride.date || !newOverride.customerId || !newOverride.price) {
-            toast.error('Please enter date, customer, and price');
+        if (!newOverride.date || newOverride.customerIds.length === 0 || !newOverride.price) {
+            toast.error('Please enter date, select at least one customer, and price');
             return;
         }
         if (!allowedDates.includes(newOverride.date)) {
@@ -904,22 +899,24 @@ export default function SettingsPage() {
         }
 
         const dateMap = { ...(dateSpecificOverrides[newOverride.date] || {}) };
-        if (dateMap[newOverride.customerId]) {
-             toast.error('This customer already has an override for this date.');
-             return;
+        
+        let hasConflict = false;
+        newOverride.customerIds.forEach(id => {
+            if (dateMap[id]) {
+                hasConflict = true;
+            }
+            dateMap[id] = newOverride.price;
+        });
+
+        if (hasConflict) {
+             toast.warning('Overwriting existing price overrides for one or more selected customers.');
         }
-        dateMap[newOverride.customerId] = newOverride.price;
 
         let updated = { ...dateSpecificOverrides, [newOverride.date]: dateMap };
 
-        // Prune older dates so it's strictly limited to the allowed dates
-        const pruned: Record<string, Record<string, string>> = {};
-        allowedDates.forEach(d => {
-             if (updated[d]) pruned[d] = updated[d];
-        });
-
-        handleSaveDateOverrides(pruned, 'add-override');
-        setNewOverride({ ...newOverride, customerId: '', price: '' });
+        handleSaveDateOverrides(updated, 'add-override');
+        setNewOverride({ ...newOverride, customerIds: [], price: '' });
+        setIsCustomerSelectOpen(false);
     };
 
     const handleRemoveOverride = (date: string, customerId: string) => {
@@ -1501,9 +1498,9 @@ export default function SettingsPage() {
                                                 </Button>
                                             </div>
 
-                                            {Object.entries(dateSpecificPrices).length > 0 ? (
+                                            {Object.entries(dateSpecificPrices).filter(([date]) => allowedDates.includes(date)).length > 0 ? (
                                                 <div className="space-y-1.5">
-                                                    {Object.entries(dateSpecificPrices).sort((a, b) => b[0].localeCompare(a[0])).map(([date, price]) => (
+                                                    {Object.entries(dateSpecificPrices).filter(([date]) => allowedDates.includes(date)).sort((a, b) => b[0].localeCompare(a[0])).map(([date, price]) => (
                                                         <div key={date} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/40 hover:border-blue-500/30 transition-colors">
                                                             <div className="flex items-center gap-3">
                                                                 <span className="text-xs font-bold text-foreground bg-muted px-2 py-1 rounded-md">{date}</span>
@@ -1568,18 +1565,39 @@ export default function SettingsPage() {
                                                     </optgroup>
                                                 </select>
 
-                                                <select 
-                                                    value={newOverride.customerId} 
-                                                    onChange={e => setNewOverride({ ...newOverride, customerId: e.target.value })}
-                                                    className="flex h-10 w-full sm:w-1/2 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                                >
-                                                    <option value="" disabled>Select Customer...</option>
-                                                    {allCustomers.map(c => (
-                                                        <option key={c.id} value={c.id}>
-                                                            #{c.customer_code} - {c.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className="relative w-full sm:w-1/2">
+                                                    <div 
+                                                        className="flex h-10 w-full items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs text-muted-foreground cursor-pointer"
+                                                        onClick={() => setIsCustomerSelectOpen(!isCustomerSelectOpen)}
+                                                    >
+                                                        {newOverride.customerIds.length === 0 
+                                                            ? 'Select Customers...' 
+                                                            : `${newOverride.customerIds.length} customer${newOverride.customerIds.length > 1 ? 's' : ''} selected`}
+                                                        <ChevronDown className="w-4 h-4 opacity-50" />
+                                                    </div>
+                                                    
+                                                    {isCustomerSelectOpen && (
+                                                        <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border/50 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto p-2 space-y-1">
+                                                            {allCustomers.map(c => (
+                                                                <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        className="rounded border-border/50 text-purple-600 focus:ring-purple-500 w-4 h-4 bg-background/50"
+                                                                        checked={newOverride.customerIds.includes(c.id)}
+                                                                        onChange={(e) => {
+                                                                            if (e.target.checked) {
+                                                                                setNewOverride({ ...newOverride, customerIds: [...newOverride.customerIds, c.id] });
+                                                                            } else {
+                                                                                setNewOverride({ ...newOverride, customerIds: newOverride.customerIds.filter(id => id !== c.id) });
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    <span className="text-xs font-medium text-foreground">#{c.customer_code} - {c.name}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
 
                                                 <div className="relative w-full sm:w-24">
                                                     <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-xs">$</div>
@@ -1600,9 +1618,9 @@ export default function SettingsPage() {
                                                 </Button>
                                             </div>
 
-                                            {Object.entries(dateSpecificOverrides).length > 0 ? (
+                                            {Object.entries(dateSpecificOverrides).filter(([date]) => allowedDates.includes(date)).length > 0 ? (
                                                 <div className="space-y-3">
-                                                    {Object.entries(dateSpecificOverrides).sort((a, b) => b[0].localeCompare(a[0])).map(([date, overrides]) => (
+                                                    {Object.entries(dateSpecificOverrides).filter(([date]) => allowedDates.includes(date)).sort((a, b) => b[0].localeCompare(a[0])).map(([date, overrides]) => (
                                                         <div key={date} className="space-y-1.5">
                                                             <div className="text-xs font-bold text-muted-foreground ml-1">{date}</div>
                                                             {Object.entries(overrides).map(([custId, price]) => {
