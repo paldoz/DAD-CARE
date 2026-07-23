@@ -59,6 +59,7 @@ import { createClient } from '@/lib/supabase/client';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { TrashTab } from '@/components/settings/TrashTab';
+import { AnimatedBackground } from '@/components/animated-background';
 import {
     Popover,
     PopoverContent,
@@ -1416,8 +1417,9 @@ export default function SettingsPage() {
                         <TabsContent value="business" className="mt-3">
                             <>
                                 <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
-                                    <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-emerald-500/5 to-transparent">
-                                        <div className="flex items-center gap-2.5">
+                                    <div className="relative overflow-hidden px-4 py-3 border-b border-border/40 bg-gradient-to-r from-emerald-500/5 to-transparent">
+                                        <AnimatedBackground />
+                                        <div className="flex items-center gap-2.5 relative z-10">
                                             <div className="p-1.5 rounded-lg bg-emerald-500/15">
                                                 <DollarSign className="w-4 h-4 text-emerald-500" />
                                             </div>
@@ -1449,12 +1451,13 @@ export default function SettingsPage() {
                                 </div>
                                 
                                 {/* ── Date-Specific Pricing ── */}
-                                <div className="mt-3 rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
+                                <div className="mt-3 rounded-2xl border border-black/5 dark:border-white/10 bg-background/30 backdrop-blur-xl overflow-hidden shadow-xl dark:shadow-2xl">
                                     <div 
-                                        className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-blue-500/5 to-transparent cursor-pointer hover:bg-blue-500/10 transition-colors flex items-center justify-between"
+                                        className="relative overflow-hidden px-4 py-3 border-b border-black/5 dark:border-white/5 bg-gradient-to-r from-blue-500/10 to-transparent cursor-pointer hover:bg-blue-500/20 transition-colors flex items-center justify-between"
                                         onClick={() => setIsDatePricingOpen(!isDatePricingOpen)}
                                     >
-                                        <div className="flex items-center gap-2.5">
+                                        <AnimatedBackground />
+                                        <div className="flex items-center gap-2.5 relative z-10">
                                             <div className="p-1.5 rounded-lg bg-blue-500/15">
                                                 <CalendarIcon className="w-4 h-4 text-blue-500" />
                                             </div>
@@ -1465,11 +1468,11 @@ export default function SettingsPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isDatePricingOpen ? 'rotate-180' : ''}`} />
+                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 relative z-10 ${isDatePricingOpen ? 'rotate-180' : ''}`} />
                                     </div>
                                     
                                     {isDatePricingOpen && (
-                                        <div className="p-3 bg-background/30">
+                                        <div className="p-3 bg-transparent">
                                             <div className="flex gap-2 mb-3">
                                                 <select 
                                                     value={newDatePrice.date} 
@@ -1534,12 +1537,13 @@ export default function SettingsPage() {
                                 </div>
 
                                 {/* ── Customer-Specific Date Pricing ── */}
-                                <div className="mt-3 rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
+                                <div className="mt-3 rounded-2xl border border-black/5 dark:border-white/10 bg-background/30 backdrop-blur-xl overflow-hidden shadow-xl dark:shadow-2xl">
                                     <div 
-                                        className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-purple-500/5 to-transparent cursor-pointer hover:bg-purple-500/10 transition-colors flex items-center justify-between"
+                                        className="relative overflow-hidden px-4 py-3 border-b border-black/5 dark:border-white/5 bg-gradient-to-r from-purple-500/10 to-transparent cursor-pointer hover:bg-purple-500/20 transition-colors flex items-center justify-between"
                                         onClick={() => setIsOverridesOpen(!isOverridesOpen)}
                                     >
-                                        <div className="flex items-center gap-2.5">
+                                        <AnimatedBackground />
+                                        <div className="flex items-center gap-2.5 relative z-10">
                                             <div className="p-1.5 rounded-lg bg-purple-500/15">
                                                 <Users className="w-4 h-4 text-purple-500" />
                                             </div>
@@ -1550,11 +1554,11 @@ export default function SettingsPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isOverridesOpen ? 'rotate-180' : ''}`} />
+                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 relative z-10 ${isOverridesOpen ? 'rotate-180' : ''}`} />
                                     </div>
                                     
                                     {isOverridesOpen && (
-                                        <div className="p-3 bg-background/30">
+                                        <div className="p-3 bg-transparent">
                                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                                 <select 
                                                     value={newOverride.date} 
@@ -2336,8 +2340,9 @@ export default function SettingsPage() {
                                 {/* ── Live Online Status Bar ── */}
                                 {(isSuperAdmin || isAdmin) && (
                                 <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
-                                    <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-emerald-500/8 to-transparent flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
+                                    <div className="relative overflow-hidden px-4 py-3 border-b border-border/40 bg-gradient-to-r from-emerald-500/8 to-transparent flex items-center justify-between">
+                                        <AnimatedBackground />
+                                        <div className="flex items-center gap-2 relative z-10">
                                             <div className="p-1.5 rounded-lg bg-emerald-500/15">
                                                 <Wifi className="w-4 h-4 text-emerald-500" />
                                             </div>
@@ -2352,7 +2357,7 @@ export default function SettingsPage() {
                                                 await loadUsers();
                                                 await loadAuditLogs(auditFilterUser, auditFilterAction, false, true);
                                             }}
-                                            className="p-1.5 rounded-lg hover:bg-muted/50 transition-all active:scale-90"
+                                            className="p-1.5 rounded-lg hover:bg-muted/50 transition-all active:scale-90 relative z-10"
                                         >
                                             <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
                                         </button>
@@ -2420,8 +2425,9 @@ export default function SettingsPage() {
 
                                 {/* ── All-In-One Audit Logs Feed ── */}
                                 <div className="rounded-3xl border border-white/10 bg-background/60 backdrop-blur-xl overflow-hidden shadow-2xl mt-6 relative before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/5 before:to-transparent before:pointer-events-none">
-                                    <div className="px-4 py-3 border-b border-white/10 bg-gradient-to-r from-blue-500/10 to-transparent flex items-center justify-between relative z-10">
-                                        <div className="flex items-center gap-3">
+                                    <div className="relative overflow-hidden px-4 py-3 border-b border-white/10 bg-gradient-to-r from-blue-500/10 to-transparent flex items-center justify-between z-10">
+                                        <AnimatedBackground />
+                                        <div className="flex items-center gap-3 relative z-10">
                                             <div className="p-2 rounded-xl bg-blue-500/20 shadow-inner border border-blue-500/20">
                                                 <Activity className="w-4 h-4 text-blue-400" />
                                             </div>
