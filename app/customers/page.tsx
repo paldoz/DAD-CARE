@@ -230,7 +230,6 @@ export default function CustomersPage() {
 
     const handleToggleStatus = async (customerId: string, field: 'is_unassignable' | 'is_kabarka', value: boolean, e?: React.FormEvent) => {
         if (e) { e.preventDefault(); e.stopPropagation(); }
-        setIsReordering(true);
         try {
             const res = await fetch('/api/customers/toggle-status', {
                 method: 'POST',
@@ -243,7 +242,6 @@ export default function CustomersPage() {
             setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
         } catch (err: any) {
             toast.error(err.message);
-            setIsReordering(false);
         }
     };
 

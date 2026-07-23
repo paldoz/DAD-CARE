@@ -155,16 +155,26 @@ const buildEntryFromDailyRecord = (
     id: string,
     record: DailyBookRecord,
     defaultPrice: string,
-    dateSpecificPrices?: Record<string, string>
+    dateSpecificPrices?: Record<string, string>,
+    dateSpecificOverrides?: Record<string, Record<string, string>>,
+    customerId?: string
 ): { entry: DateEntry; shouldExpandExtra: boolean } => {
     let kg = record.kg ? record.kg.toString() : '0';
     
     // Apply date-specific price if available, otherwise fallback to global default
     const entryDateKey = record.date ? record.date.substring(0, 10) : '';
-    let pricePerKg = (dateSpecificPrices && dateSpecificPrices[entryDateKey]) 
-                        ? dateSpecificPrices[entryDateKey] 
-                        : defaultPrice;
-                        
+    
+    let pricePerKg = defaultPrice;
+    
+    // 1. Check for customer-specific override
+    if (customerId && dateSpecificOverrides && dateSpecificOverrides[entryDateKey] && dateSpecificOverrides[entryDateKey][customerId]) {
+        pricePerKg = dateSpecificOverrides[entryDateKey][customerId];
+    } 
+    // 2. Check for global date price
+    else if (dateSpecificPrices && dateSpecificPrices[entryDateKey]) {
+        pricePerKg = dateSpecificPrices[entryDateKey];
+    }
+    
     let extraKg = '';
     let extraPricePerKg = pricePerKg;
     let extraNote = 'Notebook';
@@ -377,6 +387,14 @@ export default function LedgerPage() {
         return allCustomers.filter(c => !c.is_target_days_done && (c.unprocessed_books_count || c.total_books_count)).length;
     }, [allCustomers]);
 
+        const [dateSpecificOverrides, setDateSpecificOverrides] = useState<Record<string, Record<string, string>>>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem('dadwork_date_specific_overrides');
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+        return {};
+    });
+
     // Form state (continued)
     const [customerDailyDates, setCustomerDailyDates] = useState<DailyBookRecord[]>([]);
     const [dateEntries, setDateEntries] = useState<DateEntry[]>([]);
@@ -403,6 +421,15 @@ export default function LedgerPage() {
                     try {
                         const parsed = JSON.parse(data.dadwork_date_specific_prices);
                         setDateSpecificPrices(parsed);
+                    } catch(e) {}
+                }
+                if (data && data.dadwork_date_specific_overrides) {
+                    try {
+                        const parsed = typeof data.dadwork_date_specific_overrides === 'string' 
+                            ? JSON.parse(data.dadwork_date_specific_overrides) 
+                            : data.dadwork_date_specific_overrides;
+                        setDateSpecificOverrides(parsed);
+                        localStorage.setItem('dadwork_date_specific_overrides', JSON.stringify(parsed));
                     } catch(e) {}
                 }
             } catch (e) {
@@ -497,7 +524,7 @@ export default function LedgerPage() {
                     if (dailyData && dailyData.length > 0) {
                         newEntries = dailyData.map((d: any, idx: number) => {
                             const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
                             if (shouldExpandExtra) {
                                 newExpandedIds.add(entryId);
                             }
@@ -511,7 +538,7 @@ export default function LedgerPage() {
                     newEntries = prev.map((entry, idx) => {
                         const d = dailyData[idx];
                         if (!d) return { ...entry, date: '' };
-                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices);
+                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
                         if (shouldExpandExtra) {
                             newExpandedIds.add(entry.id);
                         }
@@ -808,7 +835,7 @@ export default function LedgerPage() {
         }
         const nextUnprocessed = customerDailyDates[nextIndex];
         const newEntryId = Date.now().toString();
-        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(newEntryId, nextUnprocessed, defaultPrice, dateSpecificPrices);
+        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(newEntryId, nextUnprocessed, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
         if (shouldExpandExtra) {
             setExpandedExtraEntryIds(prev => {
                 const next = new Set(prev);
@@ -851,7 +878,7 @@ export default function LedgerPage() {
             const mapped = filtered.map((entry, idx) => {
                 const d = customerDailyDates[idx];
                 if (!d) return { ...entry, date: '' };
-                const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices);
+                const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
                 if (shouldExpandExtra) {
                     nextExpandedIds.add(entry.id);
                 }
@@ -1079,7 +1106,7 @@ export default function LedgerPage() {
                     const newExpandedIds = new Set<string>();
                     const newEntries = dailyEntriesRaw.dailyData.map((d: any, idx: number) => {
                         const entryId = (Date.now() + idx).toString();
-                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
+                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
                         if (shouldExpandExtra) newExpandedIds.add(entryId);
                         return entry;
                     });
@@ -1129,7 +1156,7 @@ export default function LedgerPage() {
                             const newExpandedIds = new Set<string>();
                             const newEntries = nextPair.map((d: any, idx: number) => {
                                 const entryId = (Date.now() + idx).toString();
-                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices);
+                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
                                 if (shouldExpandExtra) newExpandedIds.add(entryId);
                                 return entry;
                             });

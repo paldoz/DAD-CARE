@@ -100,7 +100,15 @@ export default function SettingsPage() {
         }
         return {};
     });
+    const [dateSpecificOverrides, setDateSpecificOverrides] = useState<Record<string, Record<string, string>>>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem('dadwork_date_specific_overrides');
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+        return {};
+    });
     const [isDatePricingOpen, setIsDatePricingOpen] = useState(false);
+    const [isOverridesOpen, setIsOverridesOpen] = useState(false);
     const [maqalPairDates, setMaqalPairDates] = useState<{ date1: string | null; date2: string | null; waitingDate1: string | null; waitingDate2: string | null }>({ date1: null, date2: null, waitingDate1: null, waitingDate2: null });
     
     const allowedDates = useMemo(() => {
@@ -146,6 +154,7 @@ export default function SettingsPage() {
     }, [maqalPairDates]);
 
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
+    const [newOverride, setNewOverride] = useState({ date: allowedDates[0], customerId: '', price: '' });
     const [loading, setLoading] = useState(false);
     const [dateActionLoading, setDateActionLoading] = useState<string | null>(null);
     const [resequenceLoading, setResequenceLoading] = useState(false);
@@ -398,6 +407,16 @@ export default function SettingsPage() {
                         localStorage.setItem('dadwork_date_specific_prices', JSON.stringify(parsed)); // cache for refresh
                     } catch(e) {
                         console.error('Failed to parse date prices:', e);
+                    }
+                }
+                if (data && data.dadwork_date_specific_overrides) {
+                    try {
+                        const rawVal = data.dadwork_date_specific_overrides;
+                        const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+                        setDateSpecificOverrides(parsed);
+                        localStorage.setItem('dadwork_date_specific_overrides', JSON.stringify(parsed));
+                    } catch(e) {
+                        console.error('Failed to parse date overrides:', e);
                     }
                 }
             } catch (e) {
@@ -839,6 +858,79 @@ export default function SettingsPage() {
         const updated = { ...dateSpecificPrices };
         delete updated[dateToRemove];
         handleSaveDatePrice(updated, `delete-${dateToRemove}`);
+    };
+
+    const handleSaveDateOverrides = async (newOverrides: Record<string, Record<string, string>>, loadingKey: string) => {
+        setDateActionLoading(loadingKey);
+        try {
+            const token = localStorage.getItem('dadwork_session_token') || '';
+            const res = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-session-token': token
+                },
+                body: JSON.stringify({ key: 'dadwork_date_specific_overrides', value: JSON.stringify(newOverrides) })
+            });
+            if (res.ok) {
+                localStorage.setItem('dadwork_date_specific_overrides', JSON.stringify(newOverrides));
+                setDateSpecificOverrides(newOverrides);
+                toast.success('Customer overrides updated');
+                setDateActionLoading(null);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(`Failed to save overrides: ${err.error || res.statusText}`);
+                setDateActionLoading(null);
+            }
+        } catch (e) {
+            toast.error('Network error');
+            setDateActionLoading(null);
+        }
+    };
+
+    const handleAddOverride = () => {
+        if (!newOverride.date || !newOverride.customerId || !newOverride.price) {
+            toast.error('Please enter date, customer, and price');
+            return;
+        }
+        if (!allowedDates.includes(newOverride.date)) {
+            toast.error('You can only set overrides for recent days');
+            return;
+        }
+        const numericPrice = parseFloat(newOverride.price);
+        if (isNaN(numericPrice) || numericPrice > 100 || numericPrice <= 0) {
+            toast.error('Please enter a valid price (1-100)');
+            return;
+        }
+
+        const dateMap = { ...(dateSpecificOverrides[newOverride.date] || {}) };
+        if (dateMap[newOverride.customerId]) {
+             toast.error('This customer already has an override for this date.');
+             return;
+        }
+        dateMap[newOverride.customerId] = newOverride.price;
+
+        let updated = { ...dateSpecificOverrides, [newOverride.date]: dateMap };
+
+        // Prune older dates so it's strictly limited to the allowed dates
+        const pruned: Record<string, Record<string, string>> = {};
+        allowedDates.forEach(d => {
+             if (updated[d]) pruned[d] = updated[d];
+        });
+
+        handleSaveDateOverrides(pruned, 'add-override');
+        setNewOverride({ ...newOverride, customerId: '', price: '' });
+    };
+
+    const handleRemoveOverride = (date: string, customerId: string) => {
+        const updated = { ...dateSpecificOverrides };
+        if (updated[date]) {
+            delete updated[date][customerId];
+            if (Object.keys(updated[date]).length === 0) {
+                delete updated[date];
+            }
+        }
+        handleSaveDateOverrides(updated, `delete-override-${date}-${customerId}`);
     };
 
     // Backup/Export
@@ -1432,6 +1524,113 @@ export default function SettingsPage() {
                                             ) : (
                                                 <div className="text-center py-4 text-xs text-muted-foreground border border-dashed border-border/60 rounded-xl">
                                                     No date-specific prices set.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* ── Customer-Specific Date Pricing ── */}
+                                <div className="mt-3 rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
+                                    <div 
+                                        className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-purple-500/5 to-transparent cursor-pointer hover:bg-purple-500/10 transition-colors flex items-center justify-between"
+                                        onClick={() => setIsOverridesOpen(!isOverridesOpen)}
+                                    >
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-1.5 rounded-lg bg-purple-500/15">
+                                                <Users className="w-4 h-4 text-purple-500" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-foreground">Customer-Specific Pricing</h3>
+                                                <p className="text-[10px] text-muted-foreground font-semibold">
+                                                    VIP Pricing Overrides per Customer
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isOverridesOpen ? 'rotate-180' : ''}`} />
+                                    </div>
+                                    
+                                    {isOverridesOpen && (
+                                        <div className="p-3 bg-background/30">
+                                            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                                                <select 
+                                                    value={newOverride.date} 
+                                                    onChange={e => setNewOverride({ ...newOverride, date: e.target.value })}
+                                                    className="flex h-10 w-full sm:w-1/3 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                                >
+                                                    <optgroup label="⚡ New Pair (Current)">
+                                                        <option value={allowedDates[0]}>{allowedDates[0]} (Day 2)</option>
+                                                        <option value={allowedDates[1]}>{allowedDates[1]} (Day 1)</option>
+                                                    </optgroup>
+                                                    <optgroup label="📌 Old Pair (Previous)">
+                                                        <option value={allowedDates[2]}>{allowedDates[2]} (Day 2)</option>
+                                                        <option value={allowedDates[3]}>{allowedDates[3]} (Day 1)</option>
+                                                    </optgroup>
+                                                </select>
+
+                                                <select 
+                                                    value={newOverride.customerId} 
+                                                    onChange={e => setNewOverride({ ...newOverride, customerId: e.target.value })}
+                                                    className="flex h-10 w-full sm:w-1/2 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                                >
+                                                    <option value="" disabled>Select Customer...</option>
+                                                    {customers.map(c => (
+                                                        <option key={c.id} value={c.id}>
+                                                            #{c.customer_code} - {c.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+
+                                                <div className="relative w-full sm:w-24">
+                                                    <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-xs">$</div>
+                                                    <Input 
+                                                        type="number" 
+                                                        value={newOverride.price} 
+                                                        onChange={e => setNewOverride({ ...newOverride, price: e.target.value })}
+                                                        placeholder="Price"
+                                                        className="pl-6 h-10 w-full text-xs font-bold bg-background/50 border-border/60 rounded-xl"
+                                                    />
+                                                </div>
+                                                <Button 
+                                                    onClick={handleAddOverride}
+                                                    disabled={dateActionLoading !== null}
+                                                    className="h-10 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-md active:scale-95 transition-all shrink-0"
+                                                >
+                                                    {dateActionLoading === 'add-override' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                                </Button>
+                                            </div>
+
+                                            {Object.entries(dateSpecificOverrides).length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {Object.entries(dateSpecificOverrides).sort((a, b) => b[0].localeCompare(a[0])).map(([date, overrides]) => (
+                                                        <div key={date} className="space-y-1.5">
+                                                            <div className="text-xs font-bold text-muted-foreground ml-1">{date}</div>
+                                                            {Object.entries(overrides).map(([custId, price]) => {
+                                                                const cust = customers.find(c => c.id === custId);
+                                                                return (
+                                                                    <div key={custId} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/40 hover:border-purple-500/30 transition-colors">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <span className="text-xs font-bold text-foreground bg-muted px-2 py-1 rounded-md">#{cust?.customer_code || '?'} {cust?.name || 'Unknown'}</span>
+                                                                            <span className="text-xs font-black text-purple-500">${price}</span>
+                                                                        </div>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="sm"
+                                                                            onClick={() => handleRemoveOverride(date, custId)}
+                                                                            disabled={dateActionLoading !== null}
+                                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                                                        >
+                                                                            {dateActionLoading === `delete-override-${date}-${custId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                                        </Button>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed border-border/60 rounded-xl">
+                                                    No customer-specific overrides set.
                                                 </div>
                                             )}
                                         </div>
