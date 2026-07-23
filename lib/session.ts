@@ -24,14 +24,16 @@ export function getToken(): string | null {
 }
 
 export function clearSession(): void {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('dadwork_') || key === 'currentUser' || key === TOKEN_KEY || key === USER_KEY)) {
-            keysToRemove.push(key);
-        }
+    // Save theme preference so they don't get flash-banged
+    const theme = localStorage.getItem('theme');
+    
+    // Nuclear option: destroy ALL local storage unconditionally
+    localStorage.clear();
+    
+    // Restore theme
+    if (theme) {
+        localStorage.setItem('theme', theme);
     }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
 }
 
 /** Log out from server and clear local session */
