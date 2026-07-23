@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
-import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star } from 'lucide-react';
+import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
@@ -120,6 +120,10 @@ function DailyBookPageInner() {
     const pageSize = 50; // fixed page size for fastest UI response
     
     const [currentUser, setCurrentUser] = useState<any>(null);
+
+    const [reorderOpenForId, setReorderOpenForId] = useState<string | null>(null);
+    const [reorderTargetId, setReorderTargetId] = useState<string>('');
+    const [isReordering, setIsReordering] = useState(false);
 
     // Debounce hook for search input (300 ms)
     const useDebounce = <T,>(value: T, delay: number): T => {
@@ -247,6 +251,29 @@ function DailyBookPageInner() {
     };
 
 
+
+    const handleReorderCustomer = async (customerId: string, e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!reorderTargetId.trim()) return;
+        setIsReordering(true);
+        try {
+            const res = await fetch('/api/customers/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId, targetCode: reorderTargetId.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to reorder');
+            toast.success('Customer reordered successfully!');
+            setReorderOpenForId(null);
+            setReorderTargetId('');
+            window.location.reload(); // Hard refresh to instantly apply DB sorting
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setIsReordering(false);
+        }
+    };
 
     const handleSave = async () => {
         setSaving(true);
@@ -791,7 +818,36 @@ return (
                                     {paginatedCustomers.map((customer, index) => (
                                         <div key={customer.id} className="grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors hover:bg-blue-100/20 dark:hover:bg-slate-800/30 group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0 relative">
                                             <div className="col-span-2 flex items-center justify-start gap-1">
-                                                <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors">#{customer.customer_code}</span>
+                                                {isSuperAdmin ? (
+                                                    <Popover open={reorderOpenForId === customer.id} onOpenChange={(o) => {
+                                                        setReorderOpenForId(o ? customer.id : null);
+                                                        if (o) setReorderTargetId('');
+                                                    }}>
+                                                        <PopoverTrigger asChild>
+                                                            <button className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 hover:text-primary transition-colors cursor-pointer">
+                                                                #{customer.customer_code}
+                                                            </button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent side="right" className="w-auto p-2 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100]">
+                                                            <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2">
+                                                                <span className="text-xs font-bold text-muted-foreground ml-1">Move to #</span>
+                                                                <Input 
+                                                                    autoFocus 
+                                                                    type="number" 
+                                                                    placeholder="e.g. 20" 
+                                                                    value={reorderTargetId}
+                                                                    onChange={(e) => setReorderTargetId(e.target.value)}
+                                                                    className="w-16 h-8 text-xs font-bold bg-background/50 border-input shadow-inner"
+                                                                />
+                                                                <Button type="submit" disabled={isReordering || !reorderTargetId} size="icon" className="h-8 w-8 rounded-lg shrink-0">
+                                                                    {isReordering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                                </Button>
+                                                            </form>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                ) : (
+                                                    <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors">#{customer.customer_code}</span>
+                                                )}
                                                 {isSuperAdmin && (
                                                     <button
                                                         title="Remove customer from Daily Book (history preserved)"

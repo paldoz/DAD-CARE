@@ -55,7 +55,8 @@ export default function LoginPage() {
                 }
                 toast.success(`Welcome back, ${data.name || data.username}!`);
                 setLoading(false);
-                router.push('/dashboard');
+                // Force a hard refresh instead of router.push to completely clear SWR and Next.js memory cache, ensuring the new role (e.g. SUPER_ADMIN) is instantly applied
+                window.location.href = '/dashboard';
             } else {
                 toast.error(data.error || 'Invalid username or password');
                 setLoading(false);

@@ -19,6 +19,7 @@ import {
     DropdownMenuSubContent,
     DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import useSWR from 'swr';
 import useSWRInfinite from 'swr/infinite';
 import { AnimatedBackground } from '@/components/animated-background';
@@ -62,6 +63,10 @@ export default function CustomersPage() {
     const [showAllTimePct, setShowAllTimePct] = useState<Record<string, boolean>>({});
     const [managingCustomerId, setManagingCustomerId] = useState<string | null>(null);
     const [maqalSearch, setMaqalSearch] = useState('');
+
+    const [reorderOpenForId, setReorderOpenForId] = useState<string | null>(null);
+    const [reorderTargetId, setReorderTargetId] = useState<string>('');
+    const [isReordering, setIsReordering] = useState(false);
 
     const { data: maqalPairs } = useSWR<any[]>('/api/maqal-pairs', fetcher, { revalidateOnFocus: false, dedupingInterval: 600000, revalidateIfStale: false });
 
@@ -218,6 +223,32 @@ export default function CustomersPage() {
             mutateCustomers(undefined, { revalidate: true }); // Revert on failure
         }
         finally { setManagingCustomerId(null); }
+    };
+
+    const handleReorderCustomer = async (customerId: string, e?: React.FormEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (!reorderTargetId.trim()) return;
+        setIsReordering(true);
+        try {
+            const res = await fetch('/api/customers/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId, targetCode: reorderTargetId.trim() })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to reorder');
+            toast.success('Customer reordered successfully!');
+            setReorderOpenForId(null);
+            setReorderTargetId('');
+            window.location.reload(); // Hard refresh to instantly apply DB sorting
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setIsReordering(false);
+        }
     };
 
     useEffect(() => {
@@ -487,7 +518,9 @@ export default function CustomersPage() {
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        <AddCustomerDialog onSuccess={() => mutateCustomers(undefined, { revalidate: true })} />
+                        {currentUser?.role === 'SUPER_ADMIN' && (
+                            <AddCustomerDialog onSuccess={() => mutateCustomers(undefined, { revalidate: true })} />
+                        )}
                     </div>
                 </div>
             </div>
@@ -513,7 +546,7 @@ export default function CustomersPage() {
                         <p className="text-xs font-bold uppercase tracking-widest">
                             {searchTerm ? 'No results found' : 'No customers yet'}
                         </p>
-                        {!searchTerm && (
+                        {!searchTerm && currentUser?.role === 'SUPER_ADMIN' && (
                             <div className="mt-4">
                                 <AddCustomerDialog onSuccess={() => mutateCustomers(undefined, { revalidate: true })} />
                             </div>
@@ -596,9 +629,40 @@ export default function CustomersPage() {
                                             )}
                                         </p>
                                         <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                                            <span className="text-[10px] font-bold text-muted-foreground/70">
-                                                #{customer.customer_code}
-                                            </span>
+                                            {currentUser?.role === 'SUPER_ADMIN' ? (
+                                                <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                                    <Popover open={reorderOpenForId === customer.id} onOpenChange={(o) => {
+                                                        setReorderOpenForId(o ? customer.id : null);
+                                                        if (o) setReorderTargetId('');
+                                                    }}>
+                                                        <PopoverTrigger asChild>
+                                                            <button className="text-[10px] font-bold text-muted-foreground/70 hover:text-primary transition-colors cursor-pointer">
+                                                                #{customer.customer_code}
+                                                            </button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent side="right" className="w-auto p-2 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100]">
+                                                            <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2">
+                                                                <span className="text-xs font-bold text-muted-foreground ml-1">Move to #</span>
+                                                                <Input 
+                                                                    autoFocus 
+                                                                    type="number" 
+                                                                    placeholder="e.g. 20" 
+                                                                    value={reorderTargetId}
+                                                                    onChange={(e) => setReorderTargetId(e.target.value)}
+                                                                    className="w-16 h-8 text-xs font-bold bg-background/50 border-input shadow-inner"
+                                                                />
+                                                                <Button type="submit" disabled={isReordering || !reorderTargetId} size="icon" className="h-8 w-8 rounded-lg shrink-0">
+                                                                    {isReordering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                                </Button>
+                                                            </form>
+                                                        </PopoverContent>
+                                                    </Popover>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] font-bold text-muted-foreground/70">
+                                                    #{customer.customer_code}
+                                                </span>
+                                            )}
                                             {customer.phone && (
                                                 <span className="hidden sm:flex items-center gap-1 text-[10px] text-muted-foreground">
                                                     <Phone className="w-2.5 h-2.5" />

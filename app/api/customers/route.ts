@@ -595,7 +595,7 @@ export const PATCH = trackApiRoute('/api/customers', async (request: Request) =>
             UPDATE "Customer"
             SET name = $1, customer_code = $2, gender = $3, phone = $4
             WHERE id = $5
-            RETURNING id, name, customer_code, gender, phone, created_at, updated_at, deleted_at;
+            RETURNING id, name, customer_code, gender, phone, created_at, deleted_at;
         `;
         const values = [name, customer_code, gender || null, phone || null, id];
         const { rows } = await pool.query(query, values);
