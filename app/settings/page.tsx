@@ -1294,6 +1294,8 @@ export default function SettingsPage() {
     );
 
     const filteredCustomers = allCustomers.filter(c =>
+        c.status !== 'inactive' &&
+        !c.is_kabarka &&
         !assignedToOthers.has(c.id) &&
         !c.is_unassignable &&
         (c.name?.toLowerCase().includes(searchCustomer.toLowerCase()) ||
@@ -1588,7 +1590,9 @@ export default function SettingsPage() {
                                                     
                                                     {isCustomerSelectOpen && (
                                                         <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border/50 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto p-2 space-y-1">
-                                                            {allCustomers.map(c => (
+                                                            {allCustomers
+                                                                .filter(c => c.status !== 'inactive' && !c.is_kabarka)
+                                                                .map(c => (
                                                                 <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
                                                                     <input 
                                                                         type="checkbox" 
