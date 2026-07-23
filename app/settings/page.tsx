@@ -155,6 +155,12 @@ export default function SettingsPage() {
 
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
     const [newOverride, setNewOverride] = useState<{date: string, customerIds: string[], price: string}>({ date: allowedDates[0], customerIds: [], price: '' });
+    const [expandedOverrideDates, setExpandedOverrideDates] = useState<string[]>([]);
+    
+    const toggleOverrideDate = (date: string) => {
+        setExpandedOverrideDates(prev => prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]);
+    };
+
     const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [dateActionLoading, setDateActionLoading] = useState<string | null>(null);
@@ -1622,27 +1628,42 @@ export default function SettingsPage() {
                                                 <div className="space-y-3">
                                                     {Object.entries(dateSpecificOverrides).filter(([date]) => allowedDates.includes(date)).sort((a, b) => b[0].localeCompare(a[0])).map(([date, overrides]) => (
                                                         <div key={date} className="space-y-1.5">
-                                                            <div className="text-xs font-bold text-muted-foreground ml-1">{date}</div>
-                                                            {Object.entries(overrides).map(([custId, price]) => {
-                                                                const cust = allCustomers.find(c => c.id === custId);
-                                                                return (
-                                                                    <div key={custId} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/40 hover:border-purple-500/30 transition-colors">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className="text-xs font-bold text-foreground bg-muted px-2 py-1 rounded-md">#{cust?.customer_code || '?'} {cust?.name || 'Unknown'}</span>
-                                                                            <span className="text-xs font-black text-purple-500">${price}</span>
-                                                                        </div>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="sm"
-                                                                            onClick={() => handleRemoveOverride(date, custId)}
-                                                                            disabled={dateActionLoading !== null}
-                                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                                                                        >
-                                                                            {dateActionLoading === `delete-override-${date}-${custId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                                                        </Button>
+                                                            <div 
+                                                                className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 hover:bg-muted/60 border border-border/50 cursor-pointer transition-colors"
+                                                                onClick={() => toggleOverrideDate(date)}
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="text-xs font-bold text-foreground">📅 {date}</div>
+                                                                    <div className="text-[10px] font-semibold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                                                                        {Object.keys(overrides).length} Customer{Object.keys(overrides).length > 1 ? 's' : ''}
                                                                     </div>
-                                                                );
-                                                            })}
+                                                                </div>
+                                                                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${expandedOverrideDates.includes(date) ? 'rotate-180' : ''}`} />
+                                                            </div>
+                                                            {expandedOverrideDates.includes(date) && (
+                                                                <div className="space-y-1.5 pl-2 mt-2 border-l-2 border-purple-500/20">
+                                                                    {Object.entries(overrides).map(([custId, price]) => {
+                                                                        const cust = allCustomers.find(c => c.id === custId);
+                                                                        return (
+                                                                            <div key={custId} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/40 hover:border-purple-500/30 transition-colors">
+                                                                                <div className="flex items-center gap-3">
+                                                                                    <span className="text-xs font-bold text-foreground bg-muted px-2 py-1 rounded-md">#{cust?.customer_code || '?'} {cust?.name || 'Unknown'}</span>
+                                                                                    <span className="text-xs font-black text-purple-500">${price}</span>
+                                                                                </div>
+                                                                                <Button 
+                                                                                    variant="ghost" 
+                                                                                    size="sm"
+                                                                                    onClick={() => handleRemoveOverride(date, custId)}
+                                                                                    disabled={dateActionLoading !== null}
+                                                                                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                                                                >
+                                                                                    {dateActionLoading === `delete-override-${date}-${custId}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                                                </Button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
