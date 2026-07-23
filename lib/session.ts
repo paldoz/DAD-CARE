@@ -23,10 +23,15 @@ export function getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
 }
 
-/** Clear session (logout) */
 export function clearSession(): void {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('dadwork_') || key === 'currentUser' || key === TOKEN_KEY || key === USER_KEY)) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
 }
 
 /** Log out from server and clear local session */
