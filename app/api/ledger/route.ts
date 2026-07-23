@@ -282,7 +282,7 @@ export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     try {
         const data = await getCachedLedger(customerId, limit, offset);
         const response = NextResponse.json(data);
-        response.headers.set('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
+        response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return response;
     } catch (error: any) {
         console.error('Fetch Ledger Error:', error);
