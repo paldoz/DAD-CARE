@@ -838,7 +838,7 @@ return (
                                 </div>
                                 <div className="divide-y divide-blue-200/30 dark:divide-slate-800/50">
                                     {paginatedCustomers.map((customer, index) => (
-                                        <div key={customer.id} className="grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors hover:bg-blue-100/20 dark:hover:bg-slate-800/30 group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0 relative">
+                                        <div key={customer.id} className={`grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0 relative ${(customer.is_unassignable || customer.is_kabarka) ? 'bg-amber-50/40 dark:bg-amber-900/10 hover:bg-amber-100/60 dark:hover:bg-amber-900/20' : 'hover:bg-blue-100/20 dark:hover:bg-slate-800/30'}`}>
                                             <div className="col-span-2 flex items-center justify-start gap-1">
                                                 {isSuperAdmin ? (
                                                     <Popover open={reorderOpenForId === customer.id} onOpenChange={(o) => {
