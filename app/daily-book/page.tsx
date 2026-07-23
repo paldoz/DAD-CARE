@@ -116,6 +116,7 @@ function DailyBookPageInner() {
     const [openNoteForCustomerId, setOpenNoteForCustomerId] = useState<string | null>(null);
     const [absentPopupData, setAbsentPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
     const [vipPopupData, setVipPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
+    const [kabarkaPopupData, setKabarkaPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
     const [compareModalOpen, setCompareModalOpen] = useState(false);
     const [compareDate1, setCompareDate1] = useState<string | null>(null);
     const [compareDate2, setCompareDate2] = useState<string | null>(null);
@@ -1393,12 +1394,18 @@ return (
                                                                     const kabarkaItems = entry.items.filter(i => i.customer?.is_kabarka && i.kg > 0);
                                                                     if (kabarkaItems.length === 0) return null;
                                                                     return (
-                                                                        <span className="inline-flex items-center gap-1 bg-slate-500/10 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-wide border border-slate-500/20 shrink-0">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (kabarkaItems.length > 0) setKabarkaPopupData({ date: entry.date, items: kabarkaItems });
+                                                                            }}
+                                                                            className="inline-flex items-center justify-center gap-1 bg-slate-500/10 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wide border border-slate-500/20 shadow-[0_0_8px_rgba(100,116,139,0.15)] hover:brightness-110 active:scale-95 cursor-pointer shrink-0 transition-all"
+                                                                        >
                                                                             ➖ Kabarka: {kabarkaItems.reduce((s, i) => s + i.kg, 0)}kg
-                                                                        </span>
+                                                                        </button>
                                                                     );
                                                                 })()}
-
                                                                 {/* 4. Maqalka Status */}
                                                                 {historyLedgerStatus[entry.date] ? (() => {
                                                                     const withKg = entry.items.filter(i => i.kg > 0);
