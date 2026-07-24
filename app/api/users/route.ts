@@ -117,7 +117,7 @@ export async function PATCH(request: Request) {
     try {
         if (action === 'kickout') {
             // Verify PINs
-            if (pin1 !== '1234' || pin2 !== '5678') {
+            if (pin1 !== '2575' || pin2 !== '6990') {
                 return NextResponse.json({ error: 'Invalid security PINs' }, { status: 403 });
             }
 
