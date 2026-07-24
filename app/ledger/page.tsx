@@ -1199,12 +1199,12 @@ export default function LedgerPage() {
                     setFetchingDetails(false);
                     // Persist done state in localStorage — shows checkmark instantly on next open
                     markCustomerDone(selectedCustomerId);
-                    // Optimistic update in SWR cache too
+                    // Optimistic update in SWR cache too, but revalidate to check for more pairs
                     mutateCustomers(
                         (prev: any) => prev ? prev.map((c: any) =>
                             c.id === selectedCustomerId ? { ...c, is_target_days_done: true, unprocessed_books_count: 0 } : c
                         ) : prev,
-                        { revalidate: false }
+                        { revalidate: true }
                     );
                 } else {
                     // Normal non-absent save → clear and go to next customer
@@ -1225,12 +1225,12 @@ export default function LedgerPage() {
                     const savedId = selectedCustomerId;
                     // Persist done state in localStorage — shows checkmark instantly, even after refresh
                     markCustomerDone(savedId);
-                    // Optimistic update in SWR cache
+                    // Optimistic update in SWR cache, but revalidate to check for more pairs
                     mutateCustomers(
                         (prev: any) => prev ? prev.map((c: any) =>
                             c.id === savedId ? { ...c, is_target_days_done: true, unprocessed_books_count: 0 } : c
                         ) : prev,
-                        { revalidate: false }
+                        { revalidate: true }
                     );
                     setCustomerPopoverOpen(true);
                     return;
@@ -1416,7 +1416,7 @@ export default function LedgerPage() {
                                                                 setCustomerSearch('');
                                                             }}
                                                         >
-                                                            {c.id === lastSavedCustomerId ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (doneCustomerIds.has(c.id) || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : (c.total_books_count ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : '')))}
+                                                            {c.id === lastSavedCustomerId ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : (doneCustomerIds.has(c.id) || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : ''))}
                                                             {c.name.toUpperCase()} (ID: {c.customer_code})
                                                             {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
                                                         </div>
