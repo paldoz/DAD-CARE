@@ -1081,7 +1081,7 @@ export default function LedgerPage() {
                 if (!current) return current;
                 return current.map((c: any) => 
                     c.id === selectedCustomerId 
-                        ? { ...c, unprocessed_books_count: 0 } 
+                        ? { ...c, is_target_days_done: data.customerStatus?.is_target_days_done ?? true, unprocessed_books_count: data.customerStatus?.unprocessed_books_count ?? 0 } 
                         : c
                 );
             }, { revalidate: false }); // DO NOT hit the server!
@@ -1196,7 +1196,7 @@ export default function LedgerPage() {
                         }
                     }
                     
-                    const resData = await response.json();
+                    const resData = data;
                     
                     setFetchingDetails(false);
                     // Persist done state in localStorage — shows checkmark instantly on next open
@@ -1209,7 +1209,7 @@ export default function LedgerPage() {
                         { revalidate: false }
                     );
                 } else {
-                    const resData = await response.json();
+                    const resData = data;
                     // Normal non-absent save → clear and go to next customer
                     setFetchingDetails(false);
                     setLastSavedCustomerId(selectedCustomerId);
