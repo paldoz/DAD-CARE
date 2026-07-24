@@ -266,9 +266,9 @@ export default function LedgerPage() {
     // Data state
     const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
         revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
-        dedupingInterval: 60000,      // ⚡ 1 req per min max — was 30s
+        dedupingInterval: 60000,      // ⚡ 1 req per min max
         keepPreviousData: true,
-        revalidateIfStale: true
+        revalidateIfStale: false      // ⚡ CRITICAL: Do NOT re-fetch on page navigation if cache exists
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive && !c.is_unassignable);
     
@@ -280,8 +280,8 @@ export default function LedgerPage() {
         revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
         dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
         keepPreviousData: true,
-        revalidateIfStale: true,
-        revalidateOnReconnect: true
+        revalidateIfStale: false,
+        revalidateOnReconnect: false
     });
     
     const history: Transaction[] = (ledgerData?.transactions || []).map((t: any) => ({

@@ -7,6 +7,14 @@ import { unstable_cache } from 'next/cache';
 
 const getDailyBookInit = unstable_cache(
     async () => {
+        // Auto-migrate missing columns for dev environment gracefully
+        try {
+            await pool.query('ALTER TABLE "Customer" ADD COLUMN is_unassignable BOOLEAN DEFAULT false');
+        } catch (e) { /* ignore */ }
+        try {
+            await pool.query('ALTER TABLE "Customer" ADD COLUMN is_kabarka BOOLEAN DEFAULT false');
+        } catch (e) { /* ignore */ }
+
         // Fetch customers sorted by their numeric customer_code (so #1 comes before #2, etc.)
         const { rows: customers } = await pool.query(`
           SELECT id, name, customer_code, is_kabarka, is_unassignable

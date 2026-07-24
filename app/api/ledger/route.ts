@@ -202,15 +202,11 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 
         try {
             // @ts-ignore
-            revalidateTag('customers');
+            revalidateTag(`ledger-${customerId}`); // Only bust this specific customer's ledger
             // @ts-ignore
-            revalidateTag('maqal-latest');
+            revalidateTag(`daily-entries-${customerId}`); // Bust specific customer's daily entries
             // @ts-ignore
-            revalidateTag('customer-daily-entries');
-            // @ts-ignore
-            revalidateTag('ledger');  // bust ledger cache so next open fetches fresh data
-            // @ts-ignore
-            revalidateTag('dashboard');
+            revalidateTag('dashboard'); // Dashboard is aggregated, so we must bust it
             revalidatePath('/api/ledger-by-date');
         } catch (cacheErr) {
             console.error('Failed to revalidate cache:', cacheErr);

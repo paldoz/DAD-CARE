@@ -8,7 +8,14 @@ export const dynamic = 'force-dynamic';
 
 const getDashboardData = unstable_cache(
     async (today: string) => {
-        // Combined query for customer count and ledger stats to dramatically reduce Supabase compute
+        // Auto-migrate missing columns for dev environment gracefully
+        try {
+            await pool.query('ALTER TABLE "Customer" ADD COLUMN is_unassignable BOOLEAN DEFAULT false');
+        } catch (e) { /* ignore */ }
+        try {
+            await pool.query('ALTER TABLE "Customer" ADD COLUMN is_kabarka BOOLEAN DEFAULT false');
+        } catch (e) { /* ignore */ }
+
         const [statsResult, todayStatsResult] = await Promise.all([
             pool.query(`
                 WITH latest_ledger AS (

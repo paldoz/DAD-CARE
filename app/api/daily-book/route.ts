@@ -21,14 +21,10 @@ const DailyBookSchema = z.object({
     items: z.array(DailyBookItemSchema).max(300, 'Too many items'),
 });
 
-export const GET = trackApiRoute('/api/daily-book', async (request: Request) => {
-    const { errorResponse } = await requireSession(request);
-    if (errorResponse) return errorResponse;
-    const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get('date');
-    if (!dateStr) return NextResponse.json({ error: 'Date required' }, { status: 400 });
+import { unstable_cache } from 'next/cache';
 
-    try {
+const getDailyBookByDate = unstable_cache(
+    async (dateStr: string, pageSize: number, offset: number) => {
         // Get Book (only if not soft-deleted)
         const { rows: books } = await pool.query(
             `SELECT id, date, created_at FROM "DailyBook" WHERE date = $1::date AND deleted_at IS NULL`,
@@ -36,16 +32,10 @@ export const GET = trackApiRoute('/api/daily-book', async (request: Request) => 
         );
 
         if (books.length === 0) {
-            return NextResponse.json(null);
+            return null;
         }
 
         const book = books[0];
-
-        // Get Items with Customer data
-        // Pagination parameters
-        const page = parseInt(searchParams.get('page') || '1', 10);
-        const pageSize = parseInt(searchParams.get('pageSize') || '5000', 10);
-        const offset = (page - 1) * pageSize;
 
         // Get total count for pagination UI
         const { rows: countResult } = await pool.query(
@@ -63,7 +53,36 @@ export const GET = trackApiRoute('/api/daily-book', async (request: Request) => 
             [book.id, pageSize, offset]
         );
 
-        const res = NextResponse.json({ ...book, items, totalCount, page, pageSize });
+        return { ...book, items, totalCount };
+    },
+    ['daily-book-cache'],
+    { revalidate: 3600, tags: ['daily-book-global'] } // Will dynamically add tag in GET
+);
+
+export const GET = trackApiRoute('/api/daily-book', async (request: Request) => {
+    const { errorResponse } = await requireSession(request);
+    if (errorResponse) return errorResponse;
+    const { searchParams } = new URL(request.url);
+    const dateStr = searchParams.get('date');
+    if (!dateStr) return NextResponse.json({ error: 'Date required' }, { status: 400 });
+
+    try {
+        const page = parseInt(searchParams.get('page') || '1', 10);
+        const pageSize = parseInt(searchParams.get('pageSize') || '5000', 10);
+        const offset = (page - 1) * pageSize;
+
+        // Wrap the unstable_cache call with dynamic tags for this specific date
+        const cachedFn = unstable_cache(
+            async () => getDailyBookByDate(dateStr, pageSize, offset),
+            [`daily-book-${dateStr}-${pageSize}-${offset}`],
+            { tags: [`daily-book-${dateStr}`] }
+        );
+
+        const data = await cachedFn();
+
+        if (!data) return NextResponse.json(null);
+
+        const res = NextResponse.json({ ...data, page, pageSize });
         res.headers.set('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
         return res;
     } catch (error: any) {
@@ -225,15 +244,18 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
 
         // Force Next.js CDN to purge cache instantly so the UI doesn't require multiple refreshes!
         try {
-            revalidatePath('/api/daily-book');
-            revalidatePath('/api/daily-book-history');
-            revalidatePath('/api/daily-book-history-full');
-            revalidatePath('/api/daily-book-init');
-            revalidatePath('/api/reports');
+            // Revalidate only the specific date and history, DO NOT purge global customers
             // @ts-ignore
-            revalidateTag('customers');
+            revalidateTag(`daily-book-${dateStr}`);
             // @ts-ignore
-            revalidateTag('dashboard');
+            revalidateTag('daily-book-history');
+            
+            // Only revalidate dashboard if we're actually changing today's metrics
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (dateStr === todayStr) {
+                // @ts-ignore
+                revalidateTag('dashboard');
+            }
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }
@@ -297,19 +319,18 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
         await logAudit(request, 'DELETE_DAILY_BOOK', `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s))`);
 
         try {
-            revalidatePath('/api/daily-book');
-            revalidatePath('/api/daily-book-history');
-            revalidatePath('/api/daily-book-history-full');
-            revalidatePath('/api/daily-book-init');
-            revalidatePath('/api/reports');
+            // Revalidate only the specific date and history, DO NOT purge global customers
             // @ts-ignore
-            revalidateTag('customers');
+            revalidateTag(`daily-book-${dateStr}`);
             // @ts-ignore
-            revalidateTag('dashboard');
-            // @ts-ignore
-            revalidateTag('ledger');
-            // @ts-ignore
-            revalidateTag('customer-daily-entries');
+            revalidateTag('daily-book-history');
+            
+            // Only revalidate dashboard if we're actually changing today's metrics
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (dateStr === todayStr) {
+                // @ts-ignore
+                revalidateTag('dashboard');
+            }
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }
