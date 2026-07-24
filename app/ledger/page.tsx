@@ -1196,17 +1196,20 @@ export default function LedgerPage() {
                         }
                     }
                     
+                    const resData = await response.json();
+                    
                     setFetchingDetails(false);
                     // Persist done state in localStorage — shows checkmark instantly on next open
                     markCustomerDone(selectedCustomerId);
-                    // Optimistic update in SWR cache too, but revalidate to check for more pairs
+                    // Optimistic update in SWR cache, without fetching from server again
                     mutateCustomers(
                         (prev: any) => prev ? prev.map((c: any) =>
-                            c.id === selectedCustomerId ? { ...c, is_target_days_done: true, unprocessed_books_count: 0 } : c
+                            c.id === selectedCustomerId ? { ...c, is_target_days_done: resData.customerStatus?.is_target_days_done ?? true, unprocessed_books_count: resData.customerStatus?.unprocessed_books_count ?? 0 } : c
                         ) : prev,
-                        { revalidate: true }
+                        { revalidate: false }
                     );
                 } else {
+                    const resData = await response.json();
                     // Normal non-absent save → clear and go to next customer
                     setFetchingDetails(false);
                     setLastSavedCustomerId(selectedCustomerId);
@@ -1220,17 +1223,16 @@ export default function LedgerPage() {
                     setAllUnprocessedDates([]);
                     setCustomerPopoverOpen(true);
                     
-                    // Optimistic update: instantly mark customer as done in local cache
-                    // This shows the blue checkmark IMMEDIATELY when popover opens
+                    // Optimistic update: use exact data from server response to avoid refetching
                     const savedId = selectedCustomerId;
                     // Persist done state in localStorage — shows checkmark instantly, even after refresh
                     markCustomerDone(savedId);
-                    // Optimistic update in SWR cache, but revalidate to check for more pairs
+                    // Optimistic update in SWR cache
                     mutateCustomers(
                         (prev: any) => prev ? prev.map((c: any) =>
-                            c.id === savedId ? { ...c, is_target_days_done: true, unprocessed_books_count: 0 } : c
+                            c.id === savedId ? { ...c, is_target_days_done: resData.customerStatus?.is_target_days_done ?? true, unprocessed_books_count: resData.customerStatus?.unprocessed_books_count ?? 0 } : c
                         ) : prev,
-                        { revalidate: true }
+                        { revalidate: false }
                     );
                     setCustomerPopoverOpen(true);
                     return;
