@@ -837,11 +837,11 @@ export default function CustomerDetailPage() {
 
             {/* Transaction Edit Modal */}
             <Dialog open={!!transactionToEdit} onOpenChange={(open) => !open && setTransactionToEdit(null)}>
-                <DialogContent className="w-[92vw] sm:max-w-[320px] rounded-3xl border-border/50 shadow-2xl p-5 gap-4">
+                <DialogContent className="w-[90vw] sm:max-w-[260px] bg-background/80 backdrop-blur-3xl border-border/50 shadow-2xl rounded-[20px] p-4 gap-3">
                     <DialogHeader className="mb-0">
-                        <DialogTitle className="text-lg font-black uppercase tracking-tight">Edit Transaction</DialogTitle>
-                        <DialogDescription className="text-[10px] opacity-70">
-                            You have {(3 - (transactionToEdit?.edit_count || 0))} edits remaining.
+                        <DialogTitle className="text-sm font-black uppercase tracking-tight text-blue-600 dark:text-blue-400">Edit Payment</DialogTitle>
+                        <DialogDescription className="text-[9px] opacity-70">
+                            {(3 - (transactionToEdit?.edit_count || 0))} edits remaining.
                         </DialogDescription>
                         {transactionToEdit?.type === 'PRODUCT' && (
                             <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-3 mt-2 rounded-md">
@@ -1285,7 +1285,7 @@ export default function CustomerDetailPage() {
                                                 
                                                 const paymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT').length;
                                                 const latePaymentsLeft = Math.max(0, 3 - paymentsCount);
-                                                const showLatePayment = isTargetMaqal && (isSuperAdmin || latePaymentsLeft > 0);
+                                                const showLatePayment = isTargetMaqal && (isSuperAdmin || (canUndo && latePaymentsLeft > 0));
                                                 
                                                 return showLatePayment ? (
                                                     <Button
