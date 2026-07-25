@@ -8,6 +8,7 @@ import { LogOut, ChevronDown } from 'lucide-react';
 import { logout } from '@/lib/session';
 import { subscribeToDailyDates } from '@/lib/hijri-date';
 import { IdleMonitor } from './idle-monitor';
+import { SecurityBell } from '@/components/security-bell';
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -165,7 +166,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
                                 )}
                             </div>
                         </div>
-
+                        {currentUser?.role === 'SUPER_ADMIN' && <SecurityBell />}
                     </div>
                 )}
                 <IdleMonitor />

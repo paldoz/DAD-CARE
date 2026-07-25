@@ -23,6 +23,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { logout } from '@/lib/session';
 import { subscribeToDailyDates } from '@/lib/hijri-date';
 
+import { SecurityBell } from '@/components/security-bell';
+
 const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/daily-book', label: 'Daily Book', icon: BookOpen },
@@ -69,8 +71,8 @@ export function AppSidebar() {
     return (
         <div className="flex h-full w-[260px] flex-col bg-sidebar/80 backdrop-blur-xl border-r border-sidebar-border/50 z-20 transition-colors duration-300">
             {/* Header - Current Admin Profile */}
-            <div className="flex py-4 items-center px-4 border-b border-sidebar-border/50">
-                <div className="flex items-center gap-3 w-full">
+            <div className="flex py-4 items-center justify-between px-4 border-b border-sidebar-border/50">
+                <div className="flex items-center gap-3">
                     <Avatar className="w-11 h-11 rounded-xl border-2 border-primary/20 shadow-sm transition-transform hover:scale-105 shrink-0">
                         {currentUser?.avatar_url && <AvatarImage src={currentUser.avatar_url} alt={currentUser.name} className="object-cover" />}
                         <AvatarFallback className="bg-gradient-to-br from-primary to-blue-600 text-primary-foreground font-black text-sm rounded-xl">
@@ -99,6 +101,7 @@ export function AppSidebar() {
                         )}
                     </div>
                 </div>
+                {currentUser?.role === 'SUPER_ADMIN' && <SecurityBell />}
             </div>
 
             {/* Navigation */}

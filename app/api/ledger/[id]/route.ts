@@ -55,7 +55,23 @@ export async function DELETE(
             }
         }
 
-        // Soft delete the ledger entry
+        if (session.role !== 'SUPER_ADMIN') {
+            // Intercept UNDO and push to PendingApprovals
+            await client.query(`
+                INSERT INTO "PendingApprovals" (username, action_type, customer_id, ledger_id, payload)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [
+                session.username,
+                'UNDO_LEDGER',
+                ledger.customer_id,
+                ledgerId,
+                JSON.stringify({ amount: ledger.amount })
+            ]);
+            await client.query('COMMIT');
+            return NextResponse.json({ pending: true, message: 'Undo request sent for Super Admin approval.' });
+        }
+
+        // Soft delete the ledger entry (Super Admin only)
         await client.query(
             `UPDATE "Ledger" 
              SET deleted_at = NOW(), deleted_by = $1
@@ -99,7 +115,7 @@ export async function PATCH(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
-    const { errorResponse } = await requireSession(request);
+    const { session, errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
 
     const { id: ledgerId } = await params;
@@ -125,24 +141,54 @@ export async function PATCH(
         }
 
         const ledger = rows[0];
+        // Security Rule: Priority Customer (Only applies to Regular Admins)
+        if (session.role !== 'SUPER_ADMIN') {
+            const { rows: userRows } = await client.query(
+                `SELECT assigned_customer_ids FROM "User" WHERE username = $1`,
+                [session.username]
+            );
+            const priorityIds = userRows.length ? (userRows[0].assigned_customer_ids || []) : [];
+            if (!priorityIds.includes(ledger.customer_id)) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Security: You can only edit entries for your assigned priority customers.' }, { status: 403 });
+            }
+        }
         
-        // Check edit count limit (2 times max)
+        // Check edit count limit (3 times max)
         const currentEditCount = ledger.edit_count || 0;
-        if (currentEditCount >= 2) {
+        // Super Admins bypass the edit limit
+        if (session.role !== 'SUPER_ADMIN' && currentEditCount >= 3) {
             await client.query('ROLLBACK');
-            return NextResponse.json({ error: 'Edit limit reached. You can only edit an entry twice.' }, { status: 403 });
+            return NextResponse.json({ error: 'Edit limit reached. You can only edit an entry 3 times.' }, { status: 403 });
         }
 
         const newAmount = amount !== undefined ? Math.round(parseFloat(amount)) : ledger.amount;
         const newKg = kg !== undefined ? parseFloat(kg) : ledger.kg;
         const newPrice = price_per_kg !== undefined ? parseFloat(price_per_kg) : ledger.price_per_kg;
+        const newRefDate = body.reference_date || ledger.reference_date;
 
-        // Update the ledger entry
+        // If Normal Admin, push to pending and exit
+        if (session.role !== 'SUPER_ADMIN') {
+            await client.query(`
+                INSERT INTO "PendingApprovals" (username, action_type, customer_id, ledger_id, payload)
+                VALUES ($1, $2, $3, $4, $5)
+            `, [
+                session.username,
+                'EDIT_PAYMENT',
+                ledger.customer_id,
+                ledgerId,
+                JSON.stringify({ amount: newAmount, kg: newKg, price_per_kg: newPrice, reference_date: newRefDate })
+            ]);
+            await client.query('COMMIT');
+            return NextResponse.json({ pending: true, message: 'Edit sent for Super Admin approval.' });
+        }
+
+        // Update the ledger entry (Super Admin only)
         await client.query(
             `UPDATE "Ledger"
-             SET amount = $1, kg = $2, price_per_kg = $3, edit_count = edit_count + 1
-             WHERE id = $4`,
-            [newAmount, newKg, newPrice, ledgerId]
+             SET amount = $1, kg = $2, price_per_kg = $3, reference_date = $4, edit_count = edit_count + 1
+             WHERE id = $5`,
+            [newAmount, newKg, newPrice, newRefDate, ledgerId]
         );
 
         // If it's a PRODUCT entry, attempt to update the DailyBookItem as well

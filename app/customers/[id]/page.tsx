@@ -219,12 +219,19 @@ export default function CustomerDetailPage() {
     const [editTxAmount, setEditTxAmount] = useState('');
     const [editTxKg, setEditTxKg] = useState('');
     const [editTxPrice, setEditTxPrice] = useState('');
+    const [editTxDate, setEditTxDate] = useState('');
+
+    // Add Late Payment State
+    const [latePaymentMaqal, setLatePaymentMaqal] = useState<ReceiptGroup | null>(null);
+    const [latePaymentAmount, setLatePaymentAmount] = useState('');
+    const [latePaymentDate, setLatePaymentDate] = useState('');
 
     const openEditModal = (tx: Transaction) => {
         setTransactionToEdit(tx);
         setEditTxAmount(tx.amount.toString());
         setEditTxKg(tx.kg ? tx.kg.toString() : '');
         setEditTxPrice(tx.price_per_kg ? tx.price_per_kg.toString() : '');
+        setEditTxDate(tx.reference_date ? new Date(tx.reference_date).toISOString().split('T')[0] : '');
     };
 
     const handleEditTransaction = async () => {
@@ -237,15 +244,45 @@ export default function CustomerDetailPage() {
                 body: JSON.stringify({
                     amount: editTxAmount ? parseFloat(editTxAmount) : undefined,
                     kg: editTxKg ? parseFloat(editTxKg) : undefined,
-                    price_per_kg: editTxPrice ? parseFloat(editTxPrice) : undefined
+                    price_per_kg: editTxPrice ? parseFloat(editTxPrice) : undefined,
+                    reference_date: editTxDate || undefined
                 })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to update');
-            toast.success(`Updated successfully! Remaining edits: ${data.remaining_edits}`);
+            toast.success(`Updated successfully!`);
             setTransactionToEdit(null);
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            loadCustomerData(true);
+            await loadCustomerData(true);
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setUpdating(false);
+        }
+    };
+
+    const handleAddLatePayment = async () => {
+        if (!latePaymentMaqal || !latePaymentAmount) return;
+        setUpdating(true);
+        try {
+            const res = await fetch(`/api/ledger`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-session-token': localStorage.getItem('dadwork_session_token') || '' },
+                body: JSON.stringify({
+                    customerId,
+                    type: 'PAYMENT',
+                    amount: parseFloat(latePaymentAmount),
+                    reference_date: latePaymentDate || (latePaymentMaqal.receiptId ? latePaymentMaqal.receiptId.substring(0, 10) : '')
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to add payment');
+            toast.success('Late payment added securely!');
+            setLatePaymentMaqal(null);
+            setLatePaymentAmount('');
+            setLatePaymentDate('');
+            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            await loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -802,7 +839,7 @@ export default function CustomerDetailPage() {
                     <DialogHeader>
                         <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Transaction</DialogTitle>
                         <DialogDescription className="text-[10px] opacity-70">
-                            You have {(2 - (transactionToEdit?.edit_count || 0))} edits remaining.
+                            You have {(3 - (transactionToEdit?.edit_count || 0))} edits remaining.
                         </DialogDescription>
                         {transactionToEdit?.type === 'PRODUCT' && (
                             <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-3 mt-2 rounded-md">
@@ -841,26 +878,86 @@ export default function CustomerDetailPage() {
                                 </div>
                             </div>
                         )}
-                        <div className="space-y-2">
-                            <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
-                            <Input
-                                type="number"
-                                value={editTxAmount}
-                                onChange={e => setEditTxAmount(e.target.value)}
-                                className="h-12 font-bold"
-                            />
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
+                                <Input
+                                    type="number"
+                                    value={editTxAmount}
+                                    onChange={e => setEditTxAmount(e.target.value)}
+                                    className="h-12 font-bold"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Date (Optional)</Label>
+                                <Input
+                                    type="date"
+                                    value={editTxDate}
+                                    onChange={e => setEditTxDate(e.target.value)}
+                                    className="h-12 font-bold text-xs"
+                                    disabled={transactionToEdit?.type === 'PRODUCT'}
+                                />
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>
                         <Button
                             className="w-full h-12 font-black uppercase tracking-widest"
                             onClick={handleEditTransaction}
-                            disabled={updating || (transactionToEdit?.edit_count || 0) >= 2}
+                            disabled={updating || (transactionToEdit?.edit_count || 0) >= 3}
                         >
                             {updating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                            {(transactionToEdit?.edit_count || 0) >= 2 ? 'Edit Limit Reached' : 'Save Changes'}
+                            {(transactionToEdit?.edit_count || 0) >= 3 ? 'Edit Limit Reached' : 'Save Changes'}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Late Payment Modal */}
+            <Dialog open={!!latePaymentMaqal} onOpenChange={(open) => !open && setLatePaymentMaqal(null)}>
+                <DialogContent className="sm:max-w-[300px] bg-background/80 backdrop-blur-3xl border-border/50 shadow-2xl rounded-2xl overflow-hidden p-0">
+                    <div className="p-4 bg-gradient-to-br from-emerald-500/10 to-transparent">
+                        <DialogHeader className="mb-4">
+                            <DialogTitle className="text-sm font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                <Plus className="w-4 h-4" /> Add Late Payment
+                            </DialogTitle>
+                            <DialogDescription className="text-[10px] opacity-70 font-medium">
+                                This payment will be securely attached to <strong className="text-foreground">{latePaymentMaqal?.titleString}</strong>
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Amount ($)</Label>
+                                <Input
+                                    type="number"
+                                    value={latePaymentAmount}
+                                    onChange={e => setLatePaymentAmount(e.target.value)}
+                                    className="h-10 font-bold bg-background/50 border-border/50 focus-visible:ring-emerald-500/30 transition-all rounded-xl shadow-inner"
+                                    placeholder="Enter amount..."
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Date</Label>
+                                <Input
+                                    type="date"
+                                    value={latePaymentDate || (latePaymentMaqal?.receiptId ? latePaymentMaqal.receiptId.substring(0, 10) : '')}
+                                    onChange={e => setLatePaymentDate(e.target.value)}
+                                    className="h-10 font-bold text-xs bg-background/50 border-border/50 rounded-xl shadow-inner"
+                                />
+                            </div>
+                        </div>
+                        <div className="mt-5">
+                            <Button
+                                className="w-full h-10 font-black uppercase tracking-widest rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 transition-all"
+                                onClick={handleAddLatePayment}
+                                disabled={updating || !latePaymentAmount}
+                            >
+                                {updating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                {updating ? 'Saving...' : 'Add Payment'}
+                            </Button>
+                        </div>
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -1022,15 +1119,36 @@ export default function CustomerDetailPage() {
                                 {/* Driven by getBalanceLabel — single source of truth */}
                                 {getBalanceLabel(filteredReceipts[0]?.totalPaid ?? 0, summary.currentBalance)}
                             </span>
-                            {/* Latest maqal % — matches customer list */}
+                            {/* All-Time % — Skips latest 0% paid maqal */}
                             {(() => {
-                                const latestWithProducts = filteredReceipts.find(r => r.totalMaqalka > 0);
-                                if (!latestWithProducts || latestWithProducts.totalMaqalka === 0) return null;
-                                const pct = Math.min(100, Math.round((latestWithProducts.totalPaid / latestWithProducts.totalMaqalka) * 100));
+                                let allTimeMaqalka = 0;
+                                let allTimePaid = 0;
+                                
+                                filteredReceipts.forEach((r, idx) => {
+                                    // Skip the most recent maqal IF it has exactly 0 payments (so a fresh maqal doesn't ruin the all-time score)
+                                    if (idx === 0 && r.totalPaid === 0) return;
+                                    allTimeMaqalka += r.totalMaqalka;
+                                    allTimePaid += r.totalPaid;
+                                });
+
+                                if (allTimeMaqalka === 0) return null;
+                                const pct = Math.min(100, Math.round((allTimePaid / allTimeMaqalka) * 100));
+                                
+                                let label = '';
+                                let colorClass = '';
+                                
+                                if (pct >= 100) { label = 'PERFECT'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
+                                else if (pct >= 95) { label = 'EXCELLENT'; colorClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'; }
+                                else if (pct >= 85) { label = 'GOOD'; colorClass = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'; }
+                                else if (pct >= 70) { label = 'BAD'; colorClass = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'; }
+                                else { label = 'WORST'; colorClass = 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'; }
+
                                 return (
-                                    <span className={`block mt-1 text-[8px] font-bold px-1.5 py-0.5 rounded inline-block ${pct >= 100 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : pct >= 50 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}>
-                                        {pct}% Paid
-                                    </span>
+                                    <div className="mt-1 flex flex-col items-end gap-0.5">
+                                        <span className={`text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 ${colorClass}`}>
+                                            ⚡ {pct}% All-Time <span className="opacity-40">|</span> {label}
+                                        </span>
+                                    </div>
                                 );
                             })()}
                         </div>
@@ -1143,14 +1261,30 @@ export default function CustomerDetailPage() {
                                 >
                                     <div className={`w-1 h-8 rounded-full shrink-0 transition-colors duration-300 ${statusColorClass}`} />
                                     <div className="flex-1 text-left min-w-0">
-                                        <p className="text-[11px] font-bold text-foreground leading-tight flex items-center gap-1.5 flex-wrap min-w-0">
-                                            <span className="truncate">{receipt.titleString || format(new Date(receipt.mainDate), 'MMM dd, yyyy')}</span>
-                                            {receipt.displayMaqalId != null && (
-                                                <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/40 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_8px_rgba(59,130,246,0.25)]">
-                                                    ⚡MQ#{receipt.displayMaqalId}
-                                                </span>
-                                            )}
-                                        </p>
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <p className="text-[11px] font-bold text-foreground leading-tight flex items-center gap-1.5 flex-wrap min-w-0">
+                                                <span className="truncate">{receipt.titleString || format(new Date(receipt.mainDate), 'MMM dd, yyyy')}</span>
+                                                {receipt.displayMaqalId != null && (
+                                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/40 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_8px_rgba(59,130,246,0.25)]">
+                                                        ⚡MQ#{receipt.displayMaqalId}
+                                                    </span>
+                                                )}
+                                            </p>
+                                            {(() => {
+                                                const offset = (filteredReceipts[0]?.totalPaid === 0 && filteredReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
+                                                const isEditable = receiptIdx >= offset && receiptIdx < offset + 2;
+                                                return isEditable ? (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-6 text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10 px-2 rounded-full border border-emerald-500/20 backdrop-blur-md transition-all shadow-sm shrink-0"
+                                                        onClick={(e) => { e.stopPropagation(); setLatePaymentMaqal(receipt); }}
+                                                    >
+                                                        <Plus className="w-2.5 h-2.5 mr-1" /> Late Payment
+                                                    </Button>
+                                                ) : null;
+                                            })()}
+                                        </div>
                                         {/* Inline badges: % paid + diff amount */}
                                         {receipt.totalMaqalka > 0 && paymentsInReceipt > 0 && (() => {
                                             const diff = paymentsInReceipt - receipt.totalMaqalka;
@@ -1391,11 +1525,20 @@ export default function CustomerDetailPage() {
                                                                             // Everyone has a 24h time limit (including Super Admin). 
                                                                             // Regular admins ALSO require it to be their priority customer (canUndo).
                                                                             const showUndo = canUndo && isRecent;
-                                                                            if (showUndo) {
+                                                                            
+                                                                            const offset = (filteredReceipts[0]?.totalPaid === 0 && filteredReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
+                                                                            const isEditable = receiptIdx >= offset && receiptIdx < offset + 2;
+                                                                            const showEdit = canUndo && isEditable;
+
+                                                                            if (showUndo || showEdit) {
                                                                                 return (
                                                                                     <div className="flex gap-3 mt-1 opacity-60 hover:opacity-100 transition-opacity print:hidden">
-                                                                                        <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline"><Pencil className="w-3 h-3"/> Edit</button>
-                                                                                        <button onClick={(ev) => { ev.stopPropagation(); handleUndoTransaction(e.id); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
+                                                                                        {showEdit && (
+                                                                                            <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline text-amber-600 dark:text-amber-500"><Pencil className="w-3 h-3"/> Edit</button>
+                                                                                        )}
+                                                                                        {showUndo && (
+                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleUndoTransaction(e.id); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
+                                                                                        )}
                                                                                     </div>
                                                                                 );
                                                                             }
