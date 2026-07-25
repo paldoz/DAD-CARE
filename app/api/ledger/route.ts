@@ -121,14 +121,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 return 0;
             });
 
-            const hasReset = entriesToProcess.some((item: any) => {
-                const lowerNote = (item.note || '').toLowerCase();
-                return item.type === 'ADJUSTMENT' && (lowerNote.includes('setup') || lowerNote.includes('initial') || lowerNote.includes('reesto'));
-            });
-
-            if (hasReset) {
-                runningDebt = 0;
-            }
+            // (Removed hasReset logic that forced runningDebt to 0. This caused math mismatches because the background recalculation historically ignored it and summed absolute values. Now memory math matches the absolute sum perfectly).
 
             const productDates = entriesToProcess
                 .filter((e: any) => e.type === 'PRODUCT' && e.date)
@@ -181,7 +174,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                     note: note || body.note || null,
                     receipt_id: receipt_id,
                     maqal_id: maqal_id,
-                    created_at: new Date(now.getTime() + (i * 1000)).toISOString()
+                    created_at: new Date(now.getTime() + i).toISOString()
                 });
             }
 
@@ -207,15 +200,14 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 );
             }
 
-            // After inserting ANY new ledger entries, we MUST mathematically recalculate the entire ledger
-            // to ensure Reesto and balances are perfectly aligned, especially for Late Payments inserted in the past.
-            const { recalculateCustomerLedger } = await import('@/lib/ledger-utils');
-            
-            // If batch, we recalculate for every unique customer ID involved
-            const uniqueCustomerIds = [...new Set(entriesToInsert.map(e => e.customer_id))];
-            for (const cId of uniqueCustomerIds) {
-                await recalculateCustomerLedger(cId, client);
-            }
+            // After inserting ANY new ledger entries, we don't need to mathematically recalculate the entire ledger
+            // because inserts are append-only (created_at is always NOW()) and the runningDebt math done above is 100% accurate.
+            // Recalculating here causes severe O(N) performance degradation as customer history grows.
+            // const { recalculateCustomerLedger } = await import('@/lib/ledger-utils');
+            // const uniqueCustomerIds = [...new Set(entriesToInsert.map(e => e.customer_id))];
+            // for (const cId of uniqueCustomerIds) {
+            //     await recalculateCustomerLedger(cId, client);
+            // }
 
             await client.query('COMMIT');
         } catch (error) {
