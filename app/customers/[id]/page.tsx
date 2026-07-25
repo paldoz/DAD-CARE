@@ -272,7 +272,7 @@ export default function CustomerDetailPage() {
                     customerId,
                     type: 'PAYMENT',
                     amount: parseFloat(latePaymentAmount),
-                    reference_date: latePaymentDate || (latePaymentMaqal.receiptId ? latePaymentMaqal.receiptId.substring(0, 10) : ''),
+                    reference_date: latePaymentDate || (latePaymentMaqal.mainDate ? latePaymentMaqal.mainDate : new Date().toISOString().split('T')[0]),
                     maqal_id: latePaymentMaqal.maqalId || null,
                     receipt_id: latePaymentMaqal.receiptId || null
                 })
