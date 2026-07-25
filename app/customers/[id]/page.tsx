@@ -1273,12 +1273,19 @@ export default function CustomerDetailPage() {
                                                 )}
                                             </p>
                                             {(() => {
-                                                // The newest maqal (receiptIdx === 0) is the active one; hide the button there.
-                                                // Show the Late Payment button on ALL past maqals (receiptIdx > 0).
-                                                const isPastMaqal = receiptIdx > 0 && (receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0);
+                                                // We want to target ONLY the Maqal that immediately precedes the newest one.
+                                                // Find all Maqal indices first.
+                                                const maqalIndices = finalReceipts
+                                                    .map((r, i) => (r.totalMaqalka > 0 || r.totalAdjustment > 0) ? i : -1)
+                                                    .filter(i => i !== -1);
+                                                
+                                                // The active Maqal is maqalIndices[0]
+                                                // The target Maqal for late payments is maqalIndices[1]
+                                                const isTargetMaqal = maqalIndices.length > 1 && receiptIdx === maqalIndices[1];
+                                                
                                                 const paymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT').length;
                                                 const latePaymentsLeft = Math.max(0, 3 - paymentsCount);
-                                                const showLatePayment = isPastMaqal && (isSuperAdmin || latePaymentsLeft > 0);
+                                                const showLatePayment = isTargetMaqal && (isSuperAdmin || latePaymentsLeft > 0);
                                                 
                                                 return showLatePayment ? (
                                                     <Button
