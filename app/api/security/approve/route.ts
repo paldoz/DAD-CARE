@@ -37,8 +37,8 @@ export async function POST(request: Request) {
                 const refDate = payload.reference_date || new Date().toISOString().split('T')[0];
                 // Insert Ledger Payment
                 await client.query(
-                    `INSERT INTO "Ledger" (id, customer_id, type, amount, reference_date, previous_debt, new_debt) VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, 0)`,
-                    [payload.customerId || approval.customer_id, 'PAYMENT', payload.amount, refDate]
+                    `INSERT INTO "Ledger" (id, customer_id, type, amount, reference_date, previous_debt, new_debt, maqal_id, receipt_id) VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, 0, $5, $6)`,
+                    [payload.customerId || approval.customer_id, 'PAYMENT', payload.amount, refDate, payload.maqal_id || null, payload.receipt_id || null]
                 );
             } else if (approval.action_type === 'UNDO_LEDGER') {
                 // Soft delete and recalculate
