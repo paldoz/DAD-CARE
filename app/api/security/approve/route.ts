@@ -64,6 +64,10 @@ export async function POST(request: Request) {
             revalidateTag('dashboard');
             // @ts-ignore
             revalidateTag('customer-daily-entries');
+            // @ts-ignore
+            revalidateTag(`ledger-${approval.customer_id}`);
+            // @ts-ignore
+            revalidateTag(`daily-entries-${approval.customer_id}`);
 
             return NextResponse.json({ success: true });
         } catch (e) {

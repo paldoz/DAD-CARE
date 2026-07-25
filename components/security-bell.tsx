@@ -58,6 +58,11 @@ export function SecurityBell() {
                 undefined,
                 { revalidate: true }
             );
+
+            // Force the entire page to reload so the new money appears instantly without the user pressing F5
+            if (typeof window !== 'undefined') {
+                window.location.reload();
+            }
             
             if (alerts.length === 1) {
                 setIsOpen(false);
