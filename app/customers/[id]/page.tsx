@@ -835,9 +835,9 @@ export default function CustomerDetailPage() {
 
             {/* Transaction Edit Modal */}
             <Dialog open={!!transactionToEdit} onOpenChange={(open) => !open && setTransactionToEdit(null)}>
-                <DialogContent className="sm:max-w-[425px] border-border shadow-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="text-xl font-black uppercase tracking-tight">Edit Transaction</DialogTitle>
+                <DialogContent className="w-[92vw] sm:max-w-[320px] rounded-3xl border-border/50 shadow-2xl p-5 gap-4">
+                    <DialogHeader className="mb-0">
+                        <DialogTitle className="text-lg font-black uppercase tracking-tight">Edit Transaction</DialogTitle>
                         <DialogDescription className="text-[10px] opacity-70">
                             You have {(3 - (transactionToEdit?.edit_count || 0))} edits remaining.
                         </DialogDescription>
@@ -879,23 +879,23 @@ export default function CustomerDetailPage() {
                             </div>
                         )}
                         
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
                                 <Input
                                     type="number"
                                     value={editTxAmount}
                                     onChange={e => setEditTxAmount(e.target.value)}
-                                    className="h-12 font-bold"
+                                    className="h-10 font-bold text-sm"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Date (Optional)</Label>
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Date (Opt)</Label>
                                 <Input
                                     type="date"
                                     value={editTxDate}
                                     onChange={e => setEditTxDate(e.target.value)}
-                                    className="h-12 font-bold text-xs"
+                                    className="h-10 font-bold text-[10px]"
                                     disabled={transactionToEdit?.type === 'PRODUCT'}
                                 />
                             </div>
@@ -916,7 +916,7 @@ export default function CustomerDetailPage() {
 
             {/* Late Payment Modal */}
             <Dialog open={!!latePaymentMaqal} onOpenChange={(open) => !open && setLatePaymentMaqal(null)}>
-                <DialogContent className="sm:max-w-[300px] bg-background/80 backdrop-blur-3xl border-border/50 shadow-2xl rounded-2xl overflow-hidden p-0">
+                <DialogContent className="w-[90vw] sm:max-w-[280px] bg-background/80 backdrop-blur-3xl border-border/50 shadow-2xl rounded-[24px] overflow-hidden p-0">
                     <div className="p-4 bg-gradient-to-br from-emerald-500/10 to-transparent">
                         <DialogHeader className="mb-4">
                             <DialogTitle className="text-sm font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">

@@ -351,8 +351,8 @@ export default function CustomersPage() {
                     </p>
                 </div>
 
-                <div className="relative z-10 flex flex-col sm:flex-row gap-3 self-stretch md:self-center">
-                    <div className="relative flex-1 sm:w-[220px]">
+                <div className="relative z-10 flex flex-col sm:flex-row gap-3 self-stretch md:self-center md:flex-wrap lg:flex-nowrap justify-end items-stretch sm:items-center">
+                    <div className="relative flex-1 sm:max-w-[220px] w-full shrink">
                         {isSearching
                             ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
                             : <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -361,7 +361,7 @@ export default function CustomersPage() {
                             placeholder="Search by name or ID..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-9 h-11 bg-background/50 backdrop-blur-sm border-border/60 focus:border-primary transition-colors w-full rounded-xl"
+                            className="pl-9 h-11 bg-background/50 backdrop-blur-sm border-border/60 focus:border-primary transition-colors w-full rounded-xl shrink"
                         />
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
