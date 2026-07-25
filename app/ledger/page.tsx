@@ -265,11 +265,10 @@ export default function LedgerPage() {
 
     // Data state
     const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
-        refreshInterval: 10000,       // ⚡ Keep admins instantly in sync (safely hits Vercel Edge Cache)
-        revalidateOnFocus: true,      // ⚡ Auto-sync when switching back to tab
-        dedupingInterval: 2000,       
+        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
+        dedupingInterval: 60000,      // ⚡ 1 req per min max
         keepPreviousData: true,
-        revalidateIfStale: true       // ⚡ Ensure stale data updates
+        revalidateIfStale: false      // ⚡ CRITICAL: Do NOT re-fetch on page navigation if cache exists
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive && !c.is_unassignable);
     
@@ -1123,79 +1122,42 @@ export default function LedgerPage() {
                 const allAbsent = validEntries.length === 0 || validEntries.every(e => parseFloat(e.kg || '0') <= 0 && parseFloat(e.extraKg || '0') <= 0);
 
                 if (allAbsent) {
-                    // Stay on same customer and auto-skip absent pairs until we find real KG
-                    const token = localStorage.getItem('dadwork_session_token') || '';
-                    let foundRealPair = false;
-                    let safetyLimit = 10; // prevent infinite loops
+                    // Stay on same customer, just fetch the next pair
+                    const url = new URL(`/api/customer-daily-entries`, window.location.origin);
+                    url.searchParams.set('customerId', selectedCustomerId);
 
-                    while (!foundRealPair && safetyLimit-- > 0) {
-                        const url = new URL(`/api/customer-daily-entries`, window.location.origin);
-                        url.searchParams.set('customerId', selectedCustomerId);
+                    const res2 = await fetch(url.toString());
+                    const allDatesHeader2 = res2.headers.get('x-all-unprocessed-dates');
+                    const nextPair: any[] = await res2.json();
+                    
+                    if (allDatesHeader2) {
+                        try { setAllUnprocessedDates(JSON.parse(allDatesHeader2)); } catch(e) {}
+                    }
 
-                        const res2 = await fetch(url.toString());
-                        const allDatesHeader2 = res2.headers.get('x-all-unprocessed-dates');
-                        const nextPair: any[] = await res2.json();
+                    if (!nextPair || nextPair.length === 0) {
+                        // No more pairs — all done for this customer
+                        setCustomerDailyDates([]);
+                        setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
+                    } else {
+                        const newExpandedIds = new Set<string>();
+                        const newEntries = nextPair.map((d: any, idx: number) => {
+                            const entryId = (Date.now() + idx).toString();
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                            if (shouldExpandExtra) newExpandedIds.add(entryId);
+                            return entry;
+                        });
                         
-                        if (allDatesHeader2) {
-                            try { setAllUnprocessedDates(JSON.parse(allDatesHeader2)); } catch(e) {}
-                        }
-
-                        if (!nextPair || nextPair.length === 0) {
-                            // No more pairs — all done for this customer
-                            foundRealPair = true;
-                            setCustomerDailyDates([]);
-                            setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
-                            break;
-                        }
-
-                        const pairHasRealKg = nextPair.some((d: any) => parseFloat(d.kg || '0') > 0);
-
-                        if (pairHasRealKg) {
-                            // Found a real pair — load it and stop
-                            foundRealPair = true;
-                            setCustomerDailyDates(nextPair);
-                            const newExpandedIds = new Set<string>();
-                            const newEntries = nextPair.map((d: any, idx: number) => {
-                                const entryId = (Date.now() + idx).toString();
-                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
-                                if (shouldExpandExtra) newExpandedIds.add(entryId);
-                                return entry;
-                            });
-                            setDateEntries(newEntries);
-                            if (newExpandedIds.size > 0) {
-                                setTimeout(() => {
-                                    setExpandedExtraEntryIds(prev => {
-                                        const combined = new Set(prev);
-                                        newExpandedIds.forEach(id => combined.add(id));
-                                        return combined;
-                                    });
-                                }, 0);
-                            }
-                            toast.success(`✅ Skipped absent days — now showing ${nextPair.map((d: any) => d.date?.substring(5,10)).join(' & ')}`);
-                        } else {
-                            // This pair is also all-absent — auto-save it silently and continue
-                            const absentItems = nextPair.map((d: any) => ({
-                                type: 'PRODUCT',
-                                date: d.date,
-                                kg: '0',
-                                price: defaultPrice,
-                                note: 'Baaqatay'
-                            }));
-                            await fetch('/api/ledger', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'x-session-token': token
-                                },
-                                body: JSON.stringify({
-                                    customerId: selectedCustomerId,
-                                    receipt_id: crypto.randomUUID(),
-                                    items: absentItems
-                                })
-                            });
-                            // Loop continues to check next pair
+                        setDateEntries(newEntries);
+                        setExpandedExtraEntryIds(newExpandedIds);
+                        setCustomerDailyDates(nextPair);
+                        
+                        // Set maqal ID based on header
+                        const maqalIdHeader2 = res2.headers.get('x-maqal-id');
+                        if (maqalIdHeader2) {
+                            setCurrentMaqalId(parseInt(maqalIdHeader2, 10));
                         }
                     }
+
                     
                     const resData = data;
                     
