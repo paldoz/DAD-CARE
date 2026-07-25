@@ -265,10 +265,11 @@ export default function LedgerPage() {
 
     // Data state
     const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
-        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
-        dedupingInterval: 60000,      // ⚡ 1 req per min max
+        refreshInterval: 10000,       // ⚡ Keep admins instantly in sync (safely hits Vercel Edge Cache)
+        revalidateOnFocus: true,      // ⚡ Auto-sync when switching back to tab
+        dedupingInterval: 2000,       
         keepPreviousData: true,
-        revalidateIfStale: false      // ⚡ CRITICAL: Do NOT re-fetch on page navigation if cache exists
+        revalidateIfStale: true       // ⚡ Ensure stale data updates
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive && !c.is_unassignable);
     
@@ -1418,7 +1419,7 @@ export default function LedgerPage() {
                                                                 setCustomerSearch('');
                                                             }}
                                                         >
-                                                            {c.id === lastSavedCustomerId ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : (doneCustomerIds.has(c.id) || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : ''))}
+                                                            {c.id === lastSavedCustomerId || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : '')}
                                                             {c.name.toUpperCase()} (ID: {c.customer_code})
                                                             {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
                                                         </div>

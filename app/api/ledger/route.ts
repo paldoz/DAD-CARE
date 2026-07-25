@@ -225,7 +225,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                         )::int * '1 day'::interval)::date AS date2
                 )
                 SELECT
-                    CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,
+                    CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
                     CASE
                         WHEN COALESCE(td.prev_pair_ledger_count, 0) >= 2 THEN true
                         WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM prev_pair) THEN true

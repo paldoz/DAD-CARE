@@ -198,7 +198,7 @@ async function getCustomers(options: {
             COALESCE(dbk.total_daily_kg, 0)::float as total_kg,
             COALESCE(l.last_receipt_has_payment, false) as last_receipt_has_payment,
             COALESCE(dbk.total_books_count, 0) as total_books_count,
-            CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,
+            CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
             CASE
                 WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
                 WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
@@ -336,23 +336,23 @@ const getCachedCustomersLite = unstable_cache(
 const getCachedCustomersLedger = unstable_cache(
     async () => {
         const query = `
-            WITH prev_pair AS (
+            WITH target_pair AS (
                 SELECT
                     ('2026-06-28'::date + (
-                        ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 2
+                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
                     )::int * '1 day'::interval)::date AS date1,
                     ('2026-06-28'::date + (
-                        ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 1
+                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
                     )::int * '1 day'::interval)::date AS date2
             )
             SELECT
                 c.id, c.name, c.customer_code, c.is_kabarka, c.is_unassignable,
                 CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
                 COALESCE(dbk.total_books_count, 0) as total_books_count,
-                CASE WHEN COALESCE(dbk.total_daily_kg, 0) > COALESCE(lk.total_ledger_kg, 0) THEN 1 ELSE 0 END as unprocessed_books_count,
+                CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
                 CASE
-                    WHEN COALESCE(td.prev_pair_ledger_count, 0) >= 2 THEN true
-                    WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM prev_pair) THEN true
+                    WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
+                    WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
                     ELSE false
                 END as is_target_days_done
             FROM "Customer" c
@@ -366,11 +366,11 @@ const getCachedCustomersLedger = unstable_cache(
             ) lk ON c.id = lk.customer_id
             LEFT JOIN (
                 SELECT customer_id,
-                    COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as prev_pair_ledger_count
+                    COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as target_pair_ledger_count
                 FROM "Ledger"
                 WHERE type = 'PRODUCT' AND deleted_at IS NULL
                   AND COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)
-                        IN (SELECT date1 FROM prev_pair UNION SELECT date2 FROM prev_pair)
+                        IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
                 GROUP BY customer_id
             ) td ON c.id = td.customer_id
             ORDER BY c.name ASC;
