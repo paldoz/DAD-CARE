@@ -44,11 +44,11 @@ export async function POST(request: Request) {
                     `UPDATE "Ledger" SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2`,
                     [approval.username, approval.ledger_id]
                 );
-                
-                // Recalculate customer ledger inline to avoid import issues or we can just call the util
-                const { recalculateCustomerLedger } = await import('@/lib/ledger-utils');
-                await recalculateCustomerLedger(approval.customer_id, client);
             }
+
+            // ALWAYS recalculate customer ledger for Edit, Add, and Undo!
+            const { recalculateCustomerLedger } = await import('@/lib/ledger-utils');
+            await recalculateCustomerLedger(approval.customer_id, client);
 
             await client.query(`UPDATE "PendingApprovals" SET status = 'APPROVED' WHERE id = $1`, [id]);
             await client.query('COMMIT');

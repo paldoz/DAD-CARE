@@ -82,7 +82,7 @@ export function SecurityBell() {
             </button>
 
             {isOpen && (
-                <div className="absolute right-[-10px] sm:right-0 top-12 z-50 w-[260px] max-w-[calc(100vw-20px)] rounded-[20px] bg-background/50 dark:bg-background/40 backdrop-blur-[40px] border border-white/20 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="absolute right-0 top-12 z-50 w-[260px] max-w-[calc(100vw-20px)] rounded-[20px] bg-background/50 dark:bg-background/40 backdrop-blur-[40px] border border-white/20 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300 transform origin-top-right">
                     <div className="p-3 border-b border-border/50 bg-gradient-to-r from-red-500/10 to-transparent">
                         <h3 className="text-sm font-black uppercase tracking-widest text-red-500 flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4" /> Pending Approvals
