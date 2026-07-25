@@ -250,7 +250,7 @@ export default function CustomerDetailPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to update');
-            toast.success(`Updated successfully!`);
+            toast.success(data.message || 'Updated successfully!');
             setTransactionToEdit(null);
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             await loadCustomerData(true);
@@ -277,7 +277,7 @@ export default function CustomerDetailPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to add payment');
-            toast.success('Late payment added securely!');
+            toast.success(data.message || 'Late payment added securely!');
             setLatePaymentMaqal(null);
             setLatePaymentAmount('');
             setLatePaymentDate('');
@@ -301,7 +301,7 @@ export default function CustomerDetailPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to undo');
-            toast.success('Entry successfully undone.');
+            toast.success(data.message || 'Entry successfully undone.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             // Small delay to let Vercel edge cache propagate the revalidateTag bust
             await new Promise(resolve => setTimeout(resolve, 800));
@@ -1272,8 +1272,12 @@ export default function CustomerDetailPage() {
                                             </p>
                                             {(() => {
                                                 const offset = (finalReceipts[0]?.totalPaid === 0 && finalReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
-                                                const isEditable = receiptIdx >= offset && receiptIdx < offset + 2;
-                                                return isEditable ? (
+                                                const isEditable = receiptIdx === offset;
+                                                const paymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT').length;
+                                                const latePaymentsLeft = Math.max(0, 3 - paymentsCount);
+                                                const showLatePayment = isEditable && (isSuperAdmin || latePaymentsLeft > 0);
+                                                
+                                                return showLatePayment ? (
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
@@ -1281,6 +1285,7 @@ export default function CustomerDetailPage() {
                                                         onClick={(e) => { e.stopPropagation(); setLatePaymentMaqal(receipt); }}
                                                     >
                                                         <Plus className="w-2.5 h-2.5 mr-1" /> Late Payment
+                                                        {!isSuperAdmin && <span className="ml-1 px-1 rounded-sm bg-emerald-500/20 text-[7px] text-emerald-700 dark:text-emerald-300 tracking-wider">({latePaymentsLeft} left)</span>}
                                                     </Button>
                                                 ) : null;
                                             })()}
@@ -1527,14 +1532,18 @@ export default function CustomerDetailPage() {
                                                                             const showUndo = canUndo && isRecent;
                                                                             
                                                                             const offset = (finalReceipts[0]?.totalPaid === 0 && finalReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
-                                                                            const isEditable = receiptIdx >= offset && receiptIdx < offset + 2;
-                                                                            const showEdit = canUndo && isEditable;
+                                                                            const isEditable = receiptIdx === offset;
+                                                                            const editsLeft = Math.max(0, 3 - (e.edit_count || 0));
+                                                                            const showEdit = canUndo && isEditable && (isSuperAdmin || editsLeft > 0);
 
                                                                             if (showUndo || showEdit) {
                                                                                 return (
                                                                                     <div className="flex gap-3 mt-1 opacity-60 hover:opacity-100 transition-opacity print:hidden">
                                                                                         {showEdit && (
-                                                                                            <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline text-amber-600 dark:text-amber-500"><Pencil className="w-3 h-3"/> Edit</button>
+                                                                                            <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline text-amber-600 dark:text-amber-500">
+                                                                                                <Pencil className="w-3 h-3"/> Edit
+                                                                                                {!isSuperAdmin && <span className="px-1 rounded-sm bg-amber-500/20 text-[7px] text-amber-700 dark:text-amber-300 tracking-wider font-black">({editsLeft} left)</span>}
+                                                                                            </button>
                                                                                         )}
                                                                                         {showUndo && (
                                                                                             <button onClick={(ev) => { ev.stopPropagation(); handleUndoTransaction(e.id); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
