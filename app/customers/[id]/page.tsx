@@ -69,7 +69,7 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { downloadReceiptPDF, shareReceiptToWhatsApp } from '@/lib/generate-receipt-pdf';
-import { MessageCircle, FileDown, Lock } from 'lucide-react';
+import { MessageCircle, FileDown, Lock, Plus } from 'lucide-react';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
 import { useSession } from '@/hooks/useSession';
 
@@ -1219,7 +1219,7 @@ export default function CustomerDetailPage() {
                         </div>
                     </div>
                 ) : (
-                    finalReceipts.map((receipt) => {
+                    finalReceipts.map((receipt, receiptIdx) => {
                         const isExpanded = expandedReceipts.has(receipt.id);
 
                         let pct = 0;
@@ -1271,7 +1271,7 @@ export default function CustomerDetailPage() {
                                                 )}
                                             </p>
                                             {(() => {
-                                                const offset = (filteredReceipts[0]?.totalPaid === 0 && filteredReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
+                                                const offset = (finalReceipts[0]?.totalPaid === 0 && finalReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
                                                 const isEditable = receiptIdx >= offset && receiptIdx < offset + 2;
                                                 return isEditable ? (
                                                     <Button
@@ -1526,7 +1526,7 @@ export default function CustomerDetailPage() {
                                                                             // Regular admins ALSO require it to be their priority customer (canUndo).
                                                                             const showUndo = canUndo && isRecent;
                                                                             
-                                                                            const offset = (filteredReceipts[0]?.totalPaid === 0 && filteredReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
+                                                                            const offset = (finalReceipts[0]?.totalPaid === 0 && finalReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
                                                                             const isEditable = receiptIdx >= offset && receiptIdx < offset + 2;
                                                                             const showEdit = canUndo && isEditable;
 
