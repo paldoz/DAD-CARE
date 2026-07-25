@@ -24,19 +24,21 @@ export async function POST(request: Request) {
             }
 
             const approval = rows[0];
-            const payload = approval.payload;
+            const payload = typeof approval.payload === 'string' ? JSON.parse(approval.payload) : approval.payload;
 
             if (approval.action_type === 'EDIT_PAYMENT') {
+                const refDate = payload.reference_date || new Date().toISOString().split('T')[0];
                 // Update Ledger
                 await client.query(
                     `UPDATE "Ledger" SET amount = $1, kg = $2, price_per_kg = $3, reference_date = $4, edit_count = edit_count + 1 WHERE id = $5`,
-                    [payload.amount, payload.kg, payload.price_per_kg, payload.reference_date, approval.ledger_id]
+                    [payload.amount, payload.kg, payload.price_per_kg, refDate, approval.ledger_id]
                 );
             } else if (approval.action_type === 'ADD_LATE_PAYMENT') {
+                const refDate = payload.reference_date || new Date().toISOString().split('T')[0];
                 // Insert Ledger Payment
                 await client.query(
-                    `INSERT INTO "Ledger" (customer_id, type, amount, reference_date) VALUES ($1, $2, $3, $4)`,
-                    [payload.customerId, 'PAYMENT', payload.amount, payload.reference_date]
+                    `INSERT INTO "Ledger" (customer_id, type, amount, reference_date, previous_debt, new_debt) VALUES ($1, $2, $3, $4, 0, 0)`,
+                    [payload.customerId || approval.customer_id, 'PAYMENT', payload.amount, refDate]
                 );
             } else if (approval.action_type === 'UNDO_LEDGER') {
                 // Soft delete and recalculate
