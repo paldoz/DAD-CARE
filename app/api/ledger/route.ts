@@ -207,6 +207,15 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 );
             }
 
+            // After inserting ANY new ledger entries, we MUST mathematically recalculate the entire ledger
+            // to ensure Reesto and balances are perfectly aligned, especially for Late Payments inserted in the past.
+            const { recalculateCustomerLedger } = await import('@/lib/ledger-utils');
+            
+            // If batch, we recalculate for every unique customer ID involved
+            const uniqueCustomerIds = [...new Set(entriesToInsert.map(e => e.customer_id))];
+            for (const cId of uniqueCustomerIds) {
+                await recalculateCustomerLedger(cId, client);
+            }
 
             await client.query('COMMIT');
         } catch (error) {
