@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidateTag } from 'next/cache';
 import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 
@@ -51,6 +52,16 @@ export async function POST(request: Request) {
 
             await client.query(`UPDATE "PendingApprovals" SET status = 'APPROVED' WHERE id = $1`, [id]);
             await client.query('COMMIT');
+
+            // Instantly destroy Vercel Cache so the Normal Admin sees the change immediately
+            // @ts-ignore
+            revalidateTag('ledger');
+            // @ts-ignore
+            revalidateTag('customers');
+            // @ts-ignore
+            revalidateTag('dashboard');
+            // @ts-ignore
+            revalidateTag('customer-daily-entries');
 
             return NextResponse.json({ success: true });
         } catch (e) {
