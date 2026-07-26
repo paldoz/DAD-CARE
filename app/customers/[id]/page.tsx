@@ -305,9 +305,10 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to undo');
             toast.success(data.message || 'Entry successfully undone.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            // Small delay to let Vercel edge cache propagate the revalidateTag bust
-            await new Promise(resolve => setTimeout(resolve, 800));
-            await loadCustomerData(false);
+            // Hard refresh to show accurate warning signs exactly like the save flow
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -335,9 +336,10 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to delete receipt');
             toast.success('Receipt successfully deleted and balance recalculated.');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            // Small delay to let Vercel edge cache propagate the revalidateTag bust
-            await new Promise(resolve => setTimeout(resolve, 800));
-            await loadCustomerData(false);
+            // Hard refresh to show accurate warning signs exactly like the save flow
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         } catch (err: any) {
             toast.error(err.message);
         } finally {

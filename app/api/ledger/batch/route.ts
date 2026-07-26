@@ -64,6 +64,8 @@ export async function DELETE(request: Request) {
             revalidateTag('customer-daily-entries');
             // @ts-ignore
             revalidateTag('dashboard');
+            // @ts-ignore
+            revalidateTag('customers');
             try {
                 revalidatePath('/api/daily-book');
                 revalidatePath('/api/daily-book-history');

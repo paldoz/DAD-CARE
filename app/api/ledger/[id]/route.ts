@@ -94,6 +94,8 @@ export async function DELETE(
         revalidateTag('customer-daily-entries');
         // @ts-ignore
         revalidateTag('dashboard');
+        // @ts-ignore
+        revalidateTag('customers');
         try {
             revalidatePath('/api/daily-book');
             revalidatePath('/api/daily-book-history');
@@ -218,6 +220,8 @@ export async function PATCH(
         revalidateTag('ledger');
         // @ts-ignore
         revalidateTag('dashboard');
+        // @ts-ignore
+        revalidateTag('customers');
 
         return NextResponse.json({ 
             success: true, 
