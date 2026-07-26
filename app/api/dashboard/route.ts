@@ -27,7 +27,7 @@ const getDashboardData = async (today: string) => {
                     SELECT id 
                     FROM "DailyBook" 
                     WHERE date = $1 AND deleted_at IS NULL 
-                    ORDER BY created_at DESC 
+                    ORDER BY created_at ASC 
                     LIMIT 1
                 )
                 SELECT 

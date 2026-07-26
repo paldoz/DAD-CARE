@@ -120,7 +120,7 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
 
         let bookId;
         const { rows: existing } = await client.query(
-            `SELECT id, deleted_at FROM "DailyBook" WHERE date = $1::date`,
+            `SELECT id, deleted_at FROM "DailyBook" WHERE date = $1::date ORDER BY created_at ASC LIMIT 1`,
             [dateStr]
         );
 
