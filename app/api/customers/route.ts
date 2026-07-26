@@ -43,7 +43,13 @@ async function getCustomers(options: {
     
     let searchCondition = "1=1";
     if (search) {
-        searchCondition = `(c.name ILIKE $1 OR c.customer_code ILIKE $1)`;
+        searchCondition = `(
+            c.name ILIKE $1 
+            OR REPLACE(c.name, ' ', '') ILIKE REPLACE($1, ' ', '') 
+            OR c.customer_code ILIKE $1
+            OR c.phone ILIKE $1
+            OR REPLACE(c.phone, ' ', '') ILIKE REPLACE($1, ' ', '')
+        )`;
     }
 
     // Add sorting logic

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useClickAway } from '@/lib/hooks/use-click-away'; // I will check if this exists or just write click away logic
 import useSWR from 'swr';
+import { smartCustomerSearch } from '@/lib/search-utils';
 
 const fetcher = async (url: string) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
@@ -45,18 +46,7 @@ export function GlobalSearch() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const filtered = query.trim() === '' ? [] : (customers || []).filter(c => {
-        const term = query.toLowerCase().trim();
-        const cleanTerm = term.replace(/[^a-z0-9]/g, '');
-        const cleanPhoneQuery = query.replace(/[^0-9]/g, '');
-        
-        const nameMatch = c.name && c.name.toLowerCase().includes(term);
-        const cleanNameMatch = c.name && cleanTerm && c.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(cleanTerm);
-        const phoneMatch = c.phone && cleanPhoneQuery && c.phone.replace(/[^0-9]/g, '').includes(cleanPhoneQuery);
-        const codeMatch = c.customer_code && c.customer_code.toString().toLowerCase().includes(term);
-        
-        return nameMatch || cleanNameMatch || phoneMatch || codeMatch;
-    });
+    const filtered = query.trim() === '' ? [] : (customers || []).filter(c => smartCustomerSearch(c, query));
 
     return (
         <div ref={searchRef} className="relative w-full max-w-2xl mx-auto mb-6 z-[110]">

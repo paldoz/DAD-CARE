@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { format, parseISO } from 'date-fns';
+import { smartCustomerSearch } from '@/lib/search-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
@@ -1330,8 +1331,7 @@ export default function LedgerPage() {
                                             <div className="max-h-60 overflow-y-auto p-1">
                                                 {(() => {
                                                     const filtered = adminVisibleCustomers.filter((c: any) => {
-                                                        const matchesSearch = c.name.toLowerCase().includes(deferredCustomerSearch.toLowerCase()) || 
-                                                                             c.customer_code.toLowerCase().includes(deferredCustomerSearch.toLowerCase());
+                                                        const matchesSearch = smartCustomerSearch(c, deferredCustomerSearch);
                                                         if (showUnprocessedOnly) {
                                                             return matchesSearch && !c.is_target_days_done && (c.unprocessed_books_count || c.total_books_count);
                                                         }

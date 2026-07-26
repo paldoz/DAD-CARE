@@ -33,19 +33,26 @@ interface CachedSession {
 
 const sessionCache = new Map<string, CachedSession>();
 
-// Periodically purge expired cache entries to avoid memory leaks (every 5 min)
-setInterval(() => {
+// We remove setInterval to avoid serverless memory/hanging issues.
+// Instead, we passively evict stale entries when the cache gets too large (e.g., > 1000 entries)
+// or during normal lookups.
+function evictStaleCache() {
     const now = Date.now();
     for (const [token, cached] of sessionCache.entries()) {
         if (cached.expiresAt < now) sessionCache.delete(token);
     }
-}, 300_000);
+}
 
 async function getCachedSession(token: string) {
+    if (sessionCache.size > 1000) evictStaleCache();
+    
     const cached = sessionCache.get(token);
     if (cached && cached.expiresAt > Date.now()) {
         return cached.session; // Cache hit (valid or explicitly invalid)
     }
+    
+    // Passively delete expired hit
+    if (cached) sessionCache.delete(token);
     // Cache miss — validate against DB
     const session = await validateSession(token);
     

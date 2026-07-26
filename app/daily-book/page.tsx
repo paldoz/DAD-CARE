@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { mutate as swrMutate } from 'swr';
 import { format, addDays, parseISO, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
+import { smartCustomerSearch } from '@/lib/search-utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -530,10 +531,7 @@ function DailyBookPageInner() {
     const sortedEntries = [...filteredEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     // Use debounced search term for filtering to reduce re‑renders
-    const filteredCustomers = customers.filter(c => {
-        return c.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-               c.customer_code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
-    });
+    const filteredCustomers = customers.filter(c => smartCustomerSearch(c, debouncedSearchTerm));
 
     // Sort by numeric customer_code (fast numeric sort)
     const sortedCustomers = filteredCustomers.sort((a, b) => {

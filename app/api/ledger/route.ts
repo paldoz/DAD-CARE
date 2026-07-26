@@ -387,10 +387,16 @@ export const DELETE = trackApiRoute('/api/ledger', async (request: Request) => {
             // @ts-ignore
             revalidateTag('customer-daily-entries'); // bust pair progression cache so new pairs reload after undo
             // @ts-ignore
-            revalidateTag('ledger');
+            revalidateTag('dashboard'); // MUST BUST DASHBOARD SO TOTAL DEBT UPDATES
+            if (customerId) {
+                // @ts-ignore
+                revalidateTag(`ledger-${customerId}`);
+                // @ts-ignore
+                revalidateTag(`daily-entries-${customerId}`);
+            }
             revalidatePath('/api/ledger-by-date');
         } catch (cacheErr) {
-            console.error('Failed to revalidate customers tag:', cacheErr);
+            console.error('Failed to revalidate tags:', cacheErr);
         }
 
         return NextResponse.json({ success: true, count: result.rowCount });
