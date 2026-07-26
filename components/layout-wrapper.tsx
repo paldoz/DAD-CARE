@@ -105,7 +105,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             <main className="flex-1 min-w-0 overflow-y-auto p-4 md:p-8 pb-safe">
                 {/* Mobile Header Profile */}
                 {currentUser && (
-                    <div className="md:hidden flex items-center justify-between mb-4 border-b border-border/50 pb-3 relative z-[100]">
+                    <div className="md:hidden flex items-center justify-between mb-4 border-b border-border/50 pb-3 relative z-[200]">
                         <div className="flex items-center gap-3">
                             {/* Clickable Avatar → Logout Popup */}
                             <div className="relative" ref={menuRef}>
