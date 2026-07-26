@@ -75,14 +75,14 @@ export function SecurityBell() {
     };
 
     return (
-        <div className="relative" ref={menuRef}>
+        <div className="relative z-[150]" ref={menuRef}>
             <button
                 onClick={() => setIsOpen((prev) => !prev)}
-                className="relative flex items-center justify-center w-10 h-10 rounded-xl transition-all hover:bg-muted/50 focus:outline-none"
+                className="relative flex items-center justify-center w-8 h-8 rounded-xl transition-all hover:bg-muted/50 focus:outline-none"
             >
-                <Bell className="w-5 h-5 text-muted-foreground hover:text-foreground transition-colors" />
+                <Bell className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
                 {hasAlerts && (
-                    <span className="absolute top-2 right-2.5 w-2 h-2 rounded-full bg-red-500 animate-pulse ring-2 ring-background shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+                    <span className="absolute top-1.5 right-2 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse ring-2 ring-background shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
                 )}
             </button>
 
