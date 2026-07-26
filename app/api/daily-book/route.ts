@@ -249,6 +249,8 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
             revalidateTag(`daily-book-${dateStr}`);
             // @ts-ignore
             revalidateTag('daily-book-history');
+            // @ts-ignore
+            revalidateTag('customers');
             
             // Only revalidate dashboard if we're actually changing today's metrics
             const todayStr = new Date().toISOString().split('T')[0];
@@ -319,11 +321,13 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
         await logAudit(request, 'DELETE_DAILY_BOOK', `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s))`);
 
         try {
-            // Revalidate only the specific date and history, DO NOT purge global customers
+            // Revalidate the specific date, history, AND customers so warning signs are instantly synced
             // @ts-ignore
             revalidateTag(`daily-book-${dateStr}`);
             // @ts-ignore
             revalidateTag('daily-book-history');
+            // @ts-ignore
+            revalidateTag('customers');
             
             // Only revalidate dashboard if we're actually changing today's metrics
             const todayStr = new Date().toISOString().split('T')[0];

@@ -59,7 +59,7 @@ export function GlobalSearch() {
     });
 
     return (
-        <div ref={searchRef} className="relative w-full max-w-2xl mx-auto mb-6 z-50">
+        <div ref={searchRef} className="relative w-full max-w-2xl mx-auto mb-6 z-[110]">
             <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Search className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />

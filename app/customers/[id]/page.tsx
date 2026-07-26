@@ -565,8 +565,8 @@ export default function CustomerDetailPage() {
         revalidateOnReconnect: false,
     });
     
-    // Construct the base URL for the first page of ledger data
-    let baseLedgerUrl = `/api/ledger?customerId=${customerId}&limit=200&offset=0`;
+    // Construct the base URL for the first page of ledger data - HUGE egress fix (limit=50 instead of 200)
+    let baseLedgerUrl = `/api/ledger?customerId=${customerId}&limit=50&offset=0`;
     if (startDate) baseLedgerUrl += `&startDate=${startDate}`;
     if (endDate) baseLedgerUrl += `&endDate=${endDate}`;
     
