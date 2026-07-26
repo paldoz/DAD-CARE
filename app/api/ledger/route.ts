@@ -227,6 +227,8 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             revalidateTag(`daily-entries-${customerId}`); // Bust specific customer's daily entries
             // @ts-ignore
             revalidateTag('dashboard'); // Dashboard is aggregated, so we must bust it
+            // @ts-ignore
+            revalidateTag('customers'); // ⚡ EXTREMELY IMPORTANT: Bust customers list so blue checkmark shows instantly
             revalidatePath('/api/ledger-by-date');
         } catch (cacheErr) {
             console.error('Failed to revalidate cache:', cacheErr);

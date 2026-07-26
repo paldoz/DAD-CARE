@@ -1172,32 +1172,11 @@ export default function LedgerPage() {
                         { revalidate: false }
                     );
                 } else {
-                    const resData = data;
-                    // Normal non-absent save → clear and go to next customer
-                    setFetchingDetails(false);
-                    setLastSavedCustomerId(selectedCustomerId);
-                    setSelectedCustomerId('');
-                    setCustomerSearch('');
-                    setShowLastMaqal(false);
-                    setUpdateLastMaqal(false);
-                    setOldMaqalDone(false);
-                    setFreshBalance(null);
-                    setCustomerDailyDates([]);
-                    setAllUnprocessedDates([]);
-                    setCustomerPopoverOpen(true);
-                    
-                    // Optimistic update: use exact data from server response to avoid refetching
-                    const savedId = selectedCustomerId;
-                    // Persist done state in localStorage — shows checkmark instantly, even after refresh
-                    markCustomerDone(savedId);
-                    // Optimistic update in SWR cache
-                    mutateCustomers(
-                        (prev: any) => prev ? prev.map((c: any) =>
-                            c.id === savedId ? { ...c, is_target_days_done: resData.customerStatus?.is_target_days_done ?? true, unprocessed_books_count: resData.customerStatus?.unprocessed_books_count ?? 0 } : c
-                        ) : prev,
-                        { revalidate: false }
-                    );
-                    setCustomerPopoverOpen(true);
+                    // Normal non-absent save → trigger a short delay, then hard refresh
+                    // This creates the permanent blue checkmark exactly as requested
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500); // Wait 1.5s so they can see the "Receipt saved successfully!" toast
                     return;
                 }
             }
@@ -1383,7 +1362,6 @@ export default function LedgerPage() {
                                                         >
                                                             {c.id === lastSavedCustomerId || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : '')}
                                                             {c.name.toUpperCase()} (ID: {c.customer_code})
-                                                            {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
                                                         </div>
                                                     );
 
