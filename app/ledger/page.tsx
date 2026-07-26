@@ -478,6 +478,14 @@ export default function LedgerPage() {
             }
         }
         setIsRestored(true);
+
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === 'dadwork_customers_stale') {
+                mutateCustomers(undefined, { revalidate: true });
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
         // Customer fetching is now handled seamlessly by SWR!
     }, []);
 
