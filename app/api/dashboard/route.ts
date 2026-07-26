@@ -6,7 +6,8 @@ import { unstable_cache } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
-const getDashboardData = async (today: string) => {
+const getDashboardData = unstable_cache(
+    async (today: string) => {
         const [statsResult, todayStatsResult] = await Promise.all([
             pool.query(`
                 WITH latest_ledger AS (
@@ -62,7 +63,10 @@ const getDashboardData = async (today: string) => {
             topDebtors,
             recentTransactions
         };
-    };
+    },
+    ['dashboard-data-cache'],
+    { tags: ['dashboard'], revalidate: 3600 }
+);
 
 export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
     // Double-check auth even though middleware already guards this route
@@ -84,8 +88,7 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        // Cache on Vercel edge for 2min — Supabase is only queried once per 10min max
-        response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+        response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400');
         return response;
 
     } catch (error: any) {

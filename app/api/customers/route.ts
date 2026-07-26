@@ -416,7 +416,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         if (isLite) {
             const customersLite = await getCachedCustomersLite();
             const res = NextResponse.json(customersLite);
-            res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+            res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400');
             return res;
         }
 
@@ -430,7 +430,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
             }
             
             const res = NextResponse.json(customers);
-            res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+            res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400');
             return res;
         }
 
@@ -438,7 +438,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
         
         const res = NextResponse.json(customers);
-        res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+        res.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400');
         return res;
     } catch (error: any) {
         console.error('Fetch Error:', error);
