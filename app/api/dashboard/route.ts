@@ -29,7 +29,7 @@ const getDashboardData = unstable_cache(
                     COUNT(dbi.id)::int as today_customer_count
                 FROM "DailyBookItem" dbi
                 JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-                WHERE db.date = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
+                WHERE db.date = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL AND dbi.present IS NOT FALSE
             `, [today])
         ]);
 

@@ -252,12 +252,8 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
             // @ts-ignore
             revalidateTag('customers');
             
-            // Only revalidate dashboard if we're actually changing today's metrics
-            const todayStr = new Date().toISOString().split('T')[0];
-            if (dateStr === todayStr) {
-                // @ts-ignore
-                revalidateTag('dashboard');
-            }
+            // @ts-ignore
+            revalidateTag('dashboard');
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }
@@ -329,12 +325,8 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
             // @ts-ignore
             revalidateTag('customers');
             
-            // Only revalidate dashboard if we're actually changing today's metrics
-            const todayStr = new Date().toISOString().split('T')[0];
-            if (dateStr === todayStr) {
-                // @ts-ignore
-                revalidateTag('dashboard');
-            }
+            // @ts-ignore
+            revalidateTag('dashboard');
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }
