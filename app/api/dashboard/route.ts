@@ -6,8 +6,7 @@ import { unstable_cache } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
-const getDashboardData = unstable_cache(
-    async (today: string) => {
+const getDashboardData = async (today: string) => {
         const [statsResult, todayStatsResult] = await Promise.all([
             pool.query(`
                 WITH latest_ledger AS (
@@ -24,12 +23,19 @@ const getDashboardData = unstable_cache(
                     (SELECT COALESCE(SUM(kg), 0)::float FROM "Ledger" WHERE type = 'PRODUCT' AND deleted_at IS NULL) as total_kg
             `),
             pool.query(`
+                WITH today_book AS (
+                    SELECT id 
+                    FROM "DailyBook" 
+                    WHERE date = $1 AND deleted_at IS NULL 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                )
                 SELECT 
                     COALESCE(SUM(dbi.kg), 0)::float as today_kg, 
                     COUNT(dbi.id)::int as today_customer_count
                 FROM "DailyBookItem" dbi
-                JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-                WHERE db.date = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL AND dbi.present IS NOT FALSE
+                JOIN today_book db ON dbi.daily_book_id = db.id
+                WHERE dbi.deleted_at IS NULL AND dbi.present IS NOT FALSE
             `, [today])
         ]);
 
@@ -56,10 +62,7 @@ const getDashboardData = unstable_cache(
             topDebtors,
             recentTransactions
         };
-    },
-    ['dashboard-data-cache'],
-    { revalidate: 600, tags: ['dashboard'] }  // 10-min cache — dashboard is read-only stats
-);
+    };
 
 export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
     // Double-check auth even though middleware already guards this route
