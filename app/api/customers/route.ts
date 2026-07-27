@@ -74,12 +74,12 @@ async function getCustomers(options: {
     else if (sort === 'best_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
         const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} DESC, total_paid DESC NULLS LAST, total_kg DESC NULLS LAST`;
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} DESC, total_paid DESC NULLS LAST, total_kg DESC NULLS LAST, c.id ASC`;
     }
     else if (sort === 'worst_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
         const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, total_paid ASC NULLS LAST, total_kg ASC NULLS LAST`;
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, total_paid ASC NULLS LAST, total_kg ASC NULLS LAST, c.id ASC`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
@@ -200,6 +200,23 @@ async function getCustomers(options: {
             ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
             GROUP BY customer_id
         ),
+        latest_receipt_date AS (
+            SELECT 
+                customer_id,
+                MAX(COALESCE(reference_date::date, created_at::date)) as max_date
+            FROM "Ledger"
+            WHERE type = 'PRODUCT' AND deleted_at IS NULL
+            GROUP BY customer_id
+        ),
+        latest_receipt_amount AS (
+            SELECT 
+                l.customer_id,
+                SUM(l.amount) as amount
+            FROM "Ledger" l
+            JOIN latest_receipt_date lrd ON l.customer_id = lrd.customer_id AND COALESCE(l.reference_date::date, l.created_at::date) = lrd.max_date
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL
+            GROUP BY l.customer_id
+        ),
         base_customers AS (
             SELECT 
                 c.id, c.name, c.customer_code, c.gender, c.phone, c.created_at, c.deleted_at
@@ -232,10 +249,26 @@ async function getCustomers(options: {
             END as latest_maqal_pct,
             
             -- All Time Maqal
-            COALESCE(lk.total_ledger_maqal, 0)::float as all_time_maqal_total,
             CASE 
-                WHEN COALESCE(lk.total_ledger_maqal, 0) = 0 THEN 0
-                ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0) / lk.total_ledger_maqal) * 100))::int
+                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)) 
+                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)))
+                ELSE COALESCE(lk.total_ledger_maqal, 0)
+            END::float as all_time_maqal_total,
+            CASE 
+                WHEN (
+                    CASE 
+                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)) 
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)))
+                        ELSE COALESCE(lk.total_ledger_maqal, 0)
+                    END
+                ) = 0 THEN 0
+                ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0) / (
+                    CASE 
+                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)) 
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)))
+                        ELSE COALESCE(lk.total_ledger_maqal, 0)
+                    END
+                )) * 100))::int
             END as all_time_maqal_pct,
             
             -- Selected Maqal (if pair provided)
@@ -304,6 +337,7 @@ async function getCustomers(options: {
         LEFT JOIN latest_prev_debt lpd ON c.id = lpd.customer_id
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
         LEFT JOIN selected_prev_debt spd ON c.id = spd.customer_id
+        LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
         ${priorityJoin}
         ${orderClause}
         LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};
