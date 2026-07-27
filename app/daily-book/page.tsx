@@ -378,6 +378,7 @@ function DailyBookPageInner() {
             await Promise.all([
                 mutateHistory(undefined, { revalidate: true }),
                 mutateInit(undefined, { revalidate: true }),
+                swrMutate('/api/dashboard')
             ]);
 
         } catch (e: any) {
