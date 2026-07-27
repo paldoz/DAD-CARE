@@ -47,3 +47,40 @@ export async function recalculateCustomerLedger(customerId: string, client: any 
 
     return rows.length > 0 ? parseFloat(rows[0].new_debt) : 0;
 }
+
+/**
+ * Bulk recalculates the running debt for multiple customers efficiently in a single query.
+ */
+export async function recalculateMultipleCustomerLedgers(customerIds: string[], client: any = pool) {
+    if (!customerIds || customerIds.length === 0) return;
+
+    await client.query(`
+        WITH recalculated AS (
+            SELECT 
+                id,
+                COALESCE(SUM(
+                    CASE WHEN type IN ('PRODUCT', 'ADJUSTMENT') THEN amount
+                         WHEN type = 'PAYMENT' THEN -amount
+                         ELSE 0 END
+                ) OVER (
+                    PARTITION BY customer_id 
+                    ORDER BY created_at ASC, id ASC 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ), 0) as prev,
+                SUM(
+                    CASE WHEN type IN ('PRODUCT', 'ADJUSTMENT') THEN amount
+                         WHEN type = 'PAYMENT' THEN -amount
+                         ELSE 0 END
+                ) OVER (
+                    PARTITION BY customer_id 
+                    ORDER BY created_at ASC, id ASC
+                ) as new_val
+            FROM "Ledger"
+            WHERE customer_id = ANY($1::text[]) AND deleted_at IS NULL
+        )
+        UPDATE "Ledger" l
+        SET previous_debt = r.prev, new_debt = r.new_val
+        FROM recalculated r
+        WHERE l.id = r.id AND (l.previous_debt != r.prev OR l.new_debt != r.new_val)
+    `, [customerIds]);
+}

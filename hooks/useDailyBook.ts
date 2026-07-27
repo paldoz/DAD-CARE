@@ -12,6 +12,10 @@ export const fetcher = async (url: string) => {
     try {
         res = await fetch(url, {
             credentials: 'include', // Cookie-only auth — CDN-cacheable
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
         });
     } catch (networkErr: any) {
         // Network / timeout — log quietly, don't spam

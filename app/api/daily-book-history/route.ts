@@ -6,44 +6,46 @@ import { unstable_cache } from 'next/cache';
 
 export const dynamic = 'force-dynamic'; // Always fresh
 
-const getCachedHistory = unstable_cache(
-    async (limit: number, offset: number) => {
-        const { rows } = await pool.query(`
-            SELECT 
-                db.id, 
-                db.date,
-                COALESCE(SUM(dbi.kg), 0)::float as total_kg,
-                COUNT(dbi.id) as item_count,
-                COALESCE(
-                    json_agg(
-                        json_build_object(
-                            'customer_id', dbi.customer_id,
-                            'kg',          dbi.kg,
-                            'present',     dbi.present,
-                            'note',        dbi.note,
-                            'customer',    json_build_object(
-                                'id', c.id,
-                                'name', c.name,
-                                'customer_code', c.customer_code,
-                                'gender', c.gender
+const getCachedHistory = async (limit: number, offset: number) => {
+    return unstable_cache(
+        async () => {
+            const { rows } = await pool.query(`
+                SELECT 
+                    db.id, 
+                    db.date,
+                    COALESCE(SUM(dbi.kg), 0)::float as total_kg,
+                    COUNT(dbi.id) as item_count,
+                    COALESCE(
+                        json_agg(
+                            json_build_object(
+                                'customer_id', dbi.customer_id,
+                                'kg',          dbi.kg,
+                                'present',     dbi.present,
+                                'note',        dbi.note,
+                                'customer',    json_build_object(
+                                    'id', c.id,
+                                    'name', c.name,
+                                    'customer_code', c.customer_code,
+                                    'gender', c.gender
+                                )
                             )
-                        )
-                    ) FILTER (WHERE dbi.id IS NOT NULL),
-                    '[]'::json
-                ) as items
-            FROM "DailyBook" db
-            LEFT JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
-            LEFT JOIN "Customer" c ON c.id = dbi.customer_id
-            WHERE db.deleted_at IS NULL
-            GROUP BY db.id, db.date
-            ORDER BY db.date DESC
-            LIMIT $1 OFFSET $2
-        `, [limit, offset]);
-        return rows;
-    },
-    ['daily-book-history-cache'],
-    { tags: ['daily-book-history'], revalidate: 3600 }
-);
+                        ) FILTER (WHERE dbi.id IS NOT NULL),
+                        '[]'::json
+                    ) as items
+                FROM "DailyBook" db
+                LEFT JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
+                LEFT JOIN "Customer" c ON c.id = dbi.customer_id
+                WHERE db.deleted_at IS NULL
+                GROUP BY db.id, db.date
+                ORDER BY db.date DESC
+                LIMIT $1 OFFSET $2
+            `, [limit, offset]);
+            return rows;
+        },
+        ['daily-book-history-cache', String(limit), String(offset)],
+        { tags: ['daily-book-history'], revalidate: 3600 }
+    )();
+};
 
 export const GET = trackApiRoute('/api/daily-book-history', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
@@ -76,7 +78,6 @@ export const GET = trackApiRoute('/api/daily-book-history', async (request: Requ
         });
 
         const response = NextResponse.json(history);
-        response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400');
         return response;
     } catch (error: any) {
         console.error('Fetch Daily Book History Error:', error);

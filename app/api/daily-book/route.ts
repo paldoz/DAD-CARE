@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
 import pool from '@/lib/db';
-import { recalculateCustomerLedger } from '@/lib/ledger-utils';
+import { recalculateCustomerLedger, recalculateMultipleCustomerLedgers } from '@/lib/ledger-utils';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
@@ -83,7 +83,6 @@ export const GET = trackApiRoute('/api/daily-book', async (request: Request) => 
         if (!data) return NextResponse.json(null);
 
         const res = NextResponse.json({ ...data, page, pageSize });
-        res.headers.set('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
         return res;
     } catch (error: any) {
         console.error('Fetch Book Error:', error);
@@ -234,11 +233,10 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
 
         await client.query('COMMIT');
 
-        // 5. Trigger the cascade recalculation for any affected customers IN PARALLEL (AFTER commit)
-        // Running them sequentially would block for ~200ms per customer. Parallel = instant!
-        await Promise.all(
-            Array.from(customersToRecalculate).map(customerId => recalculateCustomerLedger(customerId))
-        );
+        // 5. Trigger the cascade recalculation for any affected customers IN ONE BATCH QUERY (AFTER commit)
+        // Running them sequentially would block, and running them in parallel exhausts connection pools.
+        // A single batch query is incredibly fast and completely avoids the blocking delay.
+        await recalculateMultipleCustomerLedgers(Array.from(customersToRecalculate));
 
         await logAudit(request, 'SAVE_DAILY_BOOK', `Saved daily book entry for ${dateStr} with ${items?.length || 0} items. Synced ${customersToRecalculate.size} ledger records.`);
 

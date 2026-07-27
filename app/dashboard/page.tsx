@@ -25,8 +25,13 @@ import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
-    // Custom headers prevent Vercel CDN caching; cookies allow it.
-    const res = await fetch(url, { credentials: 'include' });
+    const res = await fetch(url, { 
+        credentials: 'include',
+        headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+    });
     if (res.status === 401) {
         if (typeof window !== 'undefined') {
             localStorage.removeItem('dadwork_session_token');
