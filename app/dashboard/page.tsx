@@ -66,8 +66,7 @@ export default function DashboardPage() {
         revalidateOnFocus: false,     // ⚡ use event signal instead of focus-revalidation
         dedupingInterval: 60000,      // ⚡ 1 req per min max — saves Vercel compute
         revalidateOnReconnect: true,
-        revalidateIfStale: true,
-        keepPreviousData: true,       // never blank screen
+        revalidateIfStale: true
     });
 
     useEffect(() => {
