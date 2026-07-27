@@ -219,11 +219,11 @@ export async function trackResponse(
  *       return NextResponse.json(data);
  *   });
  */
-export function trackApiRoute<T extends Request>(
+export function trackApiRoute<T extends Request, C = any>(
     route: string,
-    handler: (request: T) => Promise<Response>
+    handler: (request: T, context: C) => Promise<Response>
 ) {
-    return async (request: T): Promise<Response> => {
+    return async (request: T, context: C): Promise<Response> => {
         const startTime = Date.now();
         let queryParams: string | undefined;
 
@@ -233,7 +233,7 @@ export function trackApiRoute<T extends Request>(
         } catch { /* ignore */ }
 
         try {
-            const response = await handler(request);
+            const response = await handler(request, context);
             return await trackResponse(route, response, startTime, queryParams);
         } catch (error: any) {
             // Even errors get tracked

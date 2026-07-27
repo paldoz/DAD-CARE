@@ -69,8 +69,16 @@ async function getCustomers(options: {
         ) prio ON true`;
         orderClause = "ORDER BY CASE WHEN prio.is_priority = true THEN 0 ELSE 1 END ASC, CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
     }
-    else if (sort === 'best') orderClause = "ORDER BY current_balance ASC, total_paid DESC NULLS LAST";
-    else if (sort === 'worst') orderClause = "ORDER BY current_balance DESC NULLS LAST";
+    else if (sort === 'best_lacag' || sort === 'best') orderClause = "ORDER BY current_balance ASC, total_paid DESC NULLS LAST";
+    else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY current_balance DESC NULLS LAST";
+    else if (sort === 'best_maqal') {
+        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
+        orderClause = `ORDER BY ${pctCol} DESC, total_paid DESC NULLS LAST, total_kg DESC NULLS LAST`;
+    }
+    else if (sort === 'worst_maqal') {
+        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
+        orderClause = `ORDER BY ${pctCol} ASC, total_paid ASC NULLS LAST, total_kg ASC NULLS LAST`;
+    }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
     else if (sort === 'most_kg') orderClause = "ORDER BY total_kg DESC NULLS LAST";

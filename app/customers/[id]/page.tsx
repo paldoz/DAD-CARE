@@ -46,7 +46,8 @@ import {
     Printer,
     FileText,
     AlertTriangle,
-    RefreshCw
+    RefreshCw,
+    Star
 } from 'lucide-react';
 import {
     Dialog,
@@ -575,6 +576,11 @@ export default function CustomerDetailPage() {
         dedupingInterval: 0,   // always re-fetch on demand (we control when via mutate)
         revalidateIfStale: false,
         revalidateOnReconnect: false,
+    });
+
+    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank`, fetcher, {
+        revalidateOnFocus: false,
+        dedupingInterval: 300000,
     });
 
     // Sync SWR cache instantly to local state
@@ -1141,17 +1147,40 @@ export default function CustomerDetailPage() {
                                 let label = '';
                                 let colorClass = '';
                                 
-                                if (pct >= 100) { label = 'PERFECT'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
-                                else if (pct >= 95) { label = 'EXCELLENT'; colorClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'; }
-                                else if (pct >= 85) { label = 'GOOD'; colorClass = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'; }
-                                else if (pct >= 70) { label = 'BAD'; colorClass = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'; }
-                                else { label = 'WORST'; colorClass = 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'; }
+                                if (pct >= 96) { label = '🥇 Kaamil'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
+                                else if (pct >= 90) { label = '🏆 Heer Sare'; colorClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'; }
+                                else if (pct >= 80) { label = '⭐ Wanaagsan'; colorClass = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'; }
+                                else if (pct >= 70) { label = '⚖️ Dhexdhexaad'; colorClass = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'; }
+                                else if (pct >= 60) { label = '⚠️ Horumar u Baahan'; colorClass = 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30'; }
+                                else { label = '🚫 Heer Hoose'; colorClass = 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'; }
 
                                 return (
-                                    <div className="mt-1 flex flex-col items-end gap-0.5">
+                                    <div className="mt-1 flex flex-col items-end gap-1">
                                         <span className={`text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 ${colorClass}`}>
                                             ⚡ {pct}% All-Time <span className="opacity-40">|</span> {label}
                                         </span>
+                                        {rankData && rankData.rank && (() => {
+                                            let rankStyle = 'bg-muted/50 text-muted-foreground border border-border/50';
+                                            let RankIcon = null;
+                                            
+                                            if (rankData.rank === 1) {
+                                                rankStyle = 'bg-amber-500/20 text-amber-500 border border-amber-500/40 shadow-[0_0_8px_rgba(245,158,11,0.3)]';
+                                                RankIcon = <Star className="w-3 h-3 fill-amber-500 text-amber-500" />;
+                                            } else if (rankData.rank === 2) {
+                                                rankStyle = 'bg-slate-400/20 text-slate-500 border border-slate-400/40 shadow-[0_0_8px_rgba(148,163,184,0.3)]';
+                                                RankIcon = <Star className="w-3 h-3 fill-slate-400 text-slate-400" />;
+                                            } else if (rankData.rank === 3) {
+                                                rankStyle = 'bg-orange-700/20 text-orange-700 dark:text-orange-600 border border-orange-700/40 shadow-[0_0_8px_rgba(194,65,12,0.3)]';
+                                                RankIcon = <Star className="w-3 h-3 fill-orange-700 text-orange-700 dark:fill-orange-600 dark:text-orange-600" />;
+                                            }
+
+                                            return (
+                                                <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full flex items-center gap-1.5 ${rankStyle}`}>
+                                                    {RankIcon}
+                                                    Rank {rankData.rank} <span className="opacity-50 text-[9px] font-bold">/ {rankData.total_customers}</span>
+                                                </span>
+                                            );
+                                        })()}
                                     </div>
                                 );
                             })()}
