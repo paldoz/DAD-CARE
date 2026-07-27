@@ -529,6 +529,18 @@ export default function CustomerDetailPage() {
             merged.push(current as ReceiptGroup & { _sortDate: Date });
         }
 
+        // 6.5 Dynamically recalculate running balances chronologically.
+        // Since late payments are inserted out-of-order in the database but grouped chronologically here,
+        // we must recalculate Reesto and Closing Balance so the UI flows perfectly without jumping.
+        if (merged.length > 0) {
+            let runningDebt = merged[0].openingBalance;
+            for (const m of merged) {
+                m.openingBalance = runningDebt;
+                m.closingBalance = runningDebt + m.totalMaqalka + m.totalAdjustment - m.totalPaid;
+                runningDebt = m.closingBalance;
+            }
+        }
+
         // 7. Calculate sequential display IDs for this customer (count EVERY product maqal)
         let displayCounter = 1;
         const maqalIdMap = new Map<number, number>();
