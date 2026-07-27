@@ -705,6 +705,26 @@ export default function CustomersPage() {
                                                         </PopoverContent>
                                                     </Popover>
                                                 </div>
+                                            ) : filterType === 'best_maqal' ? (
+                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                                    (index === 0) ? 'bg-amber-500/20 text-amber-500 border border-amber-500/40 shadow-[0_0_8px_rgba(245,158,11,0.3)]' 
+                                                    : (index === 1) ? 'bg-slate-400/20 text-slate-500 border border-slate-400/40 shadow-[0_0_8px_rgba(148,163,184,0.3)]'
+                                                    : (index === 2) ? 'bg-orange-700/20 text-orange-700 dark:text-orange-600 border border-orange-700/40 shadow-[0_0_8px_rgba(194,65,12,0.3)]'
+                                                    : 'bg-muted/50 text-muted-foreground border border-border/50'
+                                                }`}>
+                                                    {index === 0 ? <Star className="w-2.5 h-2.5 fill-amber-500" /> 
+                                                     : index === 1 ? <Star className="w-2.5 h-2.5 fill-slate-400" />
+                                                     : index === 2 ? <Star className="w-2.5 h-2.5 fill-orange-700 dark:fill-orange-600" /> 
+                                                     : null}
+                                                    Rank {index + 1}
+                                                </span>
+                                            ) : filterType === 'worst_maqal' ? (
+                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                                    (index < 3) ? 'bg-destructive/20 text-destructive border border-destructive/40 shadow-[0_0_8px_rgba(239,68,68,0.3)]'
+                                                    : 'bg-muted/50 text-muted-foreground border border-border/50'
+                                                }`}>
+                                                    Worst {index + 1}
+                                                </span>
                                             ) : (
                                                 <span className="text-[10px] font-bold text-muted-foreground/70">
                                                     #{customer.customer_code}

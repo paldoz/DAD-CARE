@@ -396,13 +396,7 @@ const getCachedCustomersLedger = unstable_cache(
     { revalidate: 600, tags: ['customers', 'max'] }
 );
 
-const getCachedCustomersFull = unstable_cache(
-    async (options: any) => {
-        return getCustomers(options);
-    },
-    ['customers-full-data'],
-    { revalidate: 300, tags: ['customers', 'max'] } // 5-min cache — heavy query, reduce DB hits
-);
+// Dynamic paginated/sorted data should not be cached on the server, SWR handles it on the client.
 
 export const GET = trackApiRoute('/api/customers', async (request: Request) => {
     const { errorResponse, session } = await requireSession(request);
@@ -443,7 +437,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         }
 
         const usernameForSort = sort === 'priority' ? session?.username : null;
-        customers = await getCachedCustomersFull({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
+        customers = await getCustomers({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
         
         const res = NextResponse.json(customers);
         res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
