@@ -12,23 +12,27 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
 
     try {
         const query = `
-            WITH latest_receipt_date AS (
+            WITH receipt_groups AS (
                 SELECT 
                     customer_id,
-                    MAX(COALESCE(reference_date::date, created_at::date)) as max_date
+                    COALESCE(
+                        'maqal_' || maqal_id, 
+                        'pair_' || FLOOR((COALESCE(reference_date::date, created_at::date) - '2026-06-28'::date) / 2)::text
+                    ) as group_key,
+                    MAX(created_at) as sort_date,
+                    SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as product_amount,
+                    SUM(amount) as debt_amount
                 FROM "Ledger"
-                WHERE type = 'PRODUCT' AND deleted_at IS NULL
-                GROUP BY customer_id
+                WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
+                GROUP BY customer_id, group_key
             ),
             latest_receipt_amount AS (
-                SELECT 
-                    l.customer_id,
-                    SUM(CASE WHEN l.type = 'PRODUCT' THEN l.amount ELSE 0 END) as product_amount,
-                    SUM(l.amount) as debt_amount
-                FROM "Ledger" l
-                JOIN latest_receipt_date lrd ON l.customer_id = lrd.customer_id AND COALESCE(l.reference_date::date, l.created_at::date) = lrd.max_date
-                WHERE l.type IN ('PRODUCT', 'ADJUSTMENT') AND l.deleted_at IS NULL
-                GROUP BY l.customer_id
+                SELECT DISTINCT ON (customer_id)
+                    customer_id,
+                    product_amount,
+                    debt_amount
+                FROM receipt_groups
+                ORDER BY customer_id, sort_date DESC
             ),
             customer_stats AS (
                 SELECT 
