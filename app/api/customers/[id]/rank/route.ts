@@ -5,7 +5,8 @@ import { trackApiRoute } from '@/lib/egress-tracker';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Request, { params }: { params: { id: string } }) => {
+export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
+    const { id } = await params;
     const { errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
 
@@ -52,7 +53,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
             SELECT rank, pct, total_customers FROM ranked_customers WHERE id = $1;
         `;
         
-        const { rows } = await pool.query(query, [params.id]);
+        const { rows } = await pool.query(query, [id]);
         if (rows.length === 0) {
             return NextResponse.json({ rank: null, pct: null, total_customers: 0 });
         }
