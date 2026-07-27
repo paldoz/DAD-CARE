@@ -637,6 +637,11 @@ export default function CustomerDetailPage() {
         // before this function runs, so the server cache is already busted.
         // We just need SWR to go re-request from the server.
         await mutateLedger(undefined, { revalidate: true });
+        
+        // Also seamlessly update the rank and global customer list so everything is instantly in-sync!
+        mutate(`/api/customers/${customerId}/rank`);
+        mutate('/api/customers?lite=true');
+        mutate('/api/dashboard');
     };
 
     const loadMore = async () => {
