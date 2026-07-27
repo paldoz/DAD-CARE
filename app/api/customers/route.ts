@@ -73,11 +73,13 @@ async function getCustomers(options: {
     else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY current_balance DESC NULLS LAST";
     else if (sort === 'best_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        orderClause = `ORDER BY ${pctCol} DESC, total_paid DESC NULLS LAST, total_kg DESC NULLS LAST`;
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} DESC, total_paid DESC NULLS LAST, total_kg DESC NULLS LAST`;
     }
     else if (sort === 'worst_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        orderClause = `ORDER BY ${pctCol} ASC, total_paid ASC NULLS LAST, total_kg ASC NULLS LAST`;
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, total_paid ASC NULLS LAST, total_kg ASC NULLS LAST`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
