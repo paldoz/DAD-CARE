@@ -183,10 +183,10 @@ async function getCustomers(options: {
         selected_maqal_stats AS (
             SELECT 
                 spr.customer_id,
-                SUM(l.amount)::float as maqal_total
+                SUM(CASE WHEN l.type = 'PRODUCT' THEN l.amount ELSE 0 END)::float as maqal_total
             FROM selected_product_receipt spr
             JOIN "Ledger" l ON l.customer_id = spr.customer_id 
-                AND l.type = 'PRODUCT' 
+                AND l.type IN ('PRODUCT', 'ADJUSTMENT') 
                 AND l.deleted_at IS NULL
                 ${maqalD1 && maqalD2 ? `AND COALESCE(l.reference_date::date, l.created_at::date) IN ('${maqalD1}', '${maqalD2}')` : `AND 1=0`}
             GROUP BY spr.customer_id
@@ -196,7 +196,7 @@ async function getCustomers(options: {
                 customer_id,
                 SUM(amount)::float as prev_debt
             FROM "Ledger"
-            WHERE type = 'PRODUCT' AND deleted_at IS NULL
+            WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
             ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
             GROUP BY customer_id
         ),
@@ -211,10 +211,11 @@ async function getCustomers(options: {
         latest_receipt_amount AS (
             SELECT 
                 l.customer_id,
-                SUM(l.amount) as amount
+                SUM(CASE WHEN l.type = 'PRODUCT' THEN l.amount ELSE 0 END) as product_amount,
+                SUM(l.amount) as debt_amount
             FROM "Ledger" l
             JOIN latest_receipt_date lrd ON l.customer_id = lrd.customer_id AND COALESCE(l.reference_date::date, l.created_at::date) = lrd.max_date
-            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL
+            WHERE l.type IN ('PRODUCT', 'ADJUSTMENT') AND l.deleted_at IS NULL
             GROUP BY l.customer_id
         ),
         base_customers AS (
@@ -250,25 +251,25 @@ async function getCustomers(options: {
             
             -- All Time Maqal
             CASE 
-                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)) 
-                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)))
+                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
                 ELSE COALESCE(lk.total_ledger_maqal, 0)
             END::float as all_time_maqal_total,
             CASE 
                 WHEN (
                     CASE 
-                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)))
+                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
                         ELSE COALESCE(lk.total_ledger_maqal, 0)
                     END
                 ) = 0 THEN 0
-                ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0) / (
+                ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0)::numeric / (
                     CASE 
-                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.amount, 0)))
+                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
                         ELSE COALESCE(lk.total_ledger_maqal, 0)
                     END
-                )) * 100))::int
+                )::numeric) * 100))::int
             END as all_time_maqal_pct,
             
             -- Selected Maqal (if pair provided)
@@ -316,9 +317,10 @@ async function getCustomers(options: {
             SELECT 
                 customer_id,
                 SUM(kg) as total_ledger_kg,
-                SUM(amount) as total_ledger_maqal
+                SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as total_ledger_maqal,
+                SUM(amount) as total_ledger_debt
             FROM "Ledger"
-            WHERE type = 'PRODUCT' AND deleted_at IS NULL
+            WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
             ${maxAllTimeDate ? `AND COALESCE(reference_date::date, created_at::date) <= '${maxAllTimeDate}'` : ''}
             GROUP BY customer_id
         ) lk ON c.id = lk.customer_id

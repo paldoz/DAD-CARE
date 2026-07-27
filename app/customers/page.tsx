@@ -736,8 +736,8 @@ export default function CustomersPage() {
                                                 const maqalPct = (customer as any).selected_maqal_pct ?? (customer as any).latest_maqal_pct ?? 0;
                                                 const maqalTotal = (customer as any).selected_maqal_total ?? (customer as any).latest_maqal_total ?? 0;
 
-                                                // Show all-time if user selected 'all_time' or toggled this customer, OR if they have no maqal data for the current pair
-                                                const showAllTime = selectedMaqalPair === 'all_time' || showAllTimePct[customer.id] || (maqalTotal <= 0 && allTimeTotal > 0);
+                                                // Show all-time if user selected 'all_time' or explicitly toggled this customer
+                                                const showAllTime = selectedMaqalPair === 'all_time' || showAllTimePct[customer.id];
                                                 
                                                 const pct = showAllTime ? allTimePct : maqalPct;
                                                 const total = showAllTime ? allTimeTotal : maqalTotal;
@@ -745,7 +745,8 @@ export default function CustomersPage() {
                                                 const label = showAllTime ? 'All Time' : '';
 
                                                 if (filterType === 'default') return null;
-                                                if (total <= 0 && allTimeTotal <= 0) return null;
+                                                if (showAllTime && allTimeTotal <= 0) return null;
+                                                if (!showAllTime && maqalTotal <= 0) return null;
 
                                                 return (
                                                     <button 

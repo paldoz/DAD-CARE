@@ -12,12 +12,42 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
 
     try {
         const query = `
-            WITH customer_stats AS (
+            WITH latest_receipt_date AS (
+                SELECT 
+                    customer_id,
+                    MAX(COALESCE(reference_date::date, created_at::date)) as max_date
+                FROM "Ledger"
+                WHERE type = 'PRODUCT' AND deleted_at IS NULL
+                GROUP BY customer_id
+            ),
+            latest_receipt_amount AS (
+                SELECT 
+                    l.customer_id,
+                    SUM(CASE WHEN l.type = 'PRODUCT' THEN l.amount ELSE 0 END) as product_amount,
+                    SUM(l.amount) as debt_amount
+                FROM "Ledger" l
+                JOIN latest_receipt_date lrd ON l.customer_id = lrd.customer_id AND COALESCE(l.reference_date::date, l.created_at::date) = lrd.max_date
+                WHERE l.type IN ('PRODUCT', 'ADJUSTMENT') AND l.deleted_at IS NULL
+                GROUP BY l.customer_id
+            ),
+            customer_stats AS (
                 SELECT 
                     c.id,
                     CASE 
-                        WHEN COALESCE(lk.total_ledger_maqal, 0) = 0 THEN 0
-                        ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0) / lk.total_ledger_maqal) * 100))::int
+                        WHEN (
+                            CASE 
+                                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
+                                ELSE COALESCE(lk.total_ledger_maqal, 0)
+                            END
+                        ) = 0 THEN 0
+                        ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0)::numeric / (
+                            CASE 
+                                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
+                                ELSE COALESCE(lk.total_ledger_maqal, 0)
+                            END
+                        )::numeric) * 100))::int
                     END as pct,
                     COALESCE(p.total_paid, 0) as total_paid,
                     COALESCE(dbk.total_daily_kg, 0) as total_kg
@@ -29,11 +59,14 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     GROUP BY customer_id
                 ) p ON c.id = p.customer_id
                 LEFT JOIN (
-                    SELECT customer_id, SUM(amount) as total_ledger_maqal
+                    SELECT customer_id, 
+                           SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as total_ledger_maqal,
+                           SUM(amount) as total_ledger_debt
                     FROM "Ledger"
-                    WHERE type = 'PRODUCT' AND deleted_at IS NULL
+                    WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
                     GROUP BY customer_id
                 ) lk ON c.id = lk.customer_id
+                LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
                 LEFT JOIN (
                     SELECT customer_id, SUM(kg) as total_daily_kg
                     FROM "DailyBookItem"
