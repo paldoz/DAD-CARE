@@ -116,22 +116,22 @@ async function getCustomers(options: {
             AND COALESCE(reference_date::date, created_at::date) IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
             GROUP BY customer_id
         ),
+        latest_product_next_receipts AS (
+            SELECT DISTINCT ON (l.customer_id) 
+                l.customer_id, l.created_at
+            FROM "Ledger" l
+            JOIN latest_product_receipt_raw lpr ON l.customer_id = lpr.customer_id
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.created_at > lpr.last_receipt_created_at
+            ORDER BY l.customer_id, l.created_at ASC
+        ),
         latest_product_receipt AS (
             SELECT 
                 lpr.customer_id,
                 lpr.first_receipt_created_at,
                 lpr.last_receipt_created_at,
-                COALESCE(l_next.created_at, 'infinity'::timestamp) as next_receipt_created_at
+                COALESCE(nr.created_at, 'infinity'::timestamp) as next_receipt_created_at
             FROM latest_product_receipt_raw lpr
-            LEFT JOIN LATERAL (
-                SELECT created_at FROM "Ledger" 
-                WHERE customer_id = lpr.customer_id 
-                  AND type = 'PRODUCT' 
-                  AND deleted_at IS NULL
-                  AND created_at > lpr.last_receipt_created_at
-                ORDER BY created_at ASC
-                LIMIT 1
-            ) l_next ON true
+            LEFT JOIN latest_product_next_receipts nr ON lpr.customer_id = nr.customer_id
         ),
         latest_maqal_stats AS (
             SELECT 
@@ -163,22 +163,22 @@ async function getCustomers(options: {
             ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) IN ('${maqalD1}', '${maqalD2}')` : `AND 1=0`}
             GROUP BY customer_id
         ),
+        selected_product_next_receipts AS (
+            SELECT DISTINCT ON (l.customer_id) 
+                l.customer_id, l.created_at
+            FROM "Ledger" l
+            JOIN selected_product_receipt_raw spr ON l.customer_id = spr.customer_id
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.created_at > spr.last_receipt_created_at
+            ORDER BY l.customer_id, l.created_at ASC
+        ),
         selected_product_receipt AS (
             SELECT 
                 spr.customer_id,
                 spr.first_receipt_created_at,
                 spr.last_receipt_created_at,
-                COALESCE(l_next.created_at, 'infinity'::timestamp) as next_receipt_created_at
+                COALESCE(nr.created_at, 'infinity'::timestamp) as next_receipt_created_at
             FROM selected_product_receipt_raw spr
-            LEFT JOIN LATERAL (
-                SELECT created_at FROM "Ledger" 
-                WHERE customer_id = spr.customer_id 
-                  AND type = 'PRODUCT' 
-                  AND deleted_at IS NULL
-                  AND created_at > spr.last_receipt_created_at
-                ORDER BY created_at ASC
-                LIMIT 1
-            ) l_next ON true
+            LEFT JOIN selected_product_next_receipts nr ON spr.customer_id = nr.customer_id
         ),
         selected_maqal_stats AS (
             SELECT 
@@ -241,6 +241,34 @@ async function getCustomers(options: {
                 debt_amount
             FROM receipt_groups
             ORDER BY customer_id, sort_date DESC
+        ),
+        latest_ledger_entries AS (
+            SELECT DISTINCT ON (customer_id)
+                customer_id,
+                new_debt,
+                type,
+                receipt_id,
+                id
+            FROM "Ledger"
+            WHERE deleted_at IS NULL
+            ORDER BY customer_id, created_at DESC, id DESC
+        ),
+        latest_ledger_with_payment_check AS (
+            SELECT 
+                l.customer_id,
+                l.new_debt,
+                l.type,
+                EXISTS (
+                    SELECT 1 FROM "Ledger" l2 
+                    WHERE l2.customer_id = l.customer_id 
+                      AND (
+                          (l.receipt_id IS NOT NULL AND l2.receipt_id = l.receipt_id)
+                          OR
+                          (l.receipt_id IS NULL AND l2.id = l.id)
+                      )
+                      AND l2.type = 'PAYMENT'
+                ) as last_receipt_has_payment
+            FROM latest_ledger_entries l
         ),
         base_customers AS (
             SELECT 
@@ -309,25 +337,7 @@ async function getCustomers(options: {
                 ELSE LEAST(100, ROUND((GREATEST(0, COALESCE(p.total_paid, 0) - COALESCE(spd.prev_debt, 0)) / sms.maqal_total) * 100))::int
             END as selected_maqal_pct
         FROM base_customers c
-        LEFT JOIN LATERAL (
-            SELECT 
-                new_debt, 
-                type,
-                EXISTS (
-                    SELECT 1 FROM "Ledger" l2 
-                    WHERE l2.customer_id = l1.customer_id 
-                      AND (
-                          (l1.receipt_id IS NOT NULL AND l2.receipt_id = l1.receipt_id)
-                          OR
-                          (l1.receipt_id IS NULL AND l2.id = l1.id)
-                      )
-                      AND l2.type = 'PAYMENT'
-                ) as last_receipt_has_payment
-            FROM "Ledger" l1
-            WHERE l1.customer_id = c.id AND l1.deleted_at IS NULL
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-        ) l ON true
+        LEFT JOIN latest_ledger_with_payment_check l ON c.id = l.customer_id
         LEFT JOIN (
             SELECT customer_id, SUM(amount) as total_paid
             FROM "Ledger"
@@ -396,18 +406,19 @@ const getCachedCustomersLite = unstable_cache(
         // ✅ Use DISTINCT ON JOIN instead of correlated subquery — fixes N+1 egress bug.
         // Old query ran 1 extra DB query per customer (e.g. 50 customers = 50 extra queries).
         const query = `
+            WITH latest_balances AS (
+                SELECT DISTINCT ON (customer_id)
+                    customer_id, new_debt
+                FROM "Ledger"
+                WHERE deleted_at IS NULL
+                ORDER BY customer_id, created_at DESC, id DESC
+            )
             SELECT 
                 c.id, c.name, c.customer_code, c.phone, c.is_kabarka, c.is_unassignable,
                 COALESCE(lb.new_debt, 0)::float as current_balance,
                 CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive
             FROM "Customer" c
-            LEFT JOIN LATERAL (
-                SELECT new_debt
-                FROM "Ledger"
-                WHERE customer_id = c.id AND deleted_at IS NULL
-                ORDER BY created_at DESC, id DESC
-                LIMIT 1
-            ) lb ON true
+            LEFT JOIN latest_balances lb ON c.id = lb.customer_id
             -- Removed WHERE c.deleted_at IS NULL so lite search returns all customers including inactive
             ORDER BY
                 CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC,
