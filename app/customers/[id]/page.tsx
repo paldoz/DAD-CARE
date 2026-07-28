@@ -640,7 +640,7 @@ export default function CustomerDetailPage() {
         
         // Also seamlessly update the rank and global customer list so everything is instantly in-sync!
         mutate(`/api/customers/${customerId}/rank`);
-        mutate('/api/customers?lite=true');
+        mutate((key) => typeof key === 'string' && key.startsWith('/api/customers'));
         mutate('/api/dashboard');
     };
 
