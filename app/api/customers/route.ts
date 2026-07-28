@@ -74,12 +74,12 @@ async function getCustomers(options: {
     else if (sort === 'best_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
         const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} DESC, total_paid DESC NULLS LAST, total_kg DESC NULLS LAST, c.id ASC`;
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} DESC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN 1 ELSE 2 END ASC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN COALESCE(l.new_debt, 0) ELSE 0 END ASC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) ASC, COALESCE(gs.perfect_maqals, 0) DESC, c.created_at ASC, c.id ASC`;
     }
     else if (sort === 'worst_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
         const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, total_paid ASC NULLS LAST, total_kg ASC NULLS LAST, c.id ASC`;
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN COALESCE(l.new_debt, 0) ELSE 0 END DESC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
@@ -214,6 +214,26 @@ async function getCustomers(options: {
             WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
             GROUP BY customer_id, group_key
         ),
+        ordered_groups AS (
+            SELECT 
+                *,
+                SUM(debt_amount) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
+            FROM receipt_groups
+        ),
+        customer_payments AS (
+            SELECT customer_id, SUM(amount) as total_paid
+            FROM "Ledger"
+            WHERE type = 'PAYMENT' AND deleted_at IS NULL
+            GROUP BY customer_id
+        ),
+        group_status AS (
+            SELECT 
+                o.*,
+                COALESCE(p.total_paid, 0) as total_paid,
+                LEAST(o.debt_amount, GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - o.debt_amount))) as group_paid
+            FROM ordered_groups o
+            LEFT JOIN customer_payments p ON o.customer_id = p.customer_id
+        ),
         latest_receipt_amount AS (
             SELECT DISTINCT ON (customer_id)
                 customer_id,
@@ -245,6 +265,12 @@ async function getCustomers(options: {
             tp.date1::text as pair_date1,
             tp.date2::text as pair_date2,
             CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
+            
+            -- Priority 3: Last Completed Reesto
+            GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) as last_completed_reesto,
+            
+            -- Priority 4: Perfect Maqals
+            COALESCE(gs.perfect_maqals, 0) as perfect_maqals,
             
             -- Latest Maqal
             COALESCE(lms.maqal_total, 0)::float as latest_maqal_total,
@@ -344,6 +370,11 @@ async function getCustomers(options: {
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
         LEFT JOIN selected_prev_debt spd ON c.id = spd.customer_id
         LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
+        LEFT JOIN (
+            SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
+            FROM group_status
+            GROUP BY customer_id
+        ) gs ON c.id = gs.customer_id
         ${priorityJoin}
         ${orderClause}
         LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};

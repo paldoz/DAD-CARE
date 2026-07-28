@@ -26,6 +26,26 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                 WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
                 GROUP BY customer_id, group_key
             ),
+            ordered_groups AS (
+                SELECT 
+                    *,
+                    SUM(debt_amount) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
+                FROM receipt_groups
+            ),
+            customer_payments AS (
+                SELECT customer_id, SUM(amount) as total_paid
+                FROM "Ledger"
+                WHERE type = 'PAYMENT' AND deleted_at IS NULL
+                GROUP BY customer_id
+            ),
+            group_status AS (
+                SELECT 
+                    o.*,
+                    COALESCE(p.total_paid, 0) as total_paid,
+                    LEAST(o.debt_amount, GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - o.debt_amount))) as group_paid
+                FROM ordered_groups o
+                LEFT JOIN customer_payments p ON o.customer_id = p.customer_id
+            ),
             latest_receipt_amount AS (
                 SELECT DISTINCT ON (customer_id)
                     customer_id,
@@ -37,6 +57,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
             customer_stats AS (
                 SELECT 
                     c.id,
+                    c.created_at as customer_created_at,
                     CASE 
                         WHEN (
                             CASE 
@@ -53,15 +74,11 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                             END
                         )::numeric) * 100))::int
                     END as pct,
-                    COALESCE(p.total_paid, 0) as total_paid,
-                    COALESCE(dbk.total_daily_kg, 0) as total_kg
+                    COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0) as current_debt,
+                    GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) as last_completed_reesto,
+                    COALESCE(gs.perfect_maqals, 0) as perfect_maqals
                 FROM "Customer" c
-                LEFT JOIN (
-                    SELECT customer_id, SUM(amount) as total_paid
-                    FROM "Ledger"
-                    WHERE type = 'PAYMENT' AND deleted_at IS NULL
-                    GROUP BY customer_id
-                ) p ON c.id = p.customer_id
+                LEFT JOIN customer_payments p ON c.id = p.customer_id
                 LEFT JOIN (
                     SELECT customer_id, 
                            SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as total_ledger_maqal,
@@ -72,18 +89,26 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                 ) lk ON c.id = lk.customer_id
                 LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
                 LEFT JOIN (
-                    SELECT customer_id, SUM(kg) as total_daily_kg
-                    FROM "DailyBookItem"
-                    WHERE kg > 0 AND deleted_at IS NULL
+                    SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
+                    FROM group_status
                     GROUP BY customer_id
-                ) dbk ON c.id = dbk.customer_id
+                ) gs ON c.id = gs.customer_id
                 WHERE c.deleted_at IS NULL
             ),
             ranked_customers AS (
                 SELECT 
                     id,
                     pct,
-                    RANK() OVER (ORDER BY pct DESC, total_paid DESC, total_kg DESC, id ASC) as rank,
+                    RANK() OVER (
+                        ORDER BY 
+                            pct DESC, 
+                            CASE WHEN current_debt < 0 THEN 1 ELSE 2 END ASC,
+                            CASE WHEN current_debt < 0 THEN current_debt ELSE 0 END ASC,
+                            last_completed_reesto ASC,
+                            perfect_maqals DESC,
+                            customer_created_at ASC,
+                            id ASC
+                    ) as rank,
                     COUNT(*) OVER() as total_customers
                 FROM customer_stats
             )
