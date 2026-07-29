@@ -274,7 +274,8 @@ export default function CustomerDetailPage() {
                     amount: parseFloat(latePaymentAmount),
                     reference_date: latePaymentDate || (latePaymentMaqal.mainDate ? latePaymentMaqal.mainDate : new Date().toISOString().split('T')[0]),
                     maqal_id: latePaymentMaqal.maqalId || null,
-                    receipt_id: latePaymentMaqal.receiptId || null
+                    receipt_id: latePaymentMaqal.receiptId || null,
+                    note: 'Late Payment'
                 })
             });
             const data = await res.json();
@@ -1326,25 +1327,12 @@ export default function CustomerDetailPage() {
                                                     .map((r, i) => (r.totalMaqalka > 0 || r.totalAdjustment > 0) ? i : -1)
                                                     .filter(i => i !== -1);
                                                 
-                                                // Find the OLDEST unpaid maqal to strictly enforce sequential order
-                                                let oldestUnpaidIdx = -1;
-                                                for (let i = maqalIndices.length - 1; i >= 0; i--) {
-                                                    const idx = maqalIndices[i];
-                                                    const r = finalReceipts[idx];
-                                                    const paymentsInReceipt = r.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
-                                                    const owed = r.totalMaqalka + r.totalAdjustment;
-                                                    if (paymentsInReceipt < owed) {
-                                                        oldestUnpaidIdx = idx;
-                                                        break;
-                                                    }
-                                                }
+                                                // The user ONLY wants the Late Payment button on the CURRENT newest maqal, 
+                                                // and the PREVIOUS maqal (maqalIndices[0] and maqalIndices[1]). No older ones!
+                                                const isTargetMaqal = receiptIdx === maqalIndices[0] || receiptIdx === maqalIndices[1];
                                                 
-                                                // If there's an unpaid maqal, ONLY allow Late Payment there. 
-                                                // If ALL are paid, allow it everywhere so they can fix mistakes.
-                                                const isTargetMaqal = oldestUnpaidIdx !== -1 ? (receiptIdx === oldestUnpaidIdx) : (maqalIndices.includes(receiptIdx));
-                                                
-                                                const paymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT').length;
-                                                const latePaymentsLeft = Math.max(0, 3 - paymentsCount);
+                                                const latePaymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT' && e.note === 'Late Payment').length;
+                                                const latePaymentsLeft = Math.max(0, 3 - latePaymentsCount);
                                                 
                                                 // 3-payment limit restored for normal admins. Super Admins get unlimited.
                                                 const showLatePayment = isTargetMaqal && (isSuperAdmin || (canUndo && latePaymentsLeft > 0));
