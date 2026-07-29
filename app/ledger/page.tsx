@@ -675,7 +675,37 @@ export default function LedgerPage() {
             if (currentGroup.length > 0) receiptGroups.push(currentGroup);
         }
 
-        const processedReceipts = receiptGroups.map((group, idx) => {
+        // 4.5 FORCE SPLIT corrupted groups that exceed 2 unique dates (historical bug fix)
+        const finalReceiptGroups: any[][] = [];
+
+        for (const group of receiptGroups) {
+            const productDates = Array.from(new Set(group.filter((t: any) => t.type === 'PRODUCT').map((t: any) => t.reference_date?.split('T')[0]).filter(Boolean)));
+            
+            if (productDates.length > 2) {
+                const chronoGroup = [...group].sort((a: any, b: any) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+                let currentChunkDates = new Set<string>();
+                let currentChunk: any[] = [];
+
+                for (const txn of chronoGroup) {
+                    const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
+                    const dStr = isProduct ? txn.reference_date.split('T')[0] : null;
+                    
+                    if (dStr && !currentChunkDates.has(dStr) && currentChunkDates.size >= 2) {
+                        finalReceiptGroups.push(currentChunk);
+                        currentChunk = [];
+                        currentChunkDates = new Set<string>();
+                    }
+
+                    currentChunk.push(txn);
+                    if (dStr) currentChunkDates.add(dStr);
+                }
+                if (currentChunk.length > 0) finalReceiptGroups.push(currentChunk);
+            } else {
+                finalReceiptGroups.push(group);
+            }
+        }
+
+        const processedReceipts = finalReceiptGroups.map((group, idx) => {
             const last = group[0]; 
             let titleString = format(new Date(last.created_at || new Date()), 'EEEE, MMMM dd, yyyy');
             const productDates = group.filter(t => t.type === 'PRODUCT').map(t => new Date(t.reference_date));
@@ -993,12 +1023,14 @@ export default function LedgerPage() {
         }
 
         setLoading(true);
-        const receiptId = (showLastMaqal && lastReceiptGroup?.receiptId)
+        const isEditingOldMaqal = showLastMaqal && (isReadOnlyMode || updateLastMaqal);
+
+        const receiptId = (isEditingOldMaqal && lastReceiptGroup?.receiptId)
             ? lastReceiptGroup.receiptId
             : crypto.randomUUID();
 
         // If editing/paying the last maqal, USE ITS MAQAL ID. Otherwise use the current unprocessed one.
-        const targetMaqalId = (showLastMaqal && lastReceiptGroup?.maqalId != null) 
+        const targetMaqalId = (isEditingOldMaqal && lastReceiptGroup?.maqalId != null) 
             ? lastReceiptGroup.maqalId 
             : currentMaqalId;
 

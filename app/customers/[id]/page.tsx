@@ -448,25 +448,70 @@ export default function CustomerDetailPage() {
         // 4. For orphans (no receipt_id), use 15s batching
         if (withoutGroupKey.length > 0) {
             let currentGroup: Transaction[] = [];
+            let currentDates = new Set<string>();
+
             withoutGroupKey.forEach((txn, i) => {
+                const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
+                const dateStr = isProduct ? txn.reference_date.split('T')[0] : null;
+
                 if (i === 0) {
                     currentGroup.push(txn);
+                    if (dateStr) currentDates.add(dateStr);
                 } else {
                     const prev = withoutGroupKey[i - 1];
                     const diff = Math.abs(new Date(txn.created_at).getTime() - new Date(prev.created_at).getTime());
-                    if (diff < 15000) {
+                    
+                    let wouldExceed2Days = false;
+                    if (dateStr && !currentDates.has(dateStr) && currentDates.size >= 2) {
+                        wouldExceed2Days = true;
+                    }
+
+                    if (diff < 15000 && !wouldExceed2Days) {
                         currentGroup.push(txn);
+                        if (dateStr) currentDates.add(dateStr);
                     } else {
                         receiptGroups.push(currentGroup);
                         currentGroup = [txn];
+                        currentDates = new Set<string>();
+                        if (dateStr) currentDates.add(dateStr);
                     }
                 }
             });
             if (currentGroup.length > 0) receiptGroups.push(currentGroup);
         }
 
+        // 4.5 FORCE SPLIT corrupted groups that exceed 2 unique dates (historical bug fix)
+        const finalReceiptGroups: Transaction[][] = [];
+
+        for (const group of receiptGroups) {
+            const productDates = Array.from(new Set(group.filter(t => t.type === 'PRODUCT').map(t => t.reference_date?.split('T')[0]).filter(Boolean)));
+            
+            if (productDates.length > 2) {
+                const chronoGroup = [...group].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                let currentChunkDates = new Set<string>();
+                let currentChunk: Transaction[] = [];
+
+                for (const txn of chronoGroup) {
+                    const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
+                    const dStr = isProduct ? txn.reference_date.split('T')[0] : null;
+                    
+                    if (dStr && !currentChunkDates.has(dStr) && currentChunkDates.size >= 2) {
+                        finalReceiptGroups.push(currentChunk);
+                        currentChunk = [];
+                        currentChunkDates = new Set<string>();
+                    }
+
+                    currentChunk.push(txn);
+                    if (dStr) currentChunkDates.add(dStr);
+                }
+                if (currentChunk.length > 0) finalReceiptGroups.push(currentChunk);
+            } else {
+                finalReceiptGroups.push(group);
+            }
+        }
+
         // 5. Process groups and compute a stable sortDate from product reference dates
-        const processedReceipts = receiptGroups.map((group, idx) => {
+        const processedReceipts = finalReceiptGroups.map((group, idx) => {
             // Sort group newest-first for consistent processing
             const sorted = [...group].sort((a, b) => {
                 const ta = new Date(a.created_at).getTime();
