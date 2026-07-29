@@ -1408,7 +1408,7 @@ export default function CustomerDetailPage() {
                         let isExact = false;
 
                         if (receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0 || receipt.entries.some(e => e.type === 'PAYMENT')) {
-                            const owedForThisBlock = receipt.totalMaqalka + receipt.totalAdjustment;
+                            const owedForThisBlock = receipt.totalMaqalka;
                             const actualPayments = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
                             
                             // The user requested that the receipt badge ONLY focuses on THIS specific Maqal, 
