@@ -1407,14 +1407,16 @@ export default function CustomerDetailPage() {
                         let isOverpaid = false;
                         let isExact = false;
 
-                        if (receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0) {
+                        if (receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0 || receipt.entries.some(e => e.type === 'PAYMENT')) {
                             const owedForThisBlock = receipt.totalMaqalka + receipt.totalAdjustment;
                             const actualPayments = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
                             
                             // The user requested that the receipt badge ONLY focuses on THIS specific Maqal, 
                             // completely ignoring previous debt (Lacagta Guud).
                             const effectivePaid = actualPayments;
-                            pct = Math.min(100, Math.round((effectivePaid / owedForThisBlock) * 100));
+                            pct = owedForThisBlock > 0 
+                                ? Math.min(100, Math.round((effectivePaid / owedForThisBlock) * 100))
+                                : (actualPayments > 0 ? 100 : 0);
 
                             // Diff is simply what is left to pay FOR THIS MAQAL.
                             // If they paid less than they bought, diff is negative (Ka dhiman).
@@ -1504,8 +1506,8 @@ export default function CustomerDetailPage() {
                                             })()}
                                         </div>
                                         {/* Inline badges: % paid + diff amount */}
-                                        {(receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0) && (() => {
-                                            const showDiff = !isExact || pct < 100;
+                                        {(receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0 || receipt.entries.some(e => e.type === 'PAYMENT')) && (() => {
+                                            const showDiff = !isExact || pct < 100 || (receipt.totalMaqalka === 0 && receipt.totalAdjustment === 0);
 
                                             return (
                                                 <div className={`mt-1.5 w-full h-[18px] overflow-hidden relative border-l-2 border-r-2 rounded transition-colors duration-300 ${gradientBorderClass}`}>

@@ -146,9 +146,6 @@ export default function CustomersPage() {
             params.append('maqal_d2', selectedMaqalPair.split('|')[1]);
         }
         
-        if (latestPair) {
-            params.append('max_all_time_date', latestPair.date1);
-        }
 
         if (debouncedSearch) {
             params.append('search', debouncedSearch);
