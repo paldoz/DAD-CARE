@@ -16,6 +16,7 @@ interface SecurityVerificationDialogProps {
     isProcessing?: boolean;
     expectedPin1?: string;
     expectedPin2?: string;
+    requireStep3?: boolean;
 }
 
 export function SecurityVerificationDialog({
@@ -26,7 +27,8 @@ export function SecurityVerificationDialog({
     description = 'This is a restricted action. Please verify your identity.',
     isProcessing = false,
     expectedPin1 = '2919',
-    expectedPin2 = '2135'
+    expectedPin2 = '2135',
+    requireStep3 = true
 }: SecurityVerificationDialogProps) {
     const [step, setStep] = useState(1);
     const [pin1, setPin1] = useState('');
@@ -56,7 +58,11 @@ export function SecurityVerificationDialog({
     const handleNextStep2 = () => {
         if (pin2 === expectedPin2) {
             setError('');
-            setStep(3);
+            if (requireStep3) {
+                setStep(3);
+            } else {
+                onConfirm();
+            }
         } else {
             setError('Invalid Verification PIN 2');
             setPin2('');
@@ -112,7 +118,9 @@ export function SecurityVerificationDialog({
                         <div className="flex items-center justify-center gap-2 mt-4">
                             <div className={cn("h-1 rounded-full transition-all duration-700 shadow-[0_0_10px_rgba(var(--primary),0.5)]", step >= 1 ? 'w-8 bg-primary' : 'w-3 bg-white/10')} />
                             <div className={cn("h-1 rounded-full transition-all duration-700", step >= 2 ? 'w-8 bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'w-3 bg-white/10')} />
-                            <div className={cn("h-1 rounded-full transition-all duration-700", step >= 3 ? 'w-8 bg-destructive shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'w-3 bg-white/10')} />
+                            {requireStep3 && (
+                                <div className={cn("h-1 rounded-full transition-all duration-700", step >= 3 ? 'w-8 bg-destructive shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'w-3 bg-white/10')} />
+                            )}
                         </div>
                     </div>
 

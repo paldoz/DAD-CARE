@@ -13,6 +13,7 @@ const getBalanceLabel = (totalPaid: number, closingBalance: number): string => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useParams, useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { Button } from '@/components/ui/button';
@@ -255,8 +256,12 @@ export default function CustomerDetailPage() {
     };
 
     const handleInterceptLatePayment = (receipt: ReceiptGroup) => {
-        const txTime = new Date(receipt.mainDate).getTime();
-        const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
+        const newestEntry = receipt.entries.length > 0 ? receipt.entries[receipt.entries.length - 1] : null;
+        const newestEntryTime = (newestEntry && newestEntry.created_at)
+            ? new Date(newestEntry.created_at).getTime() 
+            : new Date(receipt.mainDate).getTime();
+            
+        const isRecent = (Date.now() - newestEntryTime) < 24 * 60 * 60 * 1000;
         if (!isRecent && isSuperAdmin) {
             setPendingSuperAdminAction({ type: 'LATE_PAYMENT', receipt });
         } else {
@@ -928,6 +933,7 @@ export default function CustomerDetailPage() {
                 isProcessing={false}
                 expectedPin1="3272"
                 expectedPin2="6990"
+                requireStep3={pendingSuperAdminAction?.type === 'UNDO'}
             />
 
             {/* Transaction Edit Modal */}
@@ -1408,15 +1414,26 @@ export default function CustomerDetailPage() {
                                                 
                                                 const showLatePayment = isTargetMaqal && (isSuperAdmin || (canUndo && latePaymentsLeft > 0));
                                                 
+                                                const newestEntry = receipt.entries.length > 0 ? receipt.entries[receipt.entries.length - 1] : null;
+                                                const newestEntryTime = (newestEntry && newestEntry.created_at)
+                                                    ? new Date(newestEntry.created_at).getTime() 
+                                                    : new Date(receipt.mainDate).getTime();
+                                                const isRecent = (Date.now() - newestEntryTime) < 24 * 60 * 60 * 1000;
+                                                
                                                 return showLatePayment ? (
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
-                                                        className="h-6 text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10 px-2 rounded-full border border-emerald-500/20 backdrop-blur-md transition-all shadow-sm shrink-0"
+                                                        className={cn(
+                                                            "h-6 text-[8px] font-black uppercase tracking-widest px-2 rounded-full border backdrop-blur-md transition-all shadow-sm shrink-0",
+                                                            isRecent 
+                                                                ? "text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/20"
+                                                                : "text-red-600 hover:text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]"
+                                                        )}
                                                         onClick={(e) => { e.stopPropagation(); handleInterceptLatePayment(receipt); }}
                                                     >
-                                                        <Plus className="w-2.5 h-2.5 mr-1" /> Late Payment
-                                                        {!isSuperAdmin && <span className="ml-1 px-1 rounded-sm bg-emerald-500/20 text-[7px] text-emerald-700 dark:text-emerald-300 tracking-wider">({latePaymentsLeft} left)</span>}
+                                                        {isRecent ? <Plus className="w-2.5 h-2.5 mr-1" /> : <Lock className="w-2.5 h-2.5 mr-1" />} Late Payment
+                                                        {!isSuperAdmin && <span className={cn("ml-1 px-1 rounded-sm text-[7px] tracking-wider", isRecent ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-red-500/20 text-red-700 dark:text-red-300")}>({latePaymentsLeft} left)</span>}
                                                     </Button>
                                                 ) : null;
                                             })()}
@@ -1677,13 +1694,16 @@ export default function CustomerDetailPage() {
                                                                                                     ev.stopPropagation();
                                                                                                     handleInterceptEdit(e);
                                                                                                 }}
-                                                                                                className="text-[10px] uppercase font-black tracking-widest hover:text-amber-500 flex items-center gap-1 transition-colors"
+                                                                                                className={cn("text-[10px] uppercase font-black tracking-widest flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded-sm", isRecent ? "hover:text-amber-500 text-amber-500/80" : "text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.15)]")}
                                                                                             >
-                                                                                                <Pencil className="w-3 h-3" /> Edit
+                                                                                                {isRecent ? <Pencil className="w-3 h-3" /> : <Lock className="w-3 h-3" />} Edit
                                                                                             </button>
                                                                                         )}
                                                                                         {showUndo && (
-                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleInterceptUndo(e.id, e.created_at || e.reference_date); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
+                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleInterceptUndo(e.id, e.created_at || e.reference_date); }} disabled={undoingTxId === e.id} className={cn("text-[10px] uppercase font-black flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-0.5 rounded-sm", isRecent ? "text-red-500 hover:text-red-400 hover:underline" : "text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.15)]")}>
+                                                                                                {undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : (isRecent ? <Trash2 className="w-3 h-3"/> : <Lock className="w-3 h-3"/>)}
+                                                                                                {undoingTxId === e.id ? 'Undoing...' : 'Undo'}
+                                                                                            </button>
                                                                                         )}
                                                                                     </div>
                                                                                 );
