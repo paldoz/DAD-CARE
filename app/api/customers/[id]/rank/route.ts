@@ -101,6 +101,13 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     pct,
                     RANK() OVER (
                         ORDER BY 
+                            CASE WHEN (
+                                CASE 
+                                    WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                                    THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
+                                    ELSE COALESCE(lk.total_ledger_maqal, 0)
+                                END
+                            ) > 0 THEN 0 ELSE 1 END ASC,
                             pct DESC, 
                             CASE WHEN current_debt < 0 THEN 1 ELSE 2 END ASC,
                             CASE WHEN current_debt < 0 THEN current_debt ELSE 0 END ASC,
@@ -108,16 +115,22 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                             perfect_maqals DESC,
                             customer_created_at ASC,
                             id ASC
-                    ) as rank,
+                    ) as rank_maqal,
+                    RANK() OVER (
+                        ORDER BY
+                            current_debt ASC,
+                            COALESCE(p.total_paid, 0) DESC,
+                            id ASC
+                    ) as rank_lacag,
                     COUNT(*) OVER() as total_customers
                 FROM customer_stats
             )
-            SELECT rank, pct, total_customers FROM ranked_customers WHERE id = $1;
+            SELECT rank_maqal, rank_lacag, pct, total_customers FROM ranked_customers WHERE id = $1;
         `;
         
         const { rows } = await pool.query(query, [id]);
         if (rows.length === 0) {
-            return NextResponse.json({ rank: null, pct: null, total_customers: 0 });
+            return NextResponse.json({ rank_maqal: null, rank_lacag: null, pct: null, total_customers: 0 });
         }
         
         return NextResponse.json(rows[0]);

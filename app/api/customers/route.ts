@@ -69,17 +69,27 @@ async function getCustomers(options: {
         ) prio ON true`;
         orderClause = "ORDER BY CASE WHEN prio.is_priority = true THEN 0 ELSE 1 END ASC, CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
     }
-    else if (sort === 'best_lacag' || sort === 'best') orderClause = "ORDER BY current_balance ASC, total_paid DESC NULLS LAST";
-    else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY current_balance DESC NULLS LAST";
+    else if (sort === 'best_lacag' || sort === 'best') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ASC, COALESCE(p.total_paid, 0) DESC NULLS LAST";
+    else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) DESC NULLS LAST";
     else if (sort === 'best_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} DESC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN 1 ELSE 2 END ASC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN COALESCE(l.new_debt, 0) ELSE 0 END ASC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) ASC, COALESCE(gs.perfect_maqals, 0) DESC, c.created_at ASC, c.id ASC`;
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'all_time_maqal_total';
+        
+        // This exactly matches /api/customers/[id]/rank/route.ts
+        orderClause = `ORDER BY 
+            CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
+            ${pctCol} DESC, 
+            CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 1 ELSE 2 END ASC, 
+            CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END ASC, 
+            GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) ASC, 
+            COALESCE(gs.perfect_maqals, 0) DESC, 
+            c.created_at ASC, 
+            c.id ASC`;
     }
     else if (sort === 'worst_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'COALESCE(lk.total_ledger_maqal, 0)';
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN COALESCE(l.new_debt, 0) < 0 THEN COALESCE(l.new_debt, 0) ELSE 0 END DESC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'all_time_maqal_total';
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END DESC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
