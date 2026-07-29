@@ -11,8 +11,8 @@ interface SecurityVerificationDialogProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
     onConfirm: () => void;
-    title?: string;
-    description?: string;
+    title?: string | React.ReactNode;
+    description?: string | React.ReactNode;
     isProcessing?: boolean;
     expectedPin1?: string;
     expectedPin2?: string;
@@ -73,8 +73,8 @@ export function SecurityVerificationDialog({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            {/* Custom high-end glassmorphism dialog content */}
-            <DialogContent className="sm:max-w-[420px] bg-background/40 backdrop-blur-[40px] border border-white/20 dark:border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.4)] p-0 overflow-hidden z-[100000] rounded-[32px]">
+            {/* Custom high-end glassmorphism dialog content - Highly transparent and compact */}
+            <DialogContent className="sm:max-w-[340px] bg-background/20 backdrop-blur-[60px] border border-white/10 dark:border-white/5 shadow-[0_30px_80px_rgba(0,0,0,0.6)] p-0 overflow-hidden z-[100000] rounded-3xl">
                 
                 {/* Futuristic background meshes */}
                 <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] pointer-events-none opacity-50 dark:opacity-30 mix-blend-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/30 via-background to-background" />
@@ -92,14 +92,14 @@ export function SecurityVerificationDialog({
                         )} />
 
                         <div className={cn(
-                            "p-4 rounded-2xl mb-5 transition-all duration-700 relative z-10 backdrop-blur-md border shadow-2xl",
-                            step === 3 ? 'bg-destructive/20 text-destructive border-destructive/30 shadow-destructive/20' : 
-                            step === 2 ? 'bg-amber-500/20 text-amber-500 border-amber-500/30 shadow-amber-500/20' : 
-                            'bg-primary/20 text-primary border-primary/30 shadow-primary/20'
+                            "p-3 rounded-2xl mb-3 transition-all duration-700 relative z-10 backdrop-blur-md border shadow-2xl",
+                            step === 3 ? 'bg-destructive/10 text-destructive border-destructive/20' : 
+                            step === 2 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
+                            'bg-primary/10 text-primary border-primary/20'
                         )}>
-                            {step === 3 ? <AlertTriangle className="w-10 h-10 animate-pulse" /> : 
-                             step === 2 ? <Key className="w-10 h-10" /> : 
-                             <Lock className="w-10 h-10" />}
+                            {step === 3 ? <AlertTriangle className="w-8 h-8 animate-pulse" /> : 
+                             step === 2 ? <Key className="w-8 h-8" /> : 
+                             <Lock className="w-8 h-8" />}
                         </div>
                         <DialogTitle className="text-2xl font-black uppercase tracking-[0.15em] text-foreground drop-shadow-md">
                             {title}
@@ -109,10 +109,10 @@ export function SecurityVerificationDialog({
                         </DialogDescription>
 
                         {/* Premium Progress Indicators */}
-                        <div className="flex items-center justify-center gap-3 mt-8">
-                            <div className={cn("h-1.5 rounded-full transition-all duration-700 shadow-[0_0_10px_rgba(var(--primary),0.5)]", step >= 1 ? 'w-10 bg-primary' : 'w-4 bg-white/10')} />
-                            <div className={cn("h-1.5 rounded-full transition-all duration-700", step >= 2 ? 'w-10 bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'w-4 bg-white/10')} />
-                            <div className={cn("h-1.5 rounded-full transition-all duration-700", step >= 3 ? 'w-10 bg-destructive shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'w-4 bg-white/10')} />
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                            <div className={cn("h-1 rounded-full transition-all duration-700 shadow-[0_0_10px_rgba(var(--primary),0.5)]", step >= 1 ? 'w-8 bg-primary' : 'w-3 bg-white/10')} />
+                            <div className={cn("h-1 rounded-full transition-all duration-700", step >= 2 ? 'w-8 bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'w-3 bg-white/10')} />
+                            <div className={cn("h-1 rounded-full transition-all duration-700", step >= 3 ? 'w-8 bg-destructive shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'w-3 bg-white/10')} />
                         </div>
                     </div>
 
@@ -133,16 +133,18 @@ export function SecurityVerificationDialog({
                                     <div className="relative group">
                                         <div className="absolute inset-0 bg-primary/20 blur-xl rounded-2xl opacity-0 group-focus-within:opacity-100 transition-opacity duration-500" />
                                         <div className="relative">
-                                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground/40 group-focus-within:text-primary transition-colors" />
+                                            <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                                             <Input
                                                 type="password"
                                                 inputMode="numeric"
-                                                placeholder="••••"
-                                                className="h-16 pl-12 bg-background/50 backdrop-blur-md border-white/10 text-center tracking-[1em] font-black text-2xl rounded-2xl focus:border-primary/50 focus:ring-primary/50 transition-all shadow-inner"
-                                                value={pin1}
-                                                onChange={(e) => { setPin1(e.target.value); setError(''); }}
-                                                onKeyDown={(e) => handleKeyDown(e, 1)}
+                                                pattern="[0-9]*"
                                                 autoFocus
+                                                value={pin1}
+                                                onChange={(e) => setPin1(e.target.value.replace(/\D/g, ''))}
+                                                onKeyDown={(e) => handleKeyDown(e, 1)}
+                                                className="h-11 pl-9 pr-12 text-center text-xl tracking-[0.5em] font-black bg-black/20 dark:bg-black/40 border-white/10 rounded-xl focus-visible:ring-primary/50 shadow-inner"
+                                                placeholder="••••"
+                                                maxLength={4}
                                             />
                                         </div>
                                     </div>

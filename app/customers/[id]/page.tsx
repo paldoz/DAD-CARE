@@ -886,16 +886,48 @@ export default function CustomerDetailPage() {
                 title={
                     pendingSecurityAction === 'clear_history' ? 'Clear History' : 
                     pendingSecurityAction === 'delete_receipt' ? 'Delete Receipt Block' : 
-                    pendingSecurityAction === 'restore_customer' ? 'Restore Customer' :
-                    'Delete Customer'
+                    pendingSecurityAction === 'delete_customer' ? 'Move to Inactive' : 
+                    'Restore Customer'
                 }
                 description={
-                    pendingSecurityAction === 'clear_history' ? 'Permanently clear all ledger history for this customer?' : 
-                    pendingSecurityAction === 'delete_receipt' ? `Permanently delete ${receiptToDelete?.entries.length} transactions from "${receiptToDelete?.titleString}"?` :
-                    pendingSecurityAction === 'restore_customer' ? `Restore "${customer?.name}" to Active status? They will be given a new valid ID and appear in all active lists.` :
-                    `Move "${customer?.name}" to Inactive? Their full history (daily book, ledger) will be preserved. You can recover them from the Inactive tab.`
+                    pendingSecurityAction === 'clear_history' ? 'You are about to permanently delete all history for this customer.' :
+                    pendingSecurityAction === 'delete_receipt' ? 'You are about to permanently delete this receipt block and all its transactions.' :
+                    pendingSecurityAction === 'delete_customer' ? 'You are about to move this customer to the Inactive list.' :
+                    'You are about to restore this customer to the Active list.'
                 }
-                isProcessing={updating}
+                isProcessing={updating || isRecovering}
+            />
+
+            <SecurityVerificationDialog
+                isOpen={!!pendingSuperAdminAction}
+                onOpenChange={(open) => {
+                    if (!open) setPendingSuperAdminAction(null);
+                }}
+                onConfirm={() => {
+                    if (!pendingSuperAdminAction) return;
+                    if (pendingSuperAdminAction.type === 'EDIT' && pendingSuperAdminAction.tx) {
+                        openEditModal(pendingSuperAdminAction.tx);
+                    } else if (pendingSuperAdminAction.type === 'UNDO' && pendingSuperAdminAction.txId) {
+                        handleUndoTransaction(pendingSuperAdminAction.txId);
+                    } else if (pendingSuperAdminAction.type === 'LATE_PAYMENT' && pendingSuperAdminAction.receipt) {
+                        setLatePaymentMaqal(pendingSuperAdminAction.receipt);
+                    }
+                    setPendingSuperAdminAction(null);
+                }}
+                title="Super Admin Security"
+                description={
+                    <div className="flex flex-col items-center gap-1.5 mt-2">
+                        <span className="text-[9px] uppercase font-black tracking-[0.2em] bg-destructive/10 text-destructive px-2 py-0.5 rounded-sm border border-destructive/20 animate-pulse">
+                            Final Warning
+                        </span>
+                        <span className="text-destructive/90 font-bold leading-snug">
+                            Take care! You are modifying data older than 24 hours. Verify with your secure PINs.
+                        </span>
+                    </div>
+                }
+                isProcessing={false}
+                expectedPin1="3272"
+                expectedPin2="6990"
             />
 
             {/* Transaction Edit Modal */}
@@ -1633,7 +1665,7 @@ export default function CustomerDetailPage() {
                                                                             const showUndo = canUndo && hasTimeAccess;
                                                                             
                                                                             const offset = (finalReceipts[0]?.totalPaid === 0 && finalReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
-                                                                            const isEditable = receiptIdx === offset;
+                                                                            const isEditable = isSuperAdmin ? true : (receiptIdx === offset);
                                                                             const showEdit = canUndo && isEditable && hasTimeAccess;
 
                                                                             if (showUndo || showEdit) {
