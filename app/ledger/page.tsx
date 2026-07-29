@@ -642,17 +642,33 @@ export default function LedgerPage() {
 
         if (withoutReceiptId.length > 0) {
             let currentGroup: any[] = [];
+            let currentDates = new Set<string>();
+
             withoutReceiptId.forEach((txn, i) => {
+                const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
+                const dateStr = isProduct ? txn.reference_date.split('T')[0] : null;
+
                 if (i === 0) {
                     currentGroup.push(txn);
+                    if (dateStr) currentDates.add(dateStr);
                 } else {
                     const prev = withoutReceiptId[i - 1];
                     const diff = Math.abs(new Date(txn.created_at || 0).getTime() - new Date(prev.created_at || 0).getTime());
-                    if (diff < 15000) {
+                    const differentMaqal = txn.maqal_id != null && prev.maqal_id != null && txn.maqal_id !== prev.maqal_id;
+                    
+                    let wouldExceed2Days = false;
+                    if (dateStr && !currentDates.has(dateStr) && currentDates.size >= 2) {
+                        wouldExceed2Days = true;
+                    }
+
+                    if (diff < 15000 && !differentMaqal && !wouldExceed2Days) {
                         currentGroup.push(txn);
+                        if (dateStr) currentDates.add(dateStr);
                     } else {
                         receiptGroups.push(currentGroup);
                         currentGroup = [txn];
+                        currentDates = new Set<string>();
+                        if (dateStr) currentDates.add(dateStr);
                     }
                 }
             });
@@ -966,8 +982,7 @@ export default function LedgerPage() {
             )
         );
         const validPayments = paymentEntries.filter(p => {
-            const isAdjustment = (p.note || '').toLowerCase().includes('heyn') || (p.note || '').toLowerCase().includes('cafis');
-            return (p.date || isAdjustment) && parseFloat(p.amount) > 0;
+            return parseFloat(p.amount) > 0;
         });
 
         const hasAdjustment = !isReadOnlyMode && effectiveBalance === 0 && parseFloat(adjustmentAmount) > 0;

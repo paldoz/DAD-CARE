@@ -44,24 +44,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
         // Support both single entry and batch (items array)
         const isBatch = Array.isArray(items);
 
-        // Security Intercept for Normal Admins adding Late Payments (single posts)
-        if (!isBatch && session?.role !== 'SUPER_ADMIN') {
-            const client = await pool.connect();
-            try {
-                await client.query(`
-                    INSERT INTO "PendingApprovals" (username, action_type, customer_id, payload)
-                    VALUES ($1, $2, $3, $4)
-                `, [
-                    session?.username,
-                    'ADD_LATE_PAYMENT',
-                    body.customerId,
-                    JSON.stringify(body)
-                ]);
-                return NextResponse.json({ pending: true, message: 'Late payment sent for Super Admin approval.' });
-            } finally {
-                client.release();
-            }
-        }
+
 
         // ── Zod validation ──────────────────────────────────────────────────
         if (isBatch) {

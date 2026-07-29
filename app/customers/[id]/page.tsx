@@ -632,7 +632,7 @@ export default function CustomerDetailPage() {
     
     const { data: initialLedgerData, mutate: mutateLedger } = useSWR(baseLedgerUrl, fetcher, {
         revalidateOnFocus: false,
-        dedupingInterval: 0,   // always re-fetch on demand (we control when via mutate)
+        dedupingInterval: 10000,   // Prevent duplicate requests within 10 seconds to save bandwidth
         revalidateIfStale: false,
         revalidateOnReconnect: false,
     });
