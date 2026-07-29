@@ -296,10 +296,12 @@ export default function CustomerDetailPage() {
             toast.success(data.message || 'Updated successfully!');
             setTransactionToEdit(null);
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            await loadCustomerData(true);
+            // Hard refresh to show accurate calculations exactly like the save flow
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         } catch (err: any) {
             toast.error(err.message);
-        } finally {
             setUpdating(false);
         }
     };
@@ -328,10 +330,12 @@ export default function CustomerDetailPage() {
             setLatePaymentAmount('');
             setLatePaymentDate('');
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            await loadCustomerData(true);
+            // Hard refresh to show accurate calculations exactly like the save flow
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
         } catch (err: any) {
             toast.error(err.message);
-        } finally {
             setUpdating(false);
         }
     };
