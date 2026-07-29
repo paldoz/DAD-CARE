@@ -80,6 +80,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                         )::numeric) * 100))::int
                     END as pct,
                     COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0) as current_debt,
+                    COALESCE(p.total_paid, 0) as total_paid,
                     GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) as last_completed_reesto,
                     COALESCE(gs.perfect_maqals, 0) as perfect_maqals
                 FROM "Customer" c
@@ -118,7 +119,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     RANK() OVER (
                         ORDER BY
                             current_debt ASC,
-                            COALESCE(p.total_paid, 0) DESC,
+                            total_paid DESC,
                             id ASC
                     ) as rank_lacag,
                     COUNT(*) OVER() as total_customers
