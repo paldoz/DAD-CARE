@@ -73,7 +73,13 @@ async function getCustomers(options: {
     else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) DESC NULLS LAST";
     else if (sort === 'best_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'all_time_maqal_total';
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `(
+            CASE 
+                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
+                ELSE COALESCE(lk.total_ledger_maqal, 0)
+            END
+        )`;
         
         // This exactly matches /api/customers/[id]/rank/route.ts
         orderClause = `ORDER BY 
@@ -88,7 +94,13 @@ async function getCustomers(options: {
     }
     else if (sort === 'worst_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : 'all_time_maqal_total';
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `(
+            CASE 
+                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
+                ELSE COALESCE(lk.total_ledger_maqal, 0)
+            END
+        )`;
         orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END DESC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
