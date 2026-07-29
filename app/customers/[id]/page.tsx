@@ -1301,28 +1301,6 @@ export default function CustomerDetailPage() {
                                         <span className={`text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 ${colorClass}`}>
                                             ⚡ {pct}% All-Time <span className="opacity-40">|</span> {label}
                                         </span>
-                                        {rankData && rankData.rank_lacag && (() => {
-                                            let rankStyle = 'bg-muted/50 text-muted-foreground border border-border/50';
-                                            let RankIcon = null;
-                                            
-                                            if (rankData.rank_lacag === 1) {
-                                                rankStyle = 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/40 shadow-[0_0_8px_rgba(16,185,129,0.3)]';
-                                                RankIcon = <Star className="w-3 h-3 fill-emerald-500 text-emerald-500" />;
-                                            } else if (rankData.rank_lacag === 2) {
-                                                rankStyle = 'bg-slate-400/20 text-slate-500 border border-slate-400/40 shadow-[0_0_8px_rgba(148,163,184,0.3)]';
-                                                RankIcon = <Star className="w-3 h-3 fill-slate-400 text-slate-400" />;
-                                            } else if (rankData.rank_lacag === 3) {
-                                                rankStyle = 'bg-orange-700/20 text-orange-700 dark:text-orange-600 border border-orange-700/40 shadow-[0_0_8px_rgba(194,65,12,0.3)]';
-                                                RankIcon = <Star className="w-3 h-3 fill-orange-700 text-orange-700 dark:fill-orange-600 dark:text-orange-600" />;
-                                            }
-
-                                            return (
-                                                <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full flex items-center gap-1.5 ${rankStyle}`}>
-                                                    {RankIcon}
-                                                    Rank {rankData.rank_lacag} <span className="opacity-50 text-[9px] font-bold">/ {rankData.total_customers} (Lacagta)</span>
-                                                </span>
-                                            );
-                                        })()}
                                         {rankData && rankData.rank_maqal && (() => {
                                             let rankStyle = 'bg-muted/50 text-muted-foreground border border-border/50';
                                             let RankIcon = null;
@@ -1341,7 +1319,7 @@ export default function CustomerDetailPage() {
                                             return (
                                                 <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full flex items-center gap-1.5 ${rankStyle}`}>
                                                     {RankIcon}
-                                                    Rank {rankData.rank_maqal} <span className="opacity-50 text-[9px] font-bold">/ {rankData.total_customers} (Maqalka)</span>
+                                                    Rank {rankData.rank_maqal} <span className="opacity-50 text-[9px] font-bold">/ {rankData.total_customers}</span>
                                                 </span>
                                             );
                                         })()}
@@ -1433,16 +1411,15 @@ export default function CustomerDetailPage() {
                             const owedForThisBlock = receipt.totalMaqalka + receipt.totalAdjustment;
                             const actualPayments = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
                             
-                            // Value available to pay THIS maqal = (Payments made now) - (Any old debt) OR + (Any old Heyn)
-                            const valueAvailable = actualPayments - receipt.openingBalance;
-                            
-                            const effectivePaid = Math.max(0, Math.min(owedForThisBlock, valueAvailable));
+                            // The user requested that the receipt badge ONLY focuses on THIS specific Maqal, 
+                            // completely ignoring previous debt (Lacagta Guud).
+                            const effectivePaid = actualPayments;
                             pct = Math.min(100, Math.round((effectivePaid / owedForThisBlock) * 100));
 
-                            // Diff is simply the inverse of closing balance. 
-                            // If closing balance is positive (Debt), diff is negative (Ka dhiman).
-                            // If closing balance is negative (Heyn), diff is positive (Kaso hartay).
-                            diff = -receipt.closingBalance;
+                            // Diff is simply what is left to pay FOR THIS MAQAL.
+                            // If they paid less than they bought, diff is negative (Ka dhiman).
+                            // If they paid more than they bought, diff is positive (Kaso hartay).
+                            diff = actualPayments - owedForThisBlock;
                             isOverpaid = diff > 0;
                             isExact = diff === 0;
 
