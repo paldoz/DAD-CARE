@@ -288,7 +288,7 @@ async function getCustomers(options: {
         )
         SELECT 
             c.id, c.name, c.customer_code, c.gender, c.phone, c.created_at, c.deleted_at,
-            COALESCE(l.new_debt, 0)::float as current_balance,
+            (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0))::float as current_balance,
             COALESCE(l.type, null) as last_transaction_type,
             COALESCE(p.total_paid, 0)::float as total_paid,
             COALESCE(dbk.total_daily_kg, 0)::float as total_kg,
