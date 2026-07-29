@@ -34,12 +34,12 @@ export async function DELETE(
 
         const ledger = rows[0];
 
-        // Rule 1: 24h time limit (Applies to EVERYONE, including Super Admin)
+        // Rule 1: 24h time limit (Normal admins are strictly blocked. Super Admins bypass this)
         const txTime = new Date(ledger.created_at || ledger.reference_date).getTime();
         const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
-        if (!isRecent) {
+        if (!isRecent && session.role !== 'SUPER_ADMIN') {
             await client.query('ROLLBACK');
-            return NextResponse.json({ error: 'Security: Entries older than 24 hours cannot be undone by anyone.' }, { status: 403 });
+            return NextResponse.json({ error: 'Security: Entries older than 24 hours cannot be undone by normal admins.' }, { status: 403 });
         }
 
         if (session.role !== 'SUPER_ADMIN') {
@@ -55,21 +55,7 @@ export async function DELETE(
             }
         }
 
-        if (session.role !== 'SUPER_ADMIN') {
-            // Intercept UNDO and push to PendingApprovals
-            await client.query(`
-                INSERT INTO "PendingApprovals" (username, action_type, customer_id, ledger_id, payload)
-                VALUES ($1, $2, $3, $4, $5)
-            `, [
-                session.username,
-                'UNDO_LEDGER',
-                ledger.customer_id,
-                ledgerId,
-                JSON.stringify({ amount: ledger.amount })
-            ]);
-            await client.query('COMMIT');
-            return NextResponse.json({ pending: true, message: 'Undo request sent for Super Admin approval.' });
-        }
+
 
         // Soft delete the ledger entry (Super Admin only)
         await client.query(
@@ -143,6 +129,15 @@ export async function PATCH(
         }
 
         const ledger = rows[0];
+        
+        // Rule 1: 24h time limit (Normal admins are strictly blocked. Super Admins bypass this)
+        const txTime = new Date(ledger.created_at || ledger.reference_date).getTime();
+        const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
+        if (!isRecent && session.role !== 'SUPER_ADMIN') {
+            await client.query('ROLLBACK');
+            return NextResponse.json({ error: 'Security: Entries older than 24 hours cannot be edited by normal admins.' }, { status: 403 });
+        }
+        
         // Security Rule: Priority Customer (Only applies to Regular Admins)
         if (session.role !== 'SUPER_ADMIN') {
             const { rows: userRows } = await client.query(
@@ -169,21 +164,7 @@ export async function PATCH(
         const newPrice = price_per_kg !== undefined ? parseFloat(price_per_kg) : ledger.price_per_kg;
         const newRefDate = body.reference_date || ledger.reference_date;
 
-        // If Normal Admin, push to pending and exit
-        if (session.role !== 'SUPER_ADMIN') {
-            await client.query(`
-                INSERT INTO "PendingApprovals" (username, action_type, customer_id, ledger_id, payload)
-                VALUES ($1, $2, $3, $4, $5)
-            `, [
-                session.username,
-                'EDIT_PAYMENT',
-                ledger.customer_id,
-                ledgerId,
-                JSON.stringify({ amount: newAmount, kg: newKg, price_per_kg: newPrice, reference_date: newRefDate })
-            ]);
-            await client.query('COMMIT');
-            return NextResponse.json({ pending: true, message: 'Edit sent for Super Admin approval.' });
-        }
+
 
         // Update the ledger entry (Super Admin only)
         await client.query(

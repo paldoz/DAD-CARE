@@ -226,6 +226,44 @@ export default function CustomerDetailPage() {
     const [latePaymentAmount, setLatePaymentAmount] = useState('');
     const [latePaymentDate, setLatePaymentDate] = useState('');
 
+    // Super Admin > 24h Security State
+    const [pendingSuperAdminAction, setPendingSuperAdminAction] = useState<{
+        type: 'EDIT' | 'UNDO' | 'LATE_PAYMENT';
+        tx?: Transaction;
+        txId?: string;
+        receipt?: ReceiptGroup;
+    } | null>(null);
+
+    const handleInterceptEdit = (tx: Transaction) => {
+        const txTime = new Date(tx.created_at || tx.reference_date).getTime();
+        const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
+        if (!isRecent && isSuperAdmin) {
+            setPendingSuperAdminAction({ type: 'EDIT', tx });
+        } else {
+            openEditModal(tx);
+        }
+    };
+
+    const handleInterceptUndo = (txId: string, originalTxDate: string) => {
+        const txTime = new Date(originalTxDate).getTime();
+        const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
+        if (!isRecent && isSuperAdmin) {
+            setPendingSuperAdminAction({ type: 'UNDO', txId });
+        } else {
+            handleUndoTransaction(txId);
+        }
+    };
+
+    const handleInterceptLatePayment = (receipt: ReceiptGroup) => {
+        const txTime = new Date(receipt.mainDate).getTime();
+        const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
+        if (!isRecent && isSuperAdmin) {
+            setPendingSuperAdminAction({ type: 'LATE_PAYMENT', receipt });
+        } else {
+            setLatePaymentMaqal(receipt);
+        }
+    };
+
     const openEditModal = (tx: Transaction) => {
         setTransactionToEdit(tx);
         setEditTxAmount(tx.amount.toString());
@@ -1327,14 +1365,15 @@ export default function CustomerDetailPage() {
                                                     .map((r, i) => (r.totalMaqalka > 0 || r.totalAdjustment > 0) ? i : -1)
                                                     .filter(i => i !== -1);
                                                 
-                                                // The user ONLY wants the Late Payment button on the CURRENT newest maqal, 
-                                                // and the PREVIOUS maqal (maqalIndices[0] and maqalIndices[1]). No older ones!
-                                                const isTargetMaqal = receiptIdx === maqalIndices[0] || receiptIdx === maqalIndices[1];
+                                                // Normal Admins: ONLY the PREVIOUS maqal (maqalIndices[1]).
+                                                // Super Admins: ALL maqals EXCEPT the current newest one (maqalIndices[0]).
+                                                const isTargetMaqal = isSuperAdmin 
+                                                    ? (maqalIndices.includes(receiptIdx) && receiptIdx !== maqalIndices[0])
+                                                    : (receiptIdx === maqalIndices[1]);
                                                 
                                                 const latePaymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT' && e.note === 'Late Payment').length;
                                                 const latePaymentsLeft = Math.max(0, 3 - latePaymentsCount);
                                                 
-                                                // 3-payment limit restored for normal admins. Super Admins get unlimited.
                                                 const showLatePayment = isTargetMaqal && (isSuperAdmin || (canUndo && latePaymentsLeft > 0));
                                                 
                                                 return showLatePayment ? (
@@ -1342,7 +1381,7 @@ export default function CustomerDetailPage() {
                                                         size="sm"
                                                         variant="ghost"
                                                         className="h-6 text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10 px-2 rounded-full border border-emerald-500/20 backdrop-blur-md transition-all shadow-sm shrink-0"
-                                                        onClick={(e) => { e.stopPropagation(); setLatePaymentMaqal(receipt); }}
+                                                        onClick={(e) => { e.stopPropagation(); handleInterceptLatePayment(receipt); }}
                                                     >
                                                         <Plus className="w-2.5 h-2.5 mr-1" /> Late Payment
                                                         {!isSuperAdmin && <span className="ml-1 px-1 rounded-sm bg-emerald-500/20 text-[7px] text-emerald-700 dark:text-emerald-300 tracking-wider">({latePaymentsLeft} left)</span>}
@@ -1604,7 +1643,7 @@ export default function CustomerDetailPage() {
                                                                                             <button
                                                                                                 onClick={(ev) => {
                                                                                                     ev.stopPropagation();
-                                                                                                    setTransactionToEdit(e);
+                                                                                                    handleInterceptEdit(e);
                                                                                                 }}
                                                                                                 className="text-[10px] uppercase font-black tracking-widest hover:text-amber-500 flex items-center gap-1 transition-colors"
                                                                                             >
@@ -1612,7 +1651,7 @@ export default function CustomerDetailPage() {
                                                                                             </button>
                                                                                         )}
                                                                                         {showUndo && (
-                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleUndoTransaction(e.id); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
+                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleInterceptUndo(e.id, e.created_at || e.reference_date); }} disabled={undoingTxId === e.id} className="text-[10px] uppercase font-bold text-red-600 dark:text-red-400 flex items-center gap-1 hover:underline disabled:opacity-50 disabled:cursor-not-allowed">{undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : <Trash2 className="w-3 h-3"/>}{undoingTxId === e.id ? 'Undoing...' : 'Undo'}</button>
                                                                                         )}
                                                                                     </div>
                                                                                 );

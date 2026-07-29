@@ -14,6 +14,8 @@ interface SecurityVerificationDialogProps {
     title?: string;
     description?: string;
     isProcessing?: boolean;
+    expectedPin1?: string;
+    expectedPin2?: string;
 }
 
 export function SecurityVerificationDialog({
@@ -22,7 +24,9 @@ export function SecurityVerificationDialog({
     onConfirm,
     title = 'Security Verification',
     description = 'This is a restricted action. Please verify your identity.',
-    isProcessing = false
+    isProcessing = false,
+    expectedPin1 = '2919',
+    expectedPin2 = '2135'
 }: SecurityVerificationDialogProps) {
     const [step, setStep] = useState(1);
     const [pin1, setPin1] = useState('');
@@ -40,7 +44,7 @@ export function SecurityVerificationDialog({
     }, [isOpen]);
 
     const handleNextStep1 = () => {
-        if (pin1 === '2919') {
+        if (pin1 === expectedPin1) {
             setError('');
             setStep(2);
         } else {
@@ -50,7 +54,7 @@ export function SecurityVerificationDialog({
     };
 
     const handleNextStep2 = () => {
-        if (pin2 === '2135') {
+        if (pin2 === expectedPin2) {
             setError('');
             setStep(3);
         } else {
