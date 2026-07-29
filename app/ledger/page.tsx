@@ -1915,9 +1915,9 @@ export default function LedgerPage() {
                                                                     <div key={e.id} className="flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-emerald-700 dark:text-emerald-500 font-bold">
                                                                         <span className="flex items-center gap-1.5">
                                                                             {format(new Date(e.reference_date), 'MMM dd')} {e.note && e.note !== 'Lacagta' ? e.note : 'Payment'}
-                                                                            {e.displayMaqalId != null && (
+                                                                            {lastReceiptGroup.displayMaqalId != null && (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_5px_rgba(59,130,246,0.2)]">
-                                                                                    ⚡MQ#{e.displayMaqalId}
+                                                                                    ⚡MQ#{lastReceiptGroup.displayMaqalId}
                                                                                 </span>
                                                                             )}
                                                                         </span>

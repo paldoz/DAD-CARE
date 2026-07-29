@@ -171,10 +171,9 @@ export default function CustomerDetailPage() {
             .catch(() => {});
     }, []);
 
-    // canUndo:
-    //   SUPER_ADMIN → always true (can undo any customer, any time)
-    //   ADMIN       → only true if this customer is in their priority list
-    const canUndo = isSuperAdmin || (isAtLeastAdmin && priorityCustomerIds.includes(customerId));
+    // Undo/Edit logic based on admin privileges
+    const isPriorityCustomer = priorityCustomerIds.includes(customerId);
+    const canUndo = isSuperAdmin || (isAtLeastAdmin && isPriorityCustomer);
 
     // Latest maqal pair status for this customer
     const [maqalStatus, setMaqalStatus] = useState<{ date1: string; date2: string; has_payment: boolean } | null>(null);
@@ -1327,12 +1326,27 @@ export default function CustomerDetailPage() {
                                                     .map((r, i) => (r.totalMaqalka > 0 || r.totalAdjustment > 0) ? i : -1)
                                                     .filter(i => i !== -1);
                                                 
-                                                // The active Maqal is maqalIndices[0]
-                                                // The target Maqal for late payments is maqalIndices[1]
-                                                const isTargetMaqal = maqalIndices.length > 1 && receiptIdx === maqalIndices[1];
+                                                // Find the OLDEST unpaid maqal to strictly enforce sequential order
+                                                let oldestUnpaidIdx = -1;
+                                                for (let i = maqalIndices.length - 1; i >= 0; i--) {
+                                                    const idx = maqalIndices[i];
+                                                    const r = finalReceipts[idx];
+                                                    const paymentsInReceipt = r.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
+                                                    const owed = r.totalMaqalka + r.totalAdjustment;
+                                                    if (paymentsInReceipt < owed) {
+                                                        oldestUnpaidIdx = idx;
+                                                        break;
+                                                    }
+                                                }
+                                                
+                                                // If there's an unpaid maqal, ONLY allow Late Payment there. 
+                                                // If ALL are paid, allow it everywhere so they can fix mistakes.
+                                                const isTargetMaqal = oldestUnpaidIdx !== -1 ? (receiptIdx === oldestUnpaidIdx) : (maqalIndices.includes(receiptIdx));
                                                 
                                                 const paymentsCount = receipt.entries.filter(e => e.type === 'PAYMENT').length;
                                                 const latePaymentsLeft = Math.max(0, 3 - paymentsCount);
+                                                
+                                                // 3-payment limit restored for normal admins. Super Admins get unlimited.
                                                 const showLatePayment = isTargetMaqal && (isSuperAdmin || (canUndo && latePaymentsLeft > 0));
                                                 
                                                 return showLatePayment ? (
@@ -1576,31 +1590,37 @@ export default function CustomerDetailPage() {
                                                                     <div className="flex flex-col flex-1">
                                                                         <span className="flex items-center gap-1.5">
                                                                             {format(new Date(e.reference_date), 'MMM dd')} Payment
-                                                                            {e.displayMaqalId != null ? (
+                                                                            {receipt.displayMaqalId != null ? (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_5px_rgba(59,130,246,0.2)]">
-                                                                                    ⚡MQ#{e.displayMaqalId}
+                                                                                    ⚡MQ#{receipt.displayMaqalId}
                                                                                 </span>
                                                                             ) : null}
                                                                         </span>
                                                                         {(() => {
                                                                             const txTime = new Date(e.created_at || e.reference_date).getTime();
                                                                             const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
-                                                                            // Everyone has a 24h time limit (including Super Admin). 
-                                                                            // Regular admins ALSO require it to be their priority customer (canUndo).
-                                                                            const showUndo = canUndo && isRecent;
+                                                                            
+                                                                            // Normal admins MUST be within 24 hours. Super Admins have unlimited time.
+                                                                            const hasTimeAccess = isSuperAdmin || isRecent;
+                                                                            
+                                                                            const showUndo = canUndo && hasTimeAccess;
                                                                             
                                                                             const offset = (finalReceipts[0]?.totalPaid === 0 && finalReceipts[0]?.totalMaqalka > 0) ? 1 : 0;
                                                                             const isEditable = receiptIdx === offset;
-                                                                            const editsLeft = Math.max(0, 3 - (e.edit_count || 0));
-                                                                            const showEdit = canUndo && isEditable && (isSuperAdmin || editsLeft > 0);
+                                                                            const showEdit = canUndo && isEditable && hasTimeAccess;
 
                                                                             if (showUndo || showEdit) {
                                                                                 return (
                                                                                     <div className="flex gap-3 mt-1 opacity-60 hover:opacity-100 transition-opacity print:hidden">
                                                                                         {showEdit && (
-                                                                                            <button onClick={(ev) => { ev.stopPropagation(); openEditModal(e); }} className="text-[10px] uppercase font-bold flex items-center gap-1 hover:underline text-amber-600 dark:text-amber-500">
-                                                                                                <Pencil className="w-3 h-3"/> Edit
-                                                                                                {!isSuperAdmin && <span className="px-1 rounded-sm bg-amber-500/20 text-[7px] text-amber-700 dark:text-amber-300 tracking-wider font-black">({editsLeft} left)</span>}
+                                                                                            <button
+                                                                                                onClick={(ev) => {
+                                                                                                    ev.stopPropagation();
+                                                                                                    setTransactionToEdit(e);
+                                                                                                }}
+                                                                                                className="text-[10px] uppercase font-black tracking-widest hover:text-amber-500 flex items-center gap-1 transition-colors"
+                                                                                            >
+                                                                                                <Pencil className="w-3 h-3" /> Edit
                                                                                             </button>
                                                                                         )}
                                                                                         {showUndo && (
