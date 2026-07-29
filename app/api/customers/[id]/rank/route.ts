@@ -59,6 +59,11 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     c.id,
                     c.created_at as customer_created_at,
                     CASE 
+                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
+                        ELSE COALESCE(lk.total_ledger_maqal, 0)
+                    END as all_time_maqal_total,
+                    CASE 
                         WHEN (
                             CASE 
                                 WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
@@ -101,13 +106,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     pct,
                     RANK() OVER (
                         ORDER BY 
-                            CASE WHEN (
-                                CASE 
-                                    WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                                    THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                                    ELSE COALESCE(lk.total_ledger_maqal, 0)
-                                END
-                            ) > 0 THEN 0 ELSE 1 END ASC,
+                            CASE WHEN all_time_maqal_total > 0 THEN 0 ELSE 1 END ASC,
                             pct DESC, 
                             CASE WHEN current_debt < 0 THEN 1 ELSE 2 END ASC,
                             CASE WHEN current_debt < 0 THEN current_debt ELSE 0 END ASC,
