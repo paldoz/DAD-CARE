@@ -1,4 +1,5 @@
 import pool from '@/lib/db';
+import { groupTransactionsInfoReceipts, Transaction } from '@/app/utils/ledgerHelpers';
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { logAudit } from '@/lib/audit';
@@ -236,39 +237,25 @@ async function getCustomers(options: {
             WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
             GROUP BY customer_id, group_key
         ),
-        linked_payments AS (
-            SELECT 
-                customer_id,
-                'maqal_' || maqal_id as group_key,
-                SUM(amount) as paid
-            FROM "Ledger"
-            WHERE type = 'PAYMENT' AND maqal_id IS NOT NULL AND deleted_at IS NULL
-            GROUP BY customer_id, maqal_id
-        ),
-        orphan_payments AS (
-            SELECT customer_id, SUM(amount) as total_orphan_paid
-            FROM "Ledger"
-            WHERE type = 'PAYMENT' AND (maqal_id IS NULL) AND deleted_at IS NULL
-            GROUP BY customer_id
-        ),
         ordered_groups AS (
             SELECT 
-                rg.*,
-                COALESCE(lp.paid, 0) as linked_paid,
-                SUM(GREATEST(0, rg.debt_amount - COALESCE(lp.paid, 0))) OVER (PARTITION BY rg.customer_id ORDER BY rg.sort_date ASC) as running_owed
-            FROM receipt_groups rg
-            LEFT JOIN linked_payments lp ON rg.customer_id = lp.customer_id AND rg.group_key = lp.group_key
+                *,
+                SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
+            FROM receipt_groups
+        ),
+        customer_payments AS (
+            SELECT customer_id, SUM(amount) as total_paid
+            FROM "Ledger"
+            WHERE type = 'PAYMENT' AND deleted_at IS NULL
+            GROUP BY customer_id
         ),
         group_status AS (
             SELECT 
                 o.*,
-                COALESCE(op.total_orphan_paid, 0) as total_paid,
-                o.linked_paid + LEAST(
-                    GREATEST(0, o.debt_amount - o.linked_paid), 
-                    GREATEST(0, COALESCE(op.total_orphan_paid, 0) - (o.running_owed - GREATEST(0, o.debt_amount - o.linked_paid)))
-                ) as group_paid
+                COALESCE(p.total_paid, 0) as total_paid,
+                LEAST(GREATEST(0, o.debt_amount), GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - GREATEST(0, o.debt_amount)))) as group_paid
             FROM ordered_groups o
-            LEFT JOIN orphan_payments op ON o.customer_id = op.customer_id
+            LEFT JOIN customer_payments p ON o.customer_id = p.customer_id
         ),
         latest_receipt_amount AS (
             SELECT DISTINCT ON (customer_id)
@@ -428,6 +415,30 @@ async function getCustomers(options: {
     values.push(offset);
 
     const { rows } = await pool.query(query, values);
+    
+    // PERFECT LABEL SYNC LOGIC
+    if (rows.length > 0) {
+        const customerIds = rows.map(c => c.id);
+        const ledgerResult = await pool.query(
+            `SELECT * FROM "Ledger" WHERE customer_id = ANY($1) AND deleted_at IS NULL ORDER BY created_at ASC`,
+            [customerIds]
+        );
+        const ledgerRows = ledgerResult.rows;
+        for (const c of rows) {
+            const custTxns = ledgerRows.filter(r => r.customer_id === c.id) as Transaction[];
+            if (custTxns.length > 0) {
+                const groups = groupTransactionsInfoReceipts(custTxns);
+                if (groups.length > 0) {
+                    c.last_receipt_has_payment = groups[0].totalPaid > 0;
+                } else {
+                    c.last_receipt_has_payment = false;
+                }
+            } else {
+                c.last_receipt_has_payment = false;
+            }
+        }
+    }
+
     return rows;
 }
 
