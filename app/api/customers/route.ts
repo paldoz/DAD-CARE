@@ -29,7 +29,7 @@ async function getCustomers(options: {
 }) {
     const { maqalD1, maqalD2, maxAllTimeDate, page = 1, limit = 20, search, tab = 'active', sort, username } = options;
     const offset = (page - 1) * limit;
-    
+
     // Add filtering based on search and tab
     let filterCondition = "1=1";
     if (search) {
@@ -40,7 +40,7 @@ async function getCustomers(options: {
     } else {
         filterCondition += " AND c.deleted_at IS NULL"; // Ensure active tab hides deleted customers
     }
-    
+
     let searchCondition = "1=1";
     if (search) {
         searchCondition = `(
@@ -57,7 +57,7 @@ async function getCustomers(options: {
     if (tab === 'inactive' && !search) {
         orderClause = "ORDER BY c.deleted_at DESC NULLS LAST"; // Show recently deleted at the top
     }
-    
+
     let priorityJoin = "";
     if (sort === 'priority' && username) {
         // Use the User table's assigned_customer_ids array to determine priority.
@@ -80,7 +80,7 @@ async function getCustomers(options: {
                 ELSE COALESCE(lk.total_ledger_maqal, 0)
             END
         )`;
-        
+
         // This exactly matches /api/customers/[id]/rank/route.ts
         orderClause = `ORDER BY 
             CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
@@ -236,25 +236,39 @@ async function getCustomers(options: {
             WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
             GROUP BY customer_id, group_key
         ),
+        linked_payments AS (
+            SELECT 
+                customer_id,
+                'maqal_' || maqal_id as group_key,
+                SUM(amount) as paid
+            FROM "Ledger"
+            WHERE type = 'PAYMENT' AND maqal_id IS NOT NULL AND deleted_at IS NULL
+            GROUP BY customer_id, maqal_id
+        ),
+        orphan_payments AS (
+            SELECT customer_id, SUM(amount) as total_orphan_paid
+            FROM "Ledger"
+            WHERE type = 'PAYMENT' AND (maqal_id IS NULL) AND deleted_at IS NULL
+            GROUP BY customer_id
+        ),
         ordered_groups AS (
             SELECT 
-                *,
-                SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
-            FROM receipt_groups
-        ),
-        customer_payments AS (
-            SELECT customer_id, SUM(amount) as total_paid
-            FROM "Ledger"
-            WHERE type = 'PAYMENT' AND deleted_at IS NULL
-            GROUP BY customer_id
+                rg.*,
+                COALESCE(lp.paid, 0) as linked_paid,
+                SUM(GREATEST(0, rg.debt_amount - COALESCE(lp.paid, 0))) OVER (PARTITION BY rg.customer_id ORDER BY rg.sort_date ASC) as running_owed
+            FROM receipt_groups rg
+            LEFT JOIN linked_payments lp ON rg.customer_id = lp.customer_id AND rg.group_key = lp.group_key
         ),
         group_status AS (
             SELECT 
                 o.*,
-                COALESCE(p.total_paid, 0) as total_paid,
-                LEAST(GREATEST(0, o.debt_amount), GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - GREATEST(0, o.debt_amount)))) as group_paid
+                COALESCE(op.total_orphan_paid, 0) as total_paid,
+                o.linked_paid + LEAST(
+                    GREATEST(0, o.debt_amount - o.linked_paid), 
+                    GREATEST(0, COALESCE(op.total_orphan_paid, 0) - (o.running_owed - GREATEST(0, o.debt_amount - o.linked_paid)))
+                ) as group_paid
             FROM ordered_groups o
-            LEFT JOIN customer_payments p ON o.customer_id = p.customer_id
+            LEFT JOIN orphan_payments op ON o.customer_id = op.customer_id
         ),
         latest_receipt_amount AS (
             SELECT DISTINCT ON (customer_id)
@@ -524,13 +538,13 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
 
         if (mode === 'ledger') {
             customers = await getCachedCustomersLedger();
-            
+
             // Apply the ADMIN assignment filter in the Ledger page (Select Customer dropdown)
             if (session && session.role === 'ADMIN') {
                 const assignedCustomerIds = session.assigned_customer_ids || [];
                 customers = customers.filter((c: any) => assignedCustomerIds.includes(c.id));
             }
-            
+
             const res = NextResponse.json(customers);
             res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
             return res;
@@ -538,7 +552,7 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
 
         const usernameForSort = sort === 'priority' ? session?.username : null;
         customers = await getCustomers({ maqalD1, maqalD2, maxAllTimeDate, page, limit, search, tab, sort, username: usernameForSort });
-        
+
         const res = NextResponse.json(customers);
         res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return res;
