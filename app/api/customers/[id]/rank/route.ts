@@ -50,8 +50,9 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                 SELECT DISTINCT ON (customer_id)
                     customer_id,
                     product_amount,
-                    debt_amount
-                FROM receipt_groups
+                    debt_amount,
+                    group_paid
+                FROM group_status
                 ORDER BY customer_id, sort_date DESC
             ),
             customer_stats AS (

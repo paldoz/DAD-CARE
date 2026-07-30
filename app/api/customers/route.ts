@@ -260,8 +260,9 @@ async function getCustomers(options: {
             SELECT DISTINCT ON (customer_id)
                 customer_id,
                 product_amount,
-                debt_amount
-            FROM receipt_groups
+                debt_amount,
+                group_paid
+            FROM group_status
             ORDER BY customer_id, sort_date DESC
         ),
         latest_ledger_entries AS (
@@ -280,18 +281,9 @@ async function getCustomers(options: {
                 l.customer_id,
                 l.new_debt,
                 l.type,
-                EXISTS (
-                    SELECT 1 FROM "Ledger" l2 
-                    WHERE l2.customer_id = l.customer_id 
-                      AND (
-                          (l.receipt_id IS NOT NULL AND l2.receipt_id = l.receipt_id)
-                          OR
-                          (l.receipt_id IS NULL AND l2.id = l.id)
-                      )
-                      AND l2.type = 'PAYMENT'
-                      AND l2.deleted_at IS NULL
-                ) as last_receipt_has_payment
+                (COALESCE(lra.group_paid, 0) > 0) as last_receipt_has_payment
             FROM latest_ledger_entries l
+            LEFT JOIN latest_receipt_amount lra ON l.customer_id = lra.customer_id
         ),
         base_customers AS (
             SELECT 
