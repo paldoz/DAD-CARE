@@ -289,6 +289,7 @@ async function getCustomers(options: {
                           (l.receipt_id IS NULL AND l2.id = l.id)
                       )
                       AND l2.type = 'PAYMENT'
+                      AND l2.deleted_at IS NULL
                 ) as last_receipt_has_payment
             FROM latest_ledger_entries l
         ),
