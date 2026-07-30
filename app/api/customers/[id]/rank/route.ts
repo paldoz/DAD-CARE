@@ -29,7 +29,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
             ordered_groups AS (
                 SELECT 
                     *,
-                    SUM(debt_amount) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
+                    SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
                 FROM receipt_groups
             ),
             customer_payments AS (
@@ -42,7 +42,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                 SELECT 
                     o.*,
                     COALESCE(p.total_paid, 0) as total_paid,
-                    LEAST(o.debt_amount, GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - o.debt_amount))) as group_paid
+                    LEAST(GREATEST(0, o.debt_amount), GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - GREATEST(0, o.debt_amount)))) as group_paid
                 FROM ordered_groups o
                 LEFT JOIN customer_payments p ON o.customer_id = p.customer_id
             ),
