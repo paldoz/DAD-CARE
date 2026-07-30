@@ -6,14 +6,14 @@ export interface Transaction {
     reference_date: string;
     kg?: number;
     price_per_kg?: number;
-    amount: number;
-    previous_debt: number;
-    new_debt: number;
-    created_at: string | Date;
+    amount?: number;
+    previous_debt?: number;
+    new_debt?: number;
+    created_at?: string | Date;
     note?: string;
-    receipt_id: string | null;
-    maqal_id: number | null;
-    edit_count: number;
+    receipt_id?: string | null;
+    maqal_id?: number | null;
+    edit_count?: number;
     displayMaqalId?: number;
 }
 
@@ -40,8 +40,8 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
     // 1. Sort EVERYTHING deterministically by time and ID descending (Newest First)
     const sortedTxns = [...txns].sort((a, b) => {
-        const timeA = new Date(a.created_at).getTime();
-        const timeB = new Date(b.created_at).getTime();
+        const timeA = new Date(a.created_at || a.reference_date || 0).getTime();
+        const timeB = new Date(b.created_at || b.reference_date || 0).getTime();
         if (timeA !== timeB) return timeB - timeA;
         return a.id.localeCompare(b.id); // Tie-breaker for batch entries
     });
@@ -89,7 +89,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
                 if (dateStr) currentDates.add(dateStr);
             } else {
                 const prev = withoutGroupKey[i - 1];
-                const diff = Math.abs(new Date(txn.created_at).getTime() - new Date(prev.created_at).getTime());
+                const diff = Math.abs(new Date(txn.created_at || txn.reference_date || 0).getTime() - new Date(prev.created_at || prev.reference_date || 0).getTime());
                 
                 let wouldExceed2Days = false;
                 if (dateStr && !currentDates.has(dateStr) && currentDates.size >= 2) {
@@ -117,7 +117,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         const productDates = Array.from(new Set(group.filter(t => t.type === 'PRODUCT').map(t => t.reference_date ? String(t.reference_date).split('T')[0] : null).filter(Boolean)));
         
         if (productDates.length > 2) {
-            const chronoGroup = [...group].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            const chronoGroup = [...group].sort((a, b) => new Date(a.created_at || a.reference_date || 0).getTime() - new Date(b.created_at || b.reference_date || 0).getTime());
             let currentChunkDates = new Set<string>();
             let currentChunk: Transaction[] = [];
 
@@ -144,8 +144,8 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
     const processedReceipts = finalReceiptGroups.map((group, idx) => {
         // Sort group newest-first for consistent processing
         const sorted = [...group].sort((a, b) => {
-            const ta = new Date(a.created_at).getTime();
-            const tb = new Date(b.created_at).getTime();
+            const ta = new Date(a.created_at || a.reference_date || 0).getTime();
+            const tb = new Date(b.created_at || b.reference_date || 0).getTime();
             if (ta !== tb) return tb - ta;
             return a.id.localeCompare(b.id);
         });
@@ -159,7 +159,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
 
         const productDates = sorted.filter(t => t.type === 'PRODUCT' && t.reference_date).map(t => new Date(t.reference_date));
-        let titleString = format(new Date(last.created_at), 'EEEE, MMMM dd, yyyy');
+        let titleString = format(new Date(last.created_at || last.reference_date || new Date()), 'EEEE, MMMM dd, yyyy');
 
         let sortDate: Date;
         if (productDates.length > 0) {
@@ -170,7 +170,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             else if (uniqueDates.length === 2) titleString = `Maqalka Taariikhda ${uniqueDates[0]} iyo ${uniqueDates[1]}`;
             else titleString = `Maqalka Taariikhda ${uniqueDates[0]} ila ${uniqueDates[uniqueDates.length - 1]}`;
         } else {
-            sortDate = new Date(first.created_at);
+            sortDate = new Date(first.created_at || first.reference_date || 0);
         }
 
         const productReceiptId = sorted.find(t => t.type === 'PRODUCT' && t.receipt_id)?.receipt_id || null;
@@ -186,8 +186,8 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             totalMaqalka,
             totalPaid,
             totalAdjustment,
-            openingBalance: Number(first.previous_debt),
-            closingBalance: Number(last.new_debt),
+            openingBalance: Number(first.previous_debt || 0),
+            closingBalance: Number(last.new_debt || 0),
             note: sorted.find(t => t.note)?.note,
             maqalId: sorted.find(t => t.maqal_id != null)?.maqal_id || null,
             _sortDate: sortDate, // internal: stable anchor for ordering
@@ -226,14 +226,14 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             if (targetIdx !== -1) {
                 const target = merged[targetIdx];
                 const mergedEntries = [...target.entries, ...current.entries].sort(
-                    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                    (a, b) => new Date(a.created_at || a.reference_date || 0).getTime() - new Date(b.created_at || b.reference_date || 0).getTime()
                 );
                 const latestEntry = mergedEntries[mergedEntries.length - 1];
                 merged[targetIdx] = {
                     ...target,
                     entries: mergedEntries,
                     totalPaid: target.totalPaid + current.totalPaid,
-                    closingBalance: Number(latestEntry.new_debt),
+                    closingBalance: Number(latestEntry.new_debt || 0),
                 };
                 continue; // payment absorbed — don't add it separately
             }

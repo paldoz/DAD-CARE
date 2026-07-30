@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { format, parseISO } from 'date-fns';
+import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
 import { smartCustomerSearch } from '@/lib/search-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -276,7 +277,7 @@ export default function LedgerPage() {
     // Form state
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     
-    const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=50` : null;
+    const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=1000` : null;
     const { data: ledgerData, isLoading: fetchingLedger, mutate: mutateLedger } = useSWR(ledgerUrl, fetcher, {
         revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
         dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
@@ -613,205 +614,20 @@ export default function LedgerPage() {
 
     const lastReceiptGroup = useMemo(() => {
         if (!history || history.length === 0) return null;
-
-        const sortedTxns = [...history].sort((a, b) => {
-            const timeA = new Date(a.created_at || 0).getTime();
-            const timeB = new Date(b.created_at || 0).getTime();
-            if (timeA !== timeB) return timeB - timeA;
-            return a.id.localeCompare(b.id);
-        });
-
-        const normalizedTxns = sortedTxns.map(t => {
-            if (t.type === 'PAYMENT') {
-                return { ...t, receipt_id: `PAYMENT-${t.id}` };
-            }
-            return t;
-        });
-        const withReceiptId = normalizedTxns.filter(t => t.receipt_id);
-        const withoutReceiptId = normalizedTxns.filter(t => !t.receipt_id);
-
-        const receiptGroups: any[][] = [];
-        const groupedByReceiptId = withReceiptId.reduce((acc, t) => {
-            const rid = t.receipt_id!;
-            if (!acc[rid]) acc[rid] = [];
-            acc[rid].push(t);
-            return acc;
-        }, {} as Record<string, any[]>);
-
-        Object.values(groupedByReceiptId).forEach(group => receiptGroups.push(group));
-
-        if (withoutReceiptId.length > 0) {
-            let currentGroup: any[] = [];
-            let currentDates = new Set<string>();
-
-            withoutReceiptId.forEach((txn, i) => {
-                const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
-                const dateStr = isProduct ? txn.reference_date.split('T')[0] : null;
-
-                if (i === 0) {
-                    currentGroup.push(txn);
-                    if (dateStr) currentDates.add(dateStr);
-                } else {
-                    const prev = withoutReceiptId[i - 1];
-                    const diff = Math.abs(new Date(txn.created_at || 0).getTime() - new Date(prev.created_at || 0).getTime());
-                    const differentMaqal = txn.maqal_id != null && prev.maqal_id != null && txn.maqal_id !== prev.maqal_id;
-                    
-                    let wouldExceed2Days = false;
-                    if (dateStr && !currentDates.has(dateStr) && currentDates.size >= 2) {
-                        wouldExceed2Days = true;
-                    }
-
-                    if (diff < 15000 && !differentMaqal && !wouldExceed2Days) {
-                        currentGroup.push(txn);
-                        if (dateStr) currentDates.add(dateStr);
-                    } else {
-                        receiptGroups.push(currentGroup);
-                        currentGroup = [txn];
-                        currentDates = new Set<string>();
-                        if (dateStr) currentDates.add(dateStr);
-                    }
-                }
-            });
-            if (currentGroup.length > 0) receiptGroups.push(currentGroup);
-        }
-
-        // 4.5 FORCE SPLIT corrupted groups that exceed 2 unique dates (historical bug fix)
-        const finalReceiptGroups: any[][] = [];
-
-        for (const group of receiptGroups) {
-            const productDates = Array.from(new Set(group.filter((t: any) => t.type === 'PRODUCT').map((t: any) => t.reference_date?.split('T')[0]).filter(Boolean)));
-            
-            if (productDates.length > 2) {
-                const chronoGroup = [...group].sort((a: any, b: any) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
-                let currentChunkDates = new Set<string>();
-                let currentChunk: any[] = [];
-
-                for (const txn of chronoGroup) {
-                    const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
-                    const dStr = isProduct ? txn.reference_date.split('T')[0] : null;
-                    
-                    if (dStr && !currentChunkDates.has(dStr) && currentChunkDates.size >= 2) {
-                        finalReceiptGroups.push(currentChunk);
-                        currentChunk = [];
-                        currentChunkDates = new Set<string>();
-                    }
-
-                    currentChunk.push(txn);
-                    if (dStr) currentChunkDates.add(dStr);
-                }
-                if (currentChunk.length > 0) finalReceiptGroups.push(currentChunk);
-            } else {
-                finalReceiptGroups.push(group);
-            }
-        }
-
-        const processedReceipts = finalReceiptGroups.map((group, idx) => {
-            const last = group[0]; 
-            let titleString = format(new Date(last.created_at || new Date()), 'EEEE, MMMM dd, yyyy');
-            const productDates = group.filter(t => t.type === 'PRODUCT').map(t => new Date(t.reference_date));
-            if (productDates.length > 0) {
-                productDates.sort((a, b) => a.getTime() - b.getTime());
-                const uniqueDates = Array.from(new Set(productDates.map(d => format(d, 'dd MMM'))));
-                if (uniqueDates.length === 1) titleString = `Maqalka Taariikhda ${uniqueDates[0]}`;
-                else if (uniqueDates.length === 2) titleString = `Maqalka Taariikhda ${uniqueDates[0]} iyo ${uniqueDates[1]}`;
-                else titleString = `Maqalka Taariikhda ${uniqueDates[0]} ila ${uniqueDates[uniqueDates.length - 1]}`;
-            }
-
-            const totalKilos = group.reduce((sum, t) => sum + (t.kg || 0), 0);
-            const totalMaqalka = group.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + (t.amount || 0), 0);
-            const totalPaid = group.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + (t.amount || 0), 0);
-            const totalAdjustment = group.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + (t.amount || 0), 0);
-
-            return {
-                id: `group-${idx}-${last.id}`,
-                titleString,
-                entries: [...group].reverse(), 
-                totalKilos,
-                totalMaqalka,
-                totalPaid,
-                totalAdjustment,
-                openingBalance: group[group.length - 1].previous_debt || 0,
-                closingBalance: last.new_debt,
-                receiptId: group.find(t => t.receipt_id && !t.receipt_id.startsWith('PAYMENT-'))?.receipt_id || null,
-                maqalId: group.find(t => t.maqal_id != null)?.maqal_id || null
-            };
-        });
-
-        const merged: any[] = [];
-        const oldestFirst = [...processedReceipts].sort((a, b) =>
-            new Date(a.entries[0].created_at).getTime() - new Date(b.entries[0].created_at).getTime()
-        );
-
-        for (const current of oldestFirst) {
-            const isPaymentOnly = current.totalMaqalka === 0 && current.totalAdjustment === 0 && current.totalPaid > 0;
-
-            if (isPaymentOnly && merged.length > 0) {
-                let targetIdx = -1;
-                for (let k = 0; k < merged.length; k++) {
-                    const m = merged[k];
-                    const owed = m.totalMaqalka + m.totalAdjustment;
-                    if ((m.totalMaqalka > 0 || m.totalAdjustment > 0) && m.totalPaid < owed) {
-                        targetIdx = k;
-                        break;
-                    }
-                }
-                if (targetIdx === -1) {
-                    for (let k = merged.length - 1; k >= 0; k--) {
-                        if (merged[k].totalMaqalka > 0 || merged[k].totalAdjustment > 0) {
-                            targetIdx = k;
-                            break;
-                        }
-                    }
-                }
-
-                if (targetIdx !== -1) {
-                    const target = merged[targetIdx];
-                    const mergedEntries = [...target.entries, ...current.entries].sort(
-                        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-                    );
-                    const latestEntry = mergedEntries[mergedEntries.length - 1];
-                    merged[targetIdx] = {
-                        ...target,
-                        entries: mergedEntries,
-                        totalPaid: target.totalPaid + current.totalPaid,
-                        closingBalance: latestEntry.new_debt,
-                    };
-                    continue;
-                }
-            }
-            merged.push(current);
-        }
-
-        if (merged.length === 0) return null;
         
-        // Find the last product maqal and tag all groups with sequential display IDs
-        let displayCounter = 0;
-        const maqalIdMap = new Map<number, number>();
-        for (const m of merged) {
-            if (m.totalMaqalka > 0 || m.totalAdjustment > 0) {
-                displayCounter++;
-                m.displayMaqalId = displayCounter;
-                if (m.maqalId != null) {
-                    maqalIdMap.set(m.maqalId, m.displayMaqalId);
-                }
-            }
-        }
+        // Use the shared, bug-free utility
+        const merged = groupTransactionsInfoReceipts(history);
+        if (merged.length === 0) return null;
 
-        for (const m of merged) {
-            for (const e of m.entries) {
-                if (e.type === 'PAYMENT' && e.maqal_id != null) {
-                    e.displayMaqalId = maqalIdMap.get(e.maqal_id);
-                }
-            }
-        }
-
-        for (let i = merged.length - 1; i >= 0; i--) {
+        // The shared utility returns newest-first. We need the newest PRODUCT maqal.
+        // It already has displayMaqalId assigned.
+        for (let i = 0; i < merged.length; i++) {
             if (merged[i].totalMaqalka > 0 || merged[i].totalAdjustment > 0) {
                 return merged[i];
             }
         }
         
-        return merged[merged.length - 1];
+        return merged[0];
     }, [history]);
 
     const timelineOptions = useMemo(() => {
