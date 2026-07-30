@@ -427,7 +427,13 @@ async function getCustomers(options: {
         for (const c of rows) {
             const custTxns = ledgerRows.filter(r => r.customer_id === c.id) as Transaction[];
             if (custTxns.length > 0) {
-                const groups = groupTransactionsInfoReceipts(custTxns);
+                let groups = groupTransactionsInfoReceipts(custTxns);
+                if (maqalD1 || maqalD2) {
+                    groups = groups.filter(g => {
+                        const mDate = String(g.mainDate);
+                        return (maqalD1 && mDate.includes(maqalD1)) || (maqalD2 && mDate.includes(maqalD2));
+                    });
+                }
                 if (groups.length > 0) {
                     c.last_receipt_has_payment = groups[0].totalPaid > 0;
                 } else {
