@@ -152,10 +152,10 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         const last = sorted[0];
         const first = sorted[sorted.length - 1];
 
-        const totalKilos = sorted.reduce((sum, t) => sum + (t.kg || 0), 0);
-        const totalMaqalka = sorted.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + (t.amount || 0), 0);
-        const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + (t.amount || 0), 0);
-        const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + (t.amount || 0), 0);
+        const totalKilos = sorted.reduce((sum, t) => sum + Number(t.kg || 0), 0);
+        const totalMaqalka = sorted.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
         const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
 
         const productDates = sorted.filter(t => t.type === 'PRODUCT' && t.reference_date).map(t => new Date(t.reference_date));
@@ -186,8 +186,8 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             totalMaqalka,
             totalPaid,
             totalAdjustment,
-            openingBalance: first.previous_debt,
-            closingBalance: last.new_debt,
+            openingBalance: Number(first.previous_debt),
+            closingBalance: Number(last.new_debt),
             note: sorted.find(t => t.note)?.note,
             maqalId: sorted.find(t => t.maqal_id != null)?.maqal_id || null,
             _sortDate: sortDate, // internal: stable anchor for ordering
@@ -233,7 +233,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
                     ...target,
                     entries: mergedEntries,
                     totalPaid: target.totalPaid + current.totalPaid,
-                    closingBalance: latestEntry.new_debt,
+                    closingBalance: Number(latestEntry.new_debt),
                 };
                 continue; // payment absorbed — don't add it separately
             }
