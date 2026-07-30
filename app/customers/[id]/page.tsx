@@ -1288,12 +1288,11 @@ export default function CustomerDetailPage() {
                                 
                                 let label = '';
                                 let colorClass = '';
-                                
-                                if (pct >= 96) { label = '🥇 Kaamil'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
-                                else if (pct >= 90) { label = '🏆 Heer Sare'; colorClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'; }
-                                else if (pct >= 80) { label = '⭐ Wanaagsan'; colorClass = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'; }
-                                else if (pct >= 70) { label = '⚖️ Dhexdhexaad'; colorClass = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'; }
-                                else if (pct >= 60) { label = '⚠️ Horumar u Baahan'; colorClass = 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30'; }
+                                if (pct >= 100) { label = '🥇 Kaamil'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
+                                else if (pct >= 98) { label = '🏆 Heer Sare'; colorClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'; }
+                                else if (pct >= 95) { label = '⭐ Wanaagsan'; colorClass = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'; }
+                                else if (pct >= 90) { label = '⚖️ Dhexdhexaad'; colorClass = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'; }
+                                else if (pct >= 80) { label = '⚠️ Horumar u Baahan'; colorClass = 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30'; }
                                 else { label = '🚫 Heer Hoose'; colorClass = 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'; }
 
                                 return (

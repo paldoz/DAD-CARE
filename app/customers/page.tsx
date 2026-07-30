@@ -752,9 +752,9 @@ export default function CustomersPage() {
                                                             setShowAllTimePct(prev => ({...prev, [customer.id]: !prev[customer.id]}));
                                                         }}
                                                         className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded transition-all cursor-pointer hover:opacity-80 active:scale-95 border ${
-                                                            pct >= 80 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
-                                                            : pct >= 50 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' 
-                                                            : pct >= 25 ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
+                                                            pct >= 98 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                                                            : pct >= 90 ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' 
+                                                            : pct >= 80 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
                                                             : 'bg-red-500/15 text-red-400 border-red-500/30'
                                                         }`}
                                                         title={showAllTime ? `All-Time: ${pct}% — Click for maqal view` : `Maqal: ${pct}% — Click for all-time`}
