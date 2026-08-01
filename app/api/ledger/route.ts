@@ -7,6 +7,8 @@ import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 // ── Zod Schemas ────────────────────────────────────────────────────────────
 const LedgerItemSchema = z.object({
     type: z.enum(['PRODUCT', 'PAYMENT', 'ADJUSTMENT']),
@@ -311,7 +313,7 @@ const getCachedLedger = (customerId: string, limit: number, offset: number) =>
     unstable_cache(
         async () => fetchLedgerData(customerId, limit, offset),
         ['ledger', customerId, String(limit), String(offset)],
-        { revalidate: 1800, tags: ['ledger', `ledger-${customerId}`, 'customers'] } // 30-min cache, busted on writes
+        { revalidate: 0, tags: ['ledger', `ledger-${customerId}`, 'customers'] } // Force 0 to bust stale cache
     )();
 
 export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
