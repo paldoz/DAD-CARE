@@ -98,8 +98,9 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                 LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
                 LEFT JOIN reliability_scores rs ON c.id = rs.customer_id
                 LEFT JOIN (
-                    SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount AND maqal_rank > 1) as perfect_maqals
-                    FROM group_status
+                    SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
+                    FROM ordered_groups
+                    WHERE maqal_rank > 1
                     GROUP BY customer_id
                 ) gs ON c.id = gs.customer_id
                 WHERE c.deleted_at IS NULL

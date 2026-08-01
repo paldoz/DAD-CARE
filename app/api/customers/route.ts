@@ -411,7 +411,7 @@ async function getCustomers(options: {
         LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
         LEFT JOIN (
             SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
-            FROM group_status
+            FROM ordered_groups
             WHERE maqal_rank > 1
             GROUP BY customer_id
         ) gs ON c.id = gs.customer_id
