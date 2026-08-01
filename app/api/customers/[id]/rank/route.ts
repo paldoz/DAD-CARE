@@ -13,7 +13,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
 
     try {
         const query = `
-            ${SHARED_RELIABILITY_CTE},
+            WITH ${SHARED_RELIABILITY_CTE},
             customer_stats AS (
                 SELECT 
                     c.id,

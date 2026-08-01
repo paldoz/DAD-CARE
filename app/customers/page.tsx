@@ -732,14 +732,14 @@ export default function CustomersPage() {
                                                 const isSpecificPair = selectedMaqalPair !== 'latest' && selectedMaqalPair !== 'all_time';
                                                 const maqalPct = isSpecificPair ? ((customer as any).selected_maqal_pct ?? 0) : ((customer as any).reliability_score ?? 0);
                                                 
-                                                const { label, colorClass } = getReliabilityTier(maqalPct);
+                                                const { colorClass } = getReliabilityTier(maqalPct);
 
                                                 return (
                                                     <div
-                                                        className={`flex items-center gap-1.5 text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full border ${colorClass}`}
+                                                        className={`flex items-center gap-1.5 text-[10px] font-black px-2 py-0.5 rounded-full border ${colorClass}`}
                                                         title={`${isSpecificPair ? 'Maqal' : 'Reliability Score'}: ${maqalPct}%`}
                                                     >
-                                                        <span>{isSpecificPair ? `${maqalPct}% | ${label}` : label}</span>
+                                                        <span>{isSpecificPair ? `${maqalPct}% (Maqal)` : `⚡ ${maqalPct}%`}</span>
                                                     </div>
                                                 );
                                             })()}
