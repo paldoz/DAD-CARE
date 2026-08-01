@@ -6,7 +6,7 @@ export const SHARED_RELIABILITY_CTE = `
                 'maqal_' || maqal_id, 
                 'pair_' || FLOOR((COALESCE(reference_date::date, created_at::date) - '2026-06-28'::date) / 2)::text
             ) as group_key,
-            MAX(created_at) as sort_date,
+            MIN(created_at) as sort_date,
             SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as product_amount,
             SUM(CASE WHEN type IN ('PRODUCT', 'ADJUSTMENT') THEN amount ELSE 0 END) as debt_amount,
             SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END) as group_paid
