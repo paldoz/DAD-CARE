@@ -1272,8 +1272,8 @@ export default function CustomerDetailPage() {
                                 {getBalanceLabel(filteredReceipts[0]?.totalPaid ?? 0, summary.currentBalance)}
                             </span>
                             {/* Single Source of Truth Percentage */}
-                            {rankData && typeof rankData.pct === 'number' && (() => {
-                                const pct = rankData.pct;
+                            {rankData && rankData.pct != null && (() => {
+                                const pct = Number(rankData.pct);
                                 let label = '';
                                 let colorClass = '';
                                 if (pct >= 100) { label = '🥇 Kaamil'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }

@@ -736,7 +736,6 @@ export default function CustomersPage() {
                                                 
                                                 const icon = isSpecificPair ? <CalendarDays className="w-2.5 h-2.5" /> : <Zap className="w-2.5 h-2.5" />;
 
-                                                if (filterType === 'default') return null;
                                                 if (maqalTotal <= 0) return null;
 
                                                 return (
