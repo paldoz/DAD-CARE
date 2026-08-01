@@ -347,8 +347,8 @@ async function getCustomers(options: {
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
         LEFT JOIN selected_prev_debt spd ON c.id = spd.customer_id
 
-        LEFT JOIN gs_scores gs ON c.id = gs.customer_id
-        LEFT JOIN reliability_scores rs ON c.id = rs.customer_id
+        LEFT JOIN gs_scores gs ON c.id::text = gs.customer_id::text
+        LEFT JOIN reliability_scores rs ON c.id::text = rs.customer_id::text
         ${priorityJoin}
         ${orderClause}
         LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};
@@ -521,7 +521,8 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return res;
     } catch (error: any) {
-        console.error('Fetch Error:', error);
+        require('fs').writeFileSync('C:/Users/abdiq/OneDrive/Desktop/dadcare app/API_ERROR.txt', error.stack || error.message);
+        console.error('API Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 });
