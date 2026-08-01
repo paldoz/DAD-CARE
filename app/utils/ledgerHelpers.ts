@@ -154,7 +154,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
         const totalKilos = sorted.reduce((sum, t) => sum + Number(t.kg || 0), 0);
         const totalMaqalka = sorted.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
-        const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
         const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
         const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
 

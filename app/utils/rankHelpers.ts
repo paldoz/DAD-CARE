@@ -28,7 +28,7 @@ export async function getAllCustomerStats(pool: any) {
         let total_ledger_debt = 0;
         
         txns.forEach(t => {
-            if (t.type === 'PAYMENT') total_paid += Number(t.amount || 0);
+            if (t.type === 'PAYMENT') total_paid += Math.abs(Number(t.amount || 0));
             if (t.type === 'PRODUCT' || t.type === 'ADJUSTMENT') total_ledger_debt += Number(t.amount || 0);
             if (t.type === 'PRODUCT') total_ledger_maqal += Number(t.amount || 0);
         });
