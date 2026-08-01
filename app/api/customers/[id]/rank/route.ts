@@ -29,7 +29,8 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
             ordered_groups AS (
                 SELECT 
                     *,
-                    SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
+                    SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed,
+                    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as maqal_rank
                 FROM receipt_groups
             ),
             customer_payments AS (
@@ -55,34 +56,47 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                 FROM group_status
                 ORDER BY customer_id, sort_date DESC
             ),
+            completed_maqals AS (
+                SELECT 
+                    customer_id,
+                    debt_amount,
+                    group_paid,
+                    CASE WHEN debt_amount = 0 THEN 0 ELSE LEAST(100, ROUND((group_paid::numeric / debt_amount::numeric) * 100))::int END as maqal_pct,
+                    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as completed_rank
+                FROM group_status
+                WHERE maqal_rank > 1
+            ),
+            reliability_scores AS (
+                SELECT 
+                    customer_id,
+                    SUM(
+                        CASE 
+                            WHEN completed_rank = 1 THEN maqal_pct * 50
+                            WHEN completed_rank = 2 THEN maqal_pct * 30
+                            WHEN completed_rank = 3 THEN maqal_pct * 20
+                            ELSE 0
+                        END
+                    ) / NULLIF(SUM(
+                        CASE 
+                            WHEN completed_rank = 1 THEN 50
+                            WHEN completed_rank = 2 THEN 30
+                            WHEN completed_rank = 3 THEN 20
+                            ELSE 0
+                        END
+                    ), 0) as reliability_score,
+                    MAX(CASE WHEN completed_rank = 1 THEN GREATEST(0, debt_amount - group_paid) ELSE 0 END) as last_completed_reesto
+                FROM completed_maqals
+                WHERE completed_rank <= 3
+                GROUP BY customer_id
+            ),
             customer_stats AS (
                 SELECT 
                     c.id,
                     c.created_at as customer_created_at,
-                    CASE 
-                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                        ELSE COALESCE(lk.total_ledger_maqal, 0)
-                    END as all_time_maqal_total,
-                    CASE 
-                        WHEN (
-                            CASE 
-                                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                                ELSE COALESCE(lk.total_ledger_maqal, 0)
-                            END
-                        ) = 0 THEN 0
-                        ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0)::numeric / (
-                            CASE 
-                                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                                ELSE COALESCE(lk.total_ledger_maqal, 0)
-                            END
-                        )::numeric) * 100))::int
-                    END as pct,
+                    COALESCE(rs.reliability_score, 0)::int as pct,
                     COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0) as current_debt,
                     COALESCE(p.total_paid, 0) as total_paid,
-                    GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) as last_completed_reesto,
+                    COALESCE(rs.last_completed_reesto, 0) as last_completed_reesto,
                     COALESCE(gs.perfect_maqals, 0) as perfect_maqals
                 FROM "Customer" c
                 LEFT JOIN customer_payments p ON c.id = p.customer_id
@@ -95,8 +109,9 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     GROUP BY customer_id
                 ) lk ON c.id = lk.customer_id
                 LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
+                LEFT JOIN reliability_scores rs ON c.id = rs.customer_id
                 LEFT JOIN (
-                    SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
+                    SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount AND maqal_rank > 1) as perfect_maqals
                     FROM group_status
                     GROUP BY customer_id
                 ) gs ON c.id = gs.customer_id
@@ -108,7 +123,6 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
                     pct,
                     RANK() OVER (
                         ORDER BY 
-                            CASE WHEN all_time_maqal_total > 0 THEN 0 ELSE 1 END ASC,
                             pct DESC, 
                             CASE WHEN current_debt < 0 THEN 1 ELSE 2 END ASC,
                             CASE WHEN current_debt < 0 THEN current_debt ELSE 0 END ASC,

@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useEffect, useState, useMemo } from 'react';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
 import { toast } from 'sonner';
-import { Phone, Search, ChevronRight, Users, Star, Filter, Check, Loader2, Clock, Globe, CalendarDays, CheckCircle2, RotateCcw, Trash2, RefreshCw } from 'lucide-react';
+import { Phone, Search, ChevronRight, Users, Star, Filter, Check, Loader2, Clock, Globe, CalendarDays, CheckCircle2, RotateCcw, Trash2, RefreshCw, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -726,42 +726,32 @@ export default function CustomersPage() {
                                                     {customer.phone}
                                                 </span>
                                             )}
-                                            {/* Dynamic Maqal % — SINGLE badge, toggles between maqal/all-time */}
+                                            {/* Dynamic Maqal % \u2014 SINGLE badge, purely from backend reliability_score */}
                                             {(() => {
-                                                const allTimePct = (customer as any).all_time_maqal_pct ?? 0;
-                                                const allTimeTotal = (customer as any).all_time_maqal_total ?? 0;
-                                                const maqalPct = (customer as any).selected_maqal_pct ?? (customer as any).latest_maqal_pct ?? 0;
-                                                const maqalTotal = (customer as any).selected_maqal_total ?? (customer as any).latest_maqal_total ?? 0;
-
-                                                // Show all-time if user selected 'all_time' or explicitly toggled this customer
-                                                const showAllTime = selectedMaqalPair === 'all_time' || showAllTimePct[customer.id];
+                                                // If a specific pair is selected, we show that. Otherwise we default to Reliability Score.
+                                                const isSpecificPair = selectedMaqalPair !== 'latest' && selectedMaqalPair !== 'all_time';
+                                                const maqalPct = isSpecificPair ? ((customer as any).selected_maqal_pct ?? 0) : ((customer as any).reliability_score ?? 0);
                                                 
-                                                const pct = showAllTime ? allTimePct : maqalPct;
-                                                const total = showAllTime ? allTimeTotal : maqalTotal;
-                                                const icon = showAllTime ? <Globe className="w-2.5 h-2.5" /> : <CalendarDays className="w-2.5 h-2.5" />;
-                                                const label = showAllTime ? 'All Time' : '';
+                                                const maqalTotal = isSpecificPair ? ((customer as any).selected_maqal_total ?? 0) : 1;
+                                                
+                                                const icon = isSpecificPair ? <CalendarDays className="w-2.5 h-2.5" /> : <Zap className="w-2.5 h-2.5" />;
 
                                                 if (filterType === 'default') return null;
-                                                if (showAllTime && allTimeTotal <= 0) return null;
-                                                if (!showAllTime && maqalTotal <= 0) return null;
+                                                if (maqalTotal <= 0) return null;
 
                                                 return (
-                                                    <button 
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            setShowAllTimePct(prev => ({...prev, [customer.id]: !prev[customer.id]}));
-                                                        }}
-                                                        className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded transition-all cursor-pointer hover:opacity-80 active:scale-95 border ${
-                                                            pct >= 98 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
-                                                            : pct >= 90 ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' 
-                                                            : pct >= 80 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                                    <div
+                                                        className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                                            maqalPct >= 98 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                                                            : maqalPct >= 90 ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' 
+                                                            : maqalPct >= 80 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
                                                             : 'bg-red-500/15 text-red-400 border-red-500/30'
                                                         }`}
-                                                        title={showAllTime ? `All-Time: ${pct}% — Click for maqal view` : `Maqal: ${pct}% — Click for all-time`}
+                                                        title={`${isSpecificPair ? 'Maqal' : 'Reliability Score'}: ${maqalPct}%`}
                                                     >
                                                         {icon}
-                                                        <span>{pct}%</span>
-                                                    </button>
+                                                        <span>{maqalPct}%</span>
+                                                    </div>
                                                 );
                                             })()}
                                             {/* Unsolved pair reminder — pulsing amber — hide when specific maqal selected */}

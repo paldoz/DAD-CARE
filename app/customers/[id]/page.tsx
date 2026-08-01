@@ -1271,21 +1271,9 @@ export default function CustomerDetailPage() {
                                 {/* Driven by getBalanceLabel — single source of truth */}
                                 {getBalanceLabel(filteredReceipts[0]?.totalPaid ?? 0, summary.currentBalance)}
                             </span>
-                            {/* All-Time % — Skips latest 0% paid maqal */}
-                            {(() => {
-                                let allTimeMaqalka = 0;
-                                let allTimePaid = 0;
-                                
-                                filteredReceipts.forEach((r, idx) => {
-                                    // Skip the most recent maqal IF it has exactly 0 payments (so a fresh maqal doesn't ruin the all-time score)
-                                    if (idx === 0 && r.totalPaid === 0) return;
-                                    allTimeMaqalka += r.totalMaqalka;
-                                    allTimePaid += r.totalPaid;
-                                });
-
-                                if (allTimeMaqalka === 0) return null;
-                                const pct = Math.min(100, Math.round((allTimePaid / allTimeMaqalka) * 100));
-                                
+                            {/* Single Source of Truth Percentage */}
+                            {rankData && typeof rankData.pct === 'number' && (() => {
+                                const pct = rankData.pct;
                                 let label = '';
                                 let colorClass = '';
                                 if (pct >= 100) { label = '🥇 Kaamil'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
@@ -1297,10 +1285,10 @@ export default function CustomerDetailPage() {
 
                                 return (
                                     <div className="mt-1 flex flex-col items-end gap-1">
-                                        <span className={`text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 ${colorClass}`}>
-                                            ⚡ {pct}% All-Time <span className="opacity-40">|</span> {label}
+                                        <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 ${colorClass}`}>
+                                            ⚡ {pct}% Reliable <span className="opacity-40">|</span> {label}
                                         </span>
-                                        {rankData && rankData.rank_maqal && (() => {
+                                        {rankData.rank_maqal && (() => {
                                             let rankStyle = 'bg-muted/50 text-muted-foreground border border-border/50';
                                             let RankIcon = null;
                                             
@@ -1562,7 +1550,7 @@ export default function CustomerDetailPage() {
                                         {/* PRINT PROOF HEADER (Visible only during print) */}
                                         <div className="hidden print:block p-6 text-center border-b-2 border-primary mb-4">
                                             <h1 className="text-2xl font-black uppercase tracking-widest">Dadcare Ledger Proof</h1>
-                                            <p className="text-sm font-bold text-muted-foreground mt-1">{customer.name} · ID: {customer.customer_code}</p>
+                                            <p className="text-sm font-bold text-muted-foreground mt-1">{customer!.name} · ID: {customer!.customer_code}</p>
                                             <p className="text-[10px] uppercase mt-2">{receipt.titleString}</p>
                                         </div>
 
@@ -1573,8 +1561,8 @@ export default function CustomerDetailPage() {
                                                 className="h-7 text-[10px] font-black uppercase tracking-widest gap-1.5 rounded-full border-emerald-500/20 bg-background hover:bg-emerald-500 hover:text-white transition-all shadow-sm"
                                                 onClick={() => {
                                                     downloadReceiptPDF({
-                                                        customerName: customer.name,
-                                                        customerCode: customer.customer_code,
+                                                        customerName: customer!.name,
+                                                        customerCode: customer!.customer_code,
                                                         titleString: receipt.titleString || '',
                                                         entries: receipt.entries,
                                                         totalMaqalka: receipt.totalMaqalka,
@@ -1595,8 +1583,8 @@ export default function CustomerDetailPage() {
                                                 className="h-7 text-[10px] font-black uppercase tracking-widest gap-1.5 rounded-full border-green-500/20 bg-background hover:bg-green-500 hover:text-white transition-all shadow-sm"
                                                 onClick={() => {
                                                     shareReceiptToWhatsApp({
-                                                        customerName: customer.name,
-                                                        customerCode: customer.customer_code,
+                                                        customerName: customer!.name,
+                                                        customerCode: customer!.customer_code,
                                                         titleString: receipt.titleString || '',
                                                         entries: receipt.entries,
                                                         totalMaqalka: receipt.totalMaqalka,
@@ -1604,7 +1592,7 @@ export default function CustomerDetailPage() {
                                                         totalAdjustment: receipt.totalAdjustment,
                                                         openingBalance: receipt.openingBalance,
                                                         closingBalance: receipt.closingBalance,
-                                                    }, customer.phone);
+                                                    }, customer!.phone);
                                                 }}
                                             >
                                                 <MessageCircle className="w-3 h-3" />

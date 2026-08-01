@@ -73,36 +73,24 @@ async function getCustomers(options: {
     else if (sort === 'best_lacag' || sort === 'best') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ASC, COALESCE(p.total_paid, 0) DESC NULLS LAST";
     else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) DESC NULLS LAST";
     else if (sort === 'best_maqal') {
-        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `(
-            CASE 
-                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                ELSE COALESCE(lk.total_ledger_maqal, 0)
-            END
-        )`;
+        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'reliability_score';
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `COALESCE(lk.total_ledger_debt, 0)`;
 
-        // This exactly matches /api/customers/[id]/rank/route.ts
+        // This exactly matches the new business logic ranking hierarchy
         orderClause = `ORDER BY 
             CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
             ${pctCol} DESC, 
             CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 1 ELSE 2 END ASC, 
             CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END ASC, 
-            GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) ASC, 
+            COALESCE(rs.last_completed_reesto, 0) ASC, 
             COALESCE(gs.perfect_maqals, 0) DESC, 
             c.created_at ASC, 
             c.id ASC`;
     }
     else if (sort === 'worst_maqal') {
-        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'all_time_maqal_pct';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `(
-            CASE 
-                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                ELSE COALESCE(lk.total_ledger_maqal, 0)
-            END
-        )`;
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END DESC, GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
+        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'reliability_score';
+        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `COALESCE(lk.total_ledger_debt, 0)`;
+        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END DESC, COALESCE(rs.last_completed_reesto, 0) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
@@ -240,7 +228,8 @@ async function getCustomers(options: {
         ordered_groups AS (
             SELECT 
                 *,
-                SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed
+                SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed,
+                ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as maqal_rank
             FROM receipt_groups
         ),
         customer_payments AS (
@@ -265,6 +254,39 @@ async function getCustomers(options: {
                 group_paid
             FROM group_status
             ORDER BY customer_id, sort_date DESC
+        ),
+        completed_maqals AS (
+            SELECT 
+                customer_id,
+                debt_amount,
+                group_paid,
+                CASE WHEN debt_amount = 0 THEN 0 ELSE LEAST(100, ROUND((group_paid::numeric / debt_amount::numeric) * 100))::int END as maqal_pct,
+                ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as completed_rank
+            FROM group_status
+            WHERE maqal_rank > 1
+        ),
+        reliability_scores AS (
+            SELECT 
+                customer_id,
+                SUM(
+                    CASE 
+                        WHEN completed_rank = 1 THEN maqal_pct * 50
+                        WHEN completed_rank = 2 THEN maqal_pct * 30
+                        WHEN completed_rank = 3 THEN maqal_pct * 20
+                        ELSE 0
+                    END
+                ) / NULLIF(SUM(
+                    CASE 
+                        WHEN completed_rank = 1 THEN 50
+                        WHEN completed_rank = 2 THEN 30
+                        WHEN completed_rank = 3 THEN 20
+                        ELSE 0
+                    END
+                ), 0) as reliability_score,
+                MAX(CASE WHEN completed_rank = 1 THEN GREATEST(0, debt_amount - group_paid) ELSE 0 END) as last_completed_reesto
+            FROM completed_maqals
+            WHERE completed_rank <= 3
+            GROUP BY customer_id
         ),
         latest_ledger_entries AS (
             SELECT DISTINCT ON (customer_id)
@@ -310,8 +332,11 @@ async function getCustomers(options: {
             tp.date2::text as pair_date2,
             CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
             
-            -- Priority 3: Last Completed Reesto
-            GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) - COALESCE(p.total_paid, 0)) as last_completed_reesto,
+            -- Priority 3: Last Completed Reesto (from new reliability logic)
+            COALESCE(rs.last_completed_reesto, 0) as last_completed_reesto,
+            
+            -- Reliability Score
+            COALESCE(rs.reliability_score, 0)::int as reliability_score,
             
             -- Priority 4: Perfect Maqals
             COALESCE(gs.perfect_maqals, 0) as perfect_maqals,
@@ -323,25 +348,25 @@ async function getCustomers(options: {
                 ELSE LEAST(100, ROUND((GREATEST(0, COALESCE(p.total_paid, 0) - COALESCE(lpd.prev_debt, 0)) / lms.maqal_total) * 100))::int
             END as latest_maqal_pct,
             
-            -- All Time Maqal
+            -- All Time Maqal (Fixed Accounting)
             CASE 
                 WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                ELSE COALESCE(lk.total_ledger_maqal, 0)
+                THEN GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)))
+                ELSE COALESCE(lk.total_ledger_debt, 0)
             END::float as all_time_maqal_total,
             CASE 
                 WHEN (
                     CASE 
                         WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                        ELSE COALESCE(lk.total_ledger_maqal, 0)
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)))
+                        ELSE COALESCE(lk.total_ledger_debt, 0)
                     END
                 ) = 0 THEN 0
                 ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0)::numeric / (
                     CASE 
                         WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_maqal, 0) - COALESCE(lra.product_amount, 0)))
-                        ELSE COALESCE(lk.total_ledger_maqal, 0)
+                        THEN GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)))
+                        ELSE COALESCE(lk.total_ledger_debt, 0)
                     END
                 )::numeric) * 100))::int
             END as all_time_maqal_pct,
@@ -400,8 +425,10 @@ async function getCustomers(options: {
         LEFT JOIN (
             SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
             FROM group_status
+            WHERE maqal_rank > 1
             GROUP BY customer_id
         ) gs ON c.id = gs.customer_id
+        LEFT JOIN reliability_scores rs ON c.id = rs.customer_id
         ${priorityJoin}
         ${orderClause}
         LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};
