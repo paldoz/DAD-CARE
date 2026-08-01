@@ -8,7 +8,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import bcrypt from 'bcryptjs';
 import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { SHARED_RELIABILITY_CTE } from '@/lib/sql-snippets';
+
 import { getAllCustomerStats } from '@/app/utils/rankHelpers';
 import { z } from 'zod';
 
@@ -234,7 +234,6 @@ async function getCustomers(options: {
             ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
             GROUP BY customer_id
         ),
-        ${SHARED_RELIABILITY_CTE},
 
         latest_ledger_entries AS (
             SELECT DISTINCT ON (customer_id)
