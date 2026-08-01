@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { format, parseISO } from 'date-fns';
-import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
+import { groupTransactionsInfoReceipts, type Transaction } from '@/app/utils/ledgerHelpers';
 import { smartCustomerSearch } from '@/lib/search-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,21 +79,7 @@ interface PaymentEntry {
     note?: string;
 }
 
-interface Transaction {
-    id: string;
-    type: 'PRODUCT' | 'PAYMENT' | 'ADJUSTMENT';
-    reference_date: string;
-    kg?: number;
-    price_per_kg?: number;
-    amount: number;
-    previous_debt?: number;
-    new_debt: number;
-    created_at?: string;
-    receipt_id?: string;
-    maqal_id?: number | null;
-    note?: string;
-    displayMaqalId?: number;
-}
+
 
 interface CustomerSummary {
     totalKg: number;

@@ -16,7 +16,14 @@ import { useParams, useRouter } from 'next/navigation';
 import { cn, getReliabilityTier } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import useSWR, { mutate } from 'swr';
-import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
+import { groupTransactionsInfoReceipts, type Transaction, type ReceiptGroup } from '@/app/utils/ledgerHelpers';
+
+interface Summary {
+    totalKg: number;
+    totalPaid: number;
+    currentBalance: number;
+    lastTransactionType?: string | null;
+}
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -85,47 +92,6 @@ interface Customer {
     is_inactive?: boolean;
 }
 
-interface Transaction {
-    id: string;
-    type: 'PRODUCT' | 'PAYMENT' | 'ADJUSTMENT';
-    reference_date: string;
-    kg?: number;
-    price_per_kg?: number;
-    amount: number;
-    previous_debt: number;
-    new_debt: number;
-    created_at: string;
-    note?: string;
-    receipt_id: string | null;
-    maqal_id: number | null;
-    edit_count: number;
-    displayMaqalId?: number;
-}
-
-interface Summary {
-    totalKg: number;
-    totalPaid: number;
-    currentBalance: number;
-    lastTransactionType?: string | null;
-}
-
-interface ReceiptGroup {
-    id: string;
-    mainDate: string;
-    kind: 'TRANSACTION' | 'ADJUSTMENT';
-    entries: Transaction[];
-    totalKilos: number;
-    totalMaqalka: number;
-    totalAdjustment: number;
-    totalPaid: number;
-    openingBalance: number;
-    closingBalance: number;
-    note?: string;
-    titleString?: string;
-    receiptId?: string | null;
-    maqalId?: number | null;
-    displayMaqalId?: number | null;
-}
 
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
