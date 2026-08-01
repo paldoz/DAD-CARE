@@ -310,11 +310,7 @@ const fetchLedgerData = async (customerId: string, limit: number, offset: number
 };
 
 const getCachedLedger = (customerId: string, limit: number, offset: number) =>
-    unstable_cache(
-        async () => fetchLedgerData(customerId, limit, offset),
-        ['ledger', customerId, String(limit), String(offset)],
-        { revalidate: 0, tags: ['ledger', `ledger-${customerId}`, 'customers'] } // Force 0 to bust stale cache
-    )();
+    fetchLedgerData(customerId, limit, offset);
 
 export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
