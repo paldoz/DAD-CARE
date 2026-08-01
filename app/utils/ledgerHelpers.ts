@@ -194,13 +194,52 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         } as ReceiptGroup & { _sortDate: Date; receiptId: string | null };
     });
 
-    // 6. MERGE STEP REMOVED - Enforcing the 'No FIFO' rule.
-    // Payments stay exactly where they were recorded.
+    // 6. MERGE STEP: fold payment-only receipts into the correct product receipt.
     const oldestFirst = [...processedReceipts].sort((a, b) =>
         (a as any)._sortDate.getTime() - (b as any)._sortDate.getTime()
     );
 
-    const merged: (ReceiptGroup & { _sortDate: Date })[] = oldestFirst as (ReceiptGroup & { _sortDate: Date })[];
+    const merged: (ReceiptGroup & { _sortDate: Date })[] = [];
+    for (const current of oldestFirst as (ReceiptGroup & { _sortDate: Date })[]) {
+        const isPaymentOnly = current.totalMaqalka === 0 && current.totalAdjustment === 0 && current.totalPaid > 0 && current.maqalId == null;
+
+        if (isPaymentOnly && merged.length > 0) {
+            let targetIdx = -1;
+            for (let k = 0; k < merged.length; k++) {
+                const m = merged[k];
+                const owed = m.totalMaqalka + m.totalAdjustment;
+                if ((m.totalMaqalka > 0 || m.totalAdjustment > 0) && m.totalPaid < owed) {
+                    targetIdx = k;
+                    break;
+                }
+            }
+
+            if (targetIdx === -1) {
+                for (let k = merged.length - 1; k >= 0; k--) {
+                    if (merged[k].totalMaqalka > 0 || merged[k].totalAdjustment > 0) {
+                        targetIdx = k;
+                        break;
+                    }
+                }
+            }
+
+            if (targetIdx !== -1) {
+                const target = merged[targetIdx];
+                const mergedEntries = [...target.entries, ...current.entries].sort(
+                    (a, b) => new Date(a.created_at || a.reference_date || 0).getTime() - new Date(b.created_at || b.reference_date || 0).getTime()
+                );
+                const latestEntry = mergedEntries[mergedEntries.length - 1];
+                merged[targetIdx] = {
+                    ...target,
+                    entries: mergedEntries,
+                    totalPaid: target.totalPaid + current.totalPaid,
+                    closingBalance: Number(latestEntry.new_debt || 0),
+                };
+                continue; // payment absorbed — don't add it separately
+            }
+        }
+        merged.push(current as ReceiptGroup & { _sortDate: Date });
+    }
 
     // 6.5 Dynamically recalculate running balances chronologically.
     if (merged.length > 0) {
@@ -240,4 +279,67 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
     // 8. Return sorted newest-first for the UI
     return merged.sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
+};
+
+export const calculateCustomerReliability = (transactions: any[]): { score: number, debugMaqals: any[], perfect_maqals: number, last_completed_reesto: number } => {
+    const groups = groupTransactionsInfoReceipts(transactions);
+    
+    const validMaqals = groups.filter(g => g.totalMaqalka > 0 || g.totalAdjustment > 0);
+    
+    if (validMaqals.length <= 1) {
+        return { score: 100, debugMaqals: [], perfect_maqals: 0, last_completed_reesto: 0 };
+    }
+
+    const completedMaqals = validMaqals.slice(1).slice(0, 5);
+    
+    let perfect_maqals = 0;
+    let last_completed_reesto = 0;
+    
+    validMaqals.slice(1).forEach((m) => {
+        const debt = m.totalMaqalka + m.totalAdjustment;
+        if (debt > 0 && m.totalPaid >= debt) {
+            perfect_maqals++;
+        }
+    });
+
+    if (completedMaqals.length > 0) {
+        const lastCompleted = completedMaqals[0];
+        const debt = lastCompleted.totalMaqalka + lastCompleted.totalAdjustment;
+        last_completed_reesto = lastCompleted.totalPaid - debt;
+    }
+
+    const weights = [0.35, 0.25, 0.20, 0.12, 0.08];
+    let totalScore = 0;
+    let totalWeight = 0;
+    
+    const debugMaqals = completedMaqals.map((m, index) => {
+        const debt = m.totalMaqalka + m.totalAdjustment;
+        const paid = m.totalPaid;
+        const pct = debt === 0 ? 100 : Math.min(100, Math.round((paid / debt) * 100));
+        
+        const weight = weights[index] || 0;
+        const contribution = pct * weight;
+        
+        totalScore += contribution;
+        totalWeight += weight;
+        
+        return {
+            id: m.id,
+            title: m.titleString,
+            debt,
+            paid,
+            percentage: pct,
+            weight,
+            contribution
+        };
+    });
+
+    const finalScore = totalWeight > 0 ? Math.round(totalScore / totalWeight) : 100;
+
+    return { 
+        score: finalScore,
+        debugMaqals,
+        perfect_maqals,
+        last_completed_reesto
+    };
 };

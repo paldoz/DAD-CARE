@@ -1534,6 +1534,7 @@ export default function CustomerDetailPage() {
                                         {/* PRINT PROOF HEADER (Visible only during print) */}
                                         <div className="hidden print:block p-6 text-center border-b-2 border-primary mb-4">
                                             <h1 className="text-2xl font-black uppercase tracking-widest">Dadcare Ledger Proof</h1>
+                                            <h3 className="text-xl font-bold text-gray-800">Buuga Maqalka (Live Sync)</h3>
                                             <p className="text-sm font-bold text-muted-foreground mt-1">{customer!.name} · ID: {customer!.customer_code}</p>
                                             <p className="text-[10px] uppercase mt-2">{receipt.titleString}</p>
                                         </div>

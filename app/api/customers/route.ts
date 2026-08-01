@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { SHARED_RELIABILITY_CTE } from '@/lib/sql-snippets';
+import { getAllCustomerStats } from '@/app/utils/rankHelpers';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,20 @@ async function getCustomers(options: {
 }) {
     const { maqalD1, maqalD2, maxAllTimeDate, page = 1, limit = 20, search, tab = 'active', sort, username } = options;
     const offset = (page - 1) * limit;
+
+    const stats = await getAllCustomerStats(pool);
+    const jsScoresCte = `
+        js_scores (customer_id, reliability_score, perfect_maqals, last_completed_reesto) AS (
+            VALUES 
+            ${stats.length > 0 ? stats.map((s: any) => `('${s.id}'::uuid, ${s.pct}, ${s.perfect_maqals}, ${s.last_completed_reesto})`).join(',\n            ') : `(NULL::uuid, 0, 0, 0)`}
+        ),
+        reliability_scores AS (
+            SELECT customer_id, reliability_score, last_completed_reesto FROM js_scores WHERE customer_id IS NOT NULL
+        ),
+        gs_scores AS (
+            SELECT customer_id, perfect_maqals FROM js_scores WHERE customer_id IS NOT NULL
+        ),
+    `;
 
     // Add filtering based on search and tab
     let filterCondition = "1=1";
@@ -79,21 +94,25 @@ async function getCustomers(options: {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'reliability_score';
         const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `COALESCE(lk.total_ledger_debt, 0)`;
 
-        // This exactly matches the new business logic ranking hierarchy
+        // Simplified Business Logic Ranking Hierarchy (Rule 5)
         orderClause = `ORDER BY 
             CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
             ${pctCol} DESC, 
-            CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 1 ELSE 2 END ASC, 
-            CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END ASC, 
-            COALESCE(rs.last_completed_reesto, 0) ASC, 
             COALESCE(gs.perfect_maqals, 0) DESC, 
+            (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ASC, 
             c.created_at ASC, 
             c.id ASC`;
     }
     else if (sort === 'worst_maqal') {
         const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'reliability_score';
         const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `COALESCE(lk.total_ledger_debt, 0)`;
-        orderClause = `ORDER BY CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, ${pctCol} ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN 2 ELSE 1 END ASC, CASE WHEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) < 0 THEN (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ELSE 0 END DESC, COALESCE(rs.last_completed_reesto, 0) DESC, COALESCE(gs.perfect_maqals, 0) ASC, c.created_at DESC, c.id DESC`;
+        orderClause = `ORDER BY 
+            CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
+            ${pctCol} ASC, 
+            COALESCE(gs.perfect_maqals, 0) ASC, 
+            (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) DESC, 
+            c.created_at DESC, 
+            c.id DESC`;
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
@@ -181,10 +200,11 @@ async function getCustomers(options: {
             SELECT DISTINCT ON (l.customer_id) 
                 l.customer_id, l.created_at
             FROM "Ledger" l
-            JOIN selected_product_receipt_raw spr ON l.customer_id = spr.customer_id
-            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.created_at > spr.last_receipt_created_at
+            JOIN selected_product_receipt_raw lpr ON l.customer_id = lpr.customer_id
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.created_at > lpr.last_receipt_created_at
             ORDER BY l.customer_id, l.created_at ASC
         ),
+        ${jsScoresCte}
         selected_product_receipt AS (
             SELECT 
                 spr.customer_id,
@@ -327,12 +347,7 @@ async function getCustomers(options: {
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
         LEFT JOIN selected_prev_debt spd ON c.id = spd.customer_id
 
-        LEFT JOIN (
-            SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
-            FROM ordered_groups
-            WHERE maqal_rank > 1
-            GROUP BY customer_id
-        ) gs ON c.id = gs.customer_id
+        LEFT JOIN gs_scores gs ON c.id = gs.customer_id
         LEFT JOIN reliability_scores rs ON c.id = rs.customer_id
         ${priorityJoin}
         ${orderClause}
