@@ -220,9 +220,10 @@ async function getCustomers(options: {
                 ) as group_key,
                 MAX(created_at) as sort_date,
                 SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as product_amount,
-                SUM(amount) as debt_amount
+                SUM(CASE WHEN type IN ('PRODUCT', 'ADJUSTMENT') THEN amount ELSE 0 END) as debt_amount,
+                SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END) as group_paid
             FROM "Ledger"
-            WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
+            WHERE deleted_at IS NULL
             GROUP BY customer_id, group_key
         ),
         ordered_groups AS (
@@ -232,27 +233,13 @@ async function getCustomers(options: {
                 ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as maqal_rank
             FROM receipt_groups
         ),
-        customer_payments AS (
-            SELECT customer_id, SUM(amount) as total_paid
-            FROM "Ledger"
-            WHERE type = 'PAYMENT' AND deleted_at IS NULL
-            GROUP BY customer_id
-        ),
-        group_status AS (
-            SELECT 
-                o.*,
-                COALESCE(p.total_paid, 0) as total_paid,
-                LEAST(GREATEST(0, o.debt_amount), GREATEST(0, COALESCE(p.total_paid, 0) - (o.running_owed - GREATEST(0, o.debt_amount)))) as group_paid
-            FROM ordered_groups o
-            LEFT JOIN customer_payments p ON o.customer_id = p.customer_id
-        ),
         latest_receipt_amount AS (
             SELECT DISTINCT ON (customer_id)
                 customer_id,
                 product_amount,
                 debt_amount,
                 group_paid
-            FROM group_status
+            FROM ordered_groups
             ORDER BY customer_id, sort_date DESC
         ),
         completed_maqals AS (
@@ -262,7 +249,7 @@ async function getCustomers(options: {
                 group_paid,
                 CASE WHEN debt_amount = 0 THEN 0 ELSE LEAST(100, ROUND((group_paid::numeric / debt_amount::numeric) * 100))::int END as maqal_pct,
                 ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as completed_rank
-            FROM group_status
+            FROM ordered_groups
             WHERE maqal_rank > 1
         ),
         reliability_scores AS (
