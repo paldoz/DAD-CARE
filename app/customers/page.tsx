@@ -730,16 +730,17 @@ export default function CustomersPage() {
                                             {/* Dynamic Maqal % \u2014 SINGLE badge, purely from backend reliability_score */}
                                             {(() => {
                                                 const isSpecificPair = selectedMaqalPair !== 'latest' && selectedMaqalPair !== 'all_time';
-                                                const maqalPct = isSpecificPair ? ((customer as any).selected_maqal_pct ?? 0) : ((customer as any).reliability_score ?? 0);
-                                                
+                                                if (!isSpecificPair) return null;
+
+                                                const maqalPct = ((customer as any).selected_maqal_pct ?? 0);
                                                 const { colorClass } = getReliabilityTier(maqalPct);
 
                                                 return (
                                                     <div
                                                         className={`flex items-center gap-1.5 text-[10px] font-black px-2 py-0.5 rounded-full border ${colorClass}`}
-                                                        title={`${isSpecificPair ? 'Maqal' : 'Reliability Score'}: ${maqalPct}%`}
+                                                        title={`Maqal: ${maqalPct}%`}
                                                     >
-                                                        <span>{isSpecificPair ? `${maqalPct}% (Maqal)` : `⚡ ${maqalPct}%`}</span>
+                                                        <span>{maqalPct}% (Maqal)</span>
                                                     </div>
                                                 );
                                             })()}
