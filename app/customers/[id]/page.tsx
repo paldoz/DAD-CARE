@@ -246,7 +246,7 @@ export default function CustomerDetailPage() {
 
     const openEditModal = (tx: Transaction) => {
         setTransactionToEdit(tx);
-        setEditTxAmount(tx.amount.toString());
+        setEditTxAmount((tx.amount || 0).toString());
         setEditTxKg(tx.kg ? tx.kg.toString() : '');
         setEditTxPrice(tx.price_per_kg ? tx.price_per_kg.toString() : '');
         setEditTxDate(tx.reference_date ? new Date(tx.reference_date).toISOString().split('T')[0] : '');
@@ -1092,7 +1092,7 @@ export default function CustomerDetailPage() {
 
                         if (receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0 || receipt.entries.some(e => e.type === 'PAYMENT')) {
                             const owedForThisBlock = receipt.totalMaqalka;
-                            const actualPayments = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
+                            const actualPayments = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount || 0), 0);
                             
                             // The user requested that the receipt badge ONLY focuses on THIS specific Maqal, 
                             // completely ignoring previous debt (Lacagta Guud).
@@ -1316,7 +1316,7 @@ export default function CustomerDetailPage() {
 
                                                 <div className="relative z-10 pl-12 pr-4 pt-3 space-y-0 text-slate-800 dark:text-slate-300">
                                                     {receipt.titleString && (() => {
-                                                        const paymentsInReceipt = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
+                                                        const paymentsInReceipt = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount || 0), 0);
                                                         const pct = receipt.totalMaqalka > 0 ? Math.min(100, Math.round((paymentsInReceipt / receipt.totalMaqalka) * 100)) : 100;
                                                         return (
                                                             <div className="flex flex-col items-center justify-center gap-1 mb-3">
@@ -1350,14 +1350,14 @@ export default function CustomerDetailPage() {
                                                                     </span>
                                                                     {/* Edit/Undo completely removed for PRODUCT entries as requested */}
                                                                 </div>
-                                                                <span className="font-bold shrink-0">{isAbsent ? '$0' : `$${Math.round(e.amount).toLocaleString()}`}</span>
+                                                                <span className="font-bold shrink-0">{isAbsent ? '$0' : `$${Math.round(e.amount || 0).toLocaleString()}`}</span>
                                                             </div>
                                                         );
                                                     })}
 
                                                     {/* 2. Maqalka Total (products subtotal only) */}
                                                     {receipt.entries.some(e => e.type === 'PRODUCT') && (() => {
-                                                        const paymentsInReceipt = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount), 0);
+                                                        const paymentsInReceipt = receipt.entries.filter(e => e.type === 'PAYMENT').reduce((sum, e) => sum + Math.abs(e.amount || 0), 0);
                                                         const pct = receipt.totalMaqalka > 0 ? Math.min(100, Math.round((paymentsInReceipt / receipt.totalMaqalka) * 100)) : 100;
                                                         return (
                                                             <div className="flex justify-between py-1.5 border-b border-blue-300 dark:border-blue-800/60 font-bold text-slate-900 dark:text-slate-100">
@@ -1390,8 +1390,8 @@ export default function CustomerDetailPage() {
                                                     {/* 3b. Adjustment entries (also Reesto — carried-over debt) */}
                                                     {receipt.entries.filter(e => e.type === 'ADJUSTMENT').map(e => (
                                                         <div key={e.id} className="flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-amber-700 dark:text-amber-500 font-bold bg-amber-500/5 px-1 -ml-1 rounded-sm mt-1">
-                                                            <span>{e.amount < 0 ? LABEL_HEYN : LABEL_REESTO}</span>
-                                                            <span>{e.amount > 0 ? '+' : ''}${Math.abs(Math.round(e.amount)).toLocaleString()}</span>
+                                                            <span>{(e.amount || 0) < 0 ? LABEL_HEYN : LABEL_REESTO}</span>
+                                                            <span>{(e.amount || 0) > 0 ? '+' : ''}${Math.abs(Math.round(e.amount || 0)).toLocaleString()}</span>
                                                         </div>
                                                     ))}
 
@@ -1449,7 +1449,7 @@ export default function CustomerDetailPage() {
                                                                                             </button>
                                                                                         )}
                                                                                         {showUndo && (
-                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleInterceptUndo(e.id, e.created_at || e.reference_date); }} disabled={undoingTxId === e.id} className={cn("text-[10px] uppercase font-black flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-0.5 rounded-sm", isRecent ? "text-red-500 hover:text-red-400 hover:underline" : "text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.15)]")}>
+                                                                                            <button onClick={(ev) => { ev.stopPropagation(); handleInterceptUndo(e.id, String(e.created_at || e.reference_date)); }} disabled={undoingTxId === e.id} className={cn("text-[10px] uppercase font-black flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed px-1.5 py-0.5 rounded-sm", isRecent ? "text-red-500 hover:text-red-400 hover:underline" : "text-red-600 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.15)]")}>
                                                                                                 {undoingTxId === e.id ? <Loader2 className="w-3 h-3 animate-spin"/> : (isRecent ? <Trash2 className="w-3 h-3"/> : <Lock className="w-3 h-3"/>)}
                                                                                                 {undoingTxId === e.id ? 'Undoing...' : 'Undo'}
                                                                                             </button>
@@ -1460,7 +1460,7 @@ export default function CustomerDetailPage() {
                                                                             return null;
                                                                         })()}
                                                                     </div>
-                                                                    <span className="shrink-0">-${Math.round(e.amount).toLocaleString()}</span>
+                                                                    <span className="shrink-0">-${Math.round(e.amount || 0).toLocaleString()}</span>
                                                                 </div>
                                                             ))}
                                                         </>

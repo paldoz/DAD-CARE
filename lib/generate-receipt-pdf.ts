@@ -5,7 +5,7 @@ export interface ReceiptEntry {
     reference_date: string;
     kg?: number;
     price_per_kg?: number;
-    amount: number;
+    amount?: number;
     note?: string;
 }
 
@@ -94,7 +94,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
             const isAbsent = Math.round(entry.kg || 0) === 0;
             const noteLabel = entry.note ? ` (${entry.note})` : '';
             const kgStr = isAbsent ? 'Baaqatay' : `${Math.round(entry.kg || 0)}KG x $${entry.price_per_kg}${noteLabel}`;
-            const amountStr = isAbsent ? '$0' : `$${Math.round(entry.amount).toLocaleString()}`;
+            const amountStr = isAbsent ? '$0' : `$${Math.round(entry.amount || 0).toLocaleString()}`;
 
             doc.text(`${dateStr} · ${kgStr}`, margin, y);
             doc.text(amountStr, pageWidth - margin, y, { align: 'right' });
@@ -129,7 +129,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         doc.setFontSize(7);
         doc.setFont('helvetica', 'normal');
         doc.text('Reesto', margin, y);
-        doc.text(`+$${Math.round(entry.amount).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`+$${Math.round(entry.amount || 0).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
         y += 3.5;
     });
 
@@ -161,7 +161,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         paymentEntries.forEach(entry => {
             const dateStr = format(new Date(entry.reference_date), 'MMM dd');
             doc.text(`${dateStr} Payment`, margin, y);
-            doc.text(`-$${Math.round(entry.amount).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+            doc.text(`-$${Math.round(entry.amount || 0).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
             y += 3.5;
         });
 
@@ -237,7 +237,7 @@ export function shareReceiptToWhatsApp(data: ReceiptData, phone?: string) {
                 lines.push(`  ${dateStr} · \u274c Baaqatay = *$0*`);
             } else {
                 const noteLabel = e.note ? ` (${e.note})` : '';
-                lines.push(`  ${dateStr} · ${Math.round(e.kg || 0)}KG \u00d7 $${e.price_per_kg}${noteLabel} = *$${Math.round(e.amount).toLocaleString()}*`);
+                lines.push(`  ${dateStr} · ${Math.round(e.kg || 0)}KG \u00d7 $${e.price_per_kg}${noteLabel} = *$${Math.round(e.amount || 0).toLocaleString()}*`);
             }
         });
         lines.push(`  📊 *Maqalka Total: $${Math.round(data.totalMaqalka).toLocaleString()}*`);
@@ -252,7 +252,7 @@ export function shareReceiptToWhatsApp(data: ReceiptData, phone?: string) {
     
     const adjustments = data.entries.filter(e => e.type === 'ADJUSTMENT');
     adjustments.forEach(entry => {
-        lines.push(`🔄 Reesto: +$${Math.round(entry.amount).toLocaleString()}`);
+        lines.push(`🔄 Reesto: +$${Math.round(entry.amount || 0).toLocaleString()}`);
     });
 
     // Subtotal
@@ -268,7 +268,7 @@ export function shareReceiptToWhatsApp(data: ReceiptData, phone?: string) {
         lines.push('💰 *LACAGAHA:*');
         payments.forEach(e => {
             const dateStr = format(new Date(e.reference_date), 'MMM dd');
-            lines.push(`  ${dateStr} Payment: *-$${Math.round(e.amount).toLocaleString()}*`);
+            lines.push(`  ${dateStr} Payment: *-$${Math.round(e.amount || 0).toLocaleString()}*`);
         });
     }
 
