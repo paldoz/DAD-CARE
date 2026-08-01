@@ -194,52 +194,13 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         } as ReceiptGroup & { _sortDate: Date; receiptId: string | null };
     });
 
-    // 6. MERGE STEP: fold payment-only receipts into the correct product receipt.
+    // 6. MERGE STEP REMOVED - Enforcing the 'No FIFO' rule.
+    // Payments stay exactly where they were recorded.
     const oldestFirst = [...processedReceipts].sort((a, b) =>
         (a as any)._sortDate.getTime() - (b as any)._sortDate.getTime()
     );
 
-    const merged: (ReceiptGroup & { _sortDate: Date })[] = [];
-    for (const current of oldestFirst as (ReceiptGroup & { _sortDate: Date })[]) {
-        const isPaymentOnly = current.totalMaqalka === 0 && current.totalAdjustment === 0 && current.totalPaid > 0 && current.maqalId == null;
-
-        if (isPaymentOnly && merged.length > 0) {
-            let targetIdx = -1;
-            for (let k = 0; k < merged.length; k++) {
-                const m = merged[k];
-                const owed = m.totalMaqalka + m.totalAdjustment;
-                if ((m.totalMaqalka > 0 || m.totalAdjustment > 0) && m.totalPaid < owed) {
-                    targetIdx = k;
-                    break;
-                }
-            }
-
-            if (targetIdx === -1) {
-                for (let k = merged.length - 1; k >= 0; k--) {
-                    if (merged[k].totalMaqalka > 0 || merged[k].totalAdjustment > 0) {
-                        targetIdx = k;
-                        break;
-                    }
-                }
-            }
-
-            if (targetIdx !== -1) {
-                const target = merged[targetIdx];
-                const mergedEntries = [...target.entries, ...current.entries].sort(
-                    (a, b) => new Date(a.created_at || a.reference_date || 0).getTime() - new Date(b.created_at || b.reference_date || 0).getTime()
-                );
-                const latestEntry = mergedEntries[mergedEntries.length - 1];
-                merged[targetIdx] = {
-                    ...target,
-                    entries: mergedEntries,
-                    totalPaid: target.totalPaid + current.totalPaid,
-                    closingBalance: Number(latestEntry.new_debt || 0),
-                };
-                continue; // payment absorbed — don't add it separately
-            }
-        }
-        merged.push(current as ReceiptGroup & { _sortDate: Date });
-    }
+    const merged: (ReceiptGroup & { _sortDate: Date })[] = oldestFirst as (ReceiptGroup & { _sortDate: Date })[];
 
     // 6.5 Dynamically recalculate running balances chronologically.
     if (merged.length > 0) {
