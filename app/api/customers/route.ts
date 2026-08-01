@@ -39,7 +39,7 @@ async function getCustomers(options: {
     const jsScoresCte = `
         js_scores (customer_id, reliability_score, perfect_maqals, last_completed_reesto) AS (
             VALUES 
-            ${stats.length > 0 ? stats.map((s: any) => `('${s.id}'::uuid, ${s.pct}, ${s.perfect_maqals}, ${s.last_completed_reesto})`).join(',\n            ') : `(NULL::uuid, 0, 0, 0)`}
+            ${stats.length > 0 ? stats.map((s: any) => `('${s.id}'::text, ${s.pct}::int, ${s.perfect_maqals}::int, ${s.last_completed_reesto}::numeric)`).join(',\n            ') : `(NULL::text, 0::int, 0::int, 0::numeric)`}
         ),
         reliability_scores AS (
             SELECT customer_id, reliability_score, last_completed_reesto FROM js_scores WHERE customer_id IS NOT NULL
