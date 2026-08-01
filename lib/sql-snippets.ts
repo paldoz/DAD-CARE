@@ -20,7 +20,7 @@ export const SHARED_RELIABILITY_CTE = `
     ),
     valid_maqals AS (
         SELECT * FROM receipt_groups
-        WHERE group_key LIKE 'maqal_%' OR product_amount > 0
+        WHERE group_key LIKE 'maqal_%' OR group_key LIKE 'receipt_%' OR debt_amount > 0
     ),
     ordered_groups AS (
         SELECT 
@@ -32,6 +32,8 @@ export const SHARED_RELIABILITY_CTE = `
     completed_maqals AS (
         SELECT 
             customer_id,
+            group_key,
+            sort_date,
             debt_amount,
             product_amount,
             group_paid,
