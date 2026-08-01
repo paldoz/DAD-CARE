@@ -27,7 +27,7 @@ export const SHARED_RELIABILITY_CTE = `
             debt_amount,
             product_amount,
             group_paid,
-            CASE WHEN product_amount = 0 THEN 0 ELSE LEAST(100, ROUND((group_paid::numeric / product_amount::numeric) * 100))::int END as maqal_pct,
+            CASE WHEN product_amount = 0 THEN 100 ELSE LEAST(100, ROUND((group_paid::numeric / product_amount::numeric) * 100))::int END as maqal_pct,
             ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as completed_rank
         FROM ordered_groups
         WHERE maqal_rank > 1
