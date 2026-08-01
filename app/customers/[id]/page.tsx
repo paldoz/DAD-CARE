@@ -16,6 +16,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { cn, getReliabilityTier } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import useSWR, { mutate } from 'swr';
+import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -401,262 +402,7 @@ export default function CustomerDetailPage() {
         });
     };
 
-    const groupTransactionsInfoReceipts = (txns: Transaction[]) => {
-        if (!txns || txns.length === 0) return [];
 
-        // 1. Sort EVERYTHING deterministically by time and ID descending (Newest First)
-        const sortedTxns = [...txns].sort((a, b) => {
-            const timeA = new Date(a.created_at).getTime();
-            const timeB = new Date(b.created_at).getTime();
-            if (timeA !== timeB) return timeB - timeA;
-            return a.id.localeCompare(b.id); // Tie-breaker for batch entries
-        });
-
-        // 2. Group by `maqal_id` first. If present, it represents a strict pairing lock.
-        // Fall back to `receipt_id` or isolated payment grouping.
-        const normalizedTxns = sortedTxns.map(t => {
-            let key = null;
-            if (t.maqal_id != null) {
-                key = `__MAQAL__${t.maqal_id}`;
-            } else if (t.receipt_id) {
-                key = t.receipt_id;
-            } else if (t.type === 'PAYMENT') {
-                key = `__PAY__${t.id}`;
-            }
-            return { ...t, _groupKey: key };
-        }) as (Transaction & { _groupKey: string | null })[];
-
-        const withGroupKey = normalizedTxns.filter(t => t._groupKey);
-        const withoutGroupKey = normalizedTxns.filter(t => !t._groupKey);
-
-        const receiptGroups: Transaction[][] = [];
-
-        // 3. Group by _groupKey
-        const groupedByKey = withGroupKey.reduce((acc, t) => {
-            const key = t._groupKey!;
-            if (!acc[key]) acc[key] = [];
-            acc[key].push(t);
-            return acc;
-        }, {} as Record<string, Transaction[]>);
-
-        Object.values(groupedByKey).forEach(group => receiptGroups.push(group));
-
-        // 4. For orphans (no receipt_id), use 15s batching
-        if (withoutGroupKey.length > 0) {
-            let currentGroup: Transaction[] = [];
-            let currentDates = new Set<string>();
-
-            withoutGroupKey.forEach((txn, i) => {
-                const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
-                const dateStr = isProduct ? txn.reference_date.split('T')[0] : null;
-
-                if (i === 0) {
-                    currentGroup.push(txn);
-                    if (dateStr) currentDates.add(dateStr);
-                } else {
-                    const prev = withoutGroupKey[i - 1];
-                    const diff = Math.abs(new Date(txn.created_at).getTime() - new Date(prev.created_at).getTime());
-                    
-                    let wouldExceed2Days = false;
-                    if (dateStr && !currentDates.has(dateStr) && currentDates.size >= 2) {
-                        wouldExceed2Days = true;
-                    }
-
-                    if (diff < 15000 && !wouldExceed2Days) {
-                        currentGroup.push(txn);
-                        if (dateStr) currentDates.add(dateStr);
-                    } else {
-                        receiptGroups.push(currentGroup);
-                        currentGroup = [txn];
-                        currentDates = new Set<string>();
-                        if (dateStr) currentDates.add(dateStr);
-                    }
-                }
-            });
-            if (currentGroup.length > 0) receiptGroups.push(currentGroup);
-        }
-
-        // 4.5 FORCE SPLIT corrupted groups that exceed 2 unique dates (historical bug fix)
-        const finalReceiptGroups: Transaction[][] = [];
-
-        for (const group of receiptGroups) {
-            const productDates = Array.from(new Set(group.filter(t => t.type === 'PRODUCT').map(t => t.reference_date?.split('T')[0]).filter(Boolean)));
-            
-            if (productDates.length > 2) {
-                const chronoGroup = [...group].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-                let currentChunkDates = new Set<string>();
-                let currentChunk: Transaction[] = [];
-
-                for (const txn of chronoGroup) {
-                    const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
-                    const dStr = isProduct ? txn.reference_date.split('T')[0] : null;
-                    
-                    if (dStr && !currentChunkDates.has(dStr) && currentChunkDates.size >= 2) {
-                        finalReceiptGroups.push(currentChunk);
-                        currentChunk = [];
-                        currentChunkDates = new Set<string>();
-                    }
-
-                    currentChunk.push(txn);
-                    if (dStr) currentChunkDates.add(dStr);
-                }
-                if (currentChunk.length > 0) finalReceiptGroups.push(currentChunk);
-            } else {
-                finalReceiptGroups.push(group);
-            }
-        }
-
-        // 5. Process groups and compute a stable sortDate from product reference dates
-        const processedReceipts = finalReceiptGroups.map((group, idx) => {
-            // Sort group newest-first for consistent processing
-            const sorted = [...group].sort((a, b) => {
-                const ta = new Date(a.created_at).getTime();
-                const tb = new Date(b.created_at).getTime();
-                if (ta !== tb) return tb - ta;
-                return a.id.localeCompare(b.id);
-            });
-            const last = sorted[0];
-            const first = sorted[sorted.length - 1];
-
-            const totalKilos = sorted.reduce((sum, t) => sum + (t.kg || 0), 0);
-            const totalMaqalka = sorted.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + (t.amount || 0), 0);
-            const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + (t.amount || 0), 0);
-            const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + (t.amount || 0), 0);
-            const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
-
-            const productDates = sorted.filter(t => t.type === 'PRODUCT').map(t => new Date(t.reference_date));
-            let titleString = format(new Date(last.created_at), 'EEEE, MMMM dd, yyyy');
-
-            // sortDate: use the EARLIEST product reference_date so ordering is by maqal date, not payment date
-            // Fall back to created_at only for pure payment/adjustment groups
-            let sortDate: Date;
-            if (productDates.length > 0) {
-                productDates.sort((a, b) => a.getTime() - b.getTime());
-                sortDate = productDates[0]; // earliest product date = maqal anchor date
-                const uniqueDates = Array.from(new Set(productDates.map(d => format(d, 'dd MMM'))));
-                if (uniqueDates.length === 1) titleString = `Maqalka Taariikhda ${uniqueDates[0]}`;
-                else if (uniqueDates.length === 2) titleString = `Maqalka Taariikhda ${uniqueDates[0]} iyo ${uniqueDates[1]}`;
-                else titleString = `Maqalka Taariikhda ${uniqueDates[0]} ila ${uniqueDates[uniqueDates.length - 1]}`;
-            } else {
-                sortDate = new Date(first.created_at);
-            }
-
-            // Canonical receipt_id: prefer shared product receipt_id, else first entry id
-            const productReceiptId = sorted.find(t => t.type === 'PRODUCT' && t.receipt_id)?.receipt_id || null;
-
-            return {
-                id: `group-${idx}-${last.id}`,
-                mainDate: last.reference_date,
-                kind: isAdjustmentOnly ? 'ADJUSTMENT' : 'TRANSACTION',
-                titleString: titleString,
-                receiptId: productReceiptId,
-                entries: [...sorted].reverse(), // Store internally as oldest-first for the breakdown rendering
-                totalKilos,
-                totalMaqalka,
-                totalPaid,
-                totalAdjustment,
-                openingBalance: first.previous_debt,
-                closingBalance: last.new_debt,
-                note: sorted.find(t => t.note)?.note,
-                maqalId: sorted.find(t => t.maqal_id != null)?.maqal_id || null,
-                _sortDate: sortDate, // internal: stable anchor for ordering
-            } as ReceiptGroup & { _sortDate: Date; receiptId: string | null };
-        });
-
-        // 6. MERGE STEP: fold payment-only receipts into the correct product receipt.
-        // FIFO = payments go to the OLDEST unpaid product receipt first (standard ledger behavior).
-        // If a payment is meant for a specific pair, it will share that pair's receipt_id and never reach this step.
-        // Sort oldest-first by product anchor date so we process chronologically.
-        const oldestFirst = [...processedReceipts].sort((a, b) =>
-            (a as any)._sortDate.getTime() - (b as any)._sortDate.getTime()
-        );
-
-        const merged: (ReceiptGroup & { _sortDate: Date })[] = [];
-        for (const current of oldestFirst as (ReceiptGroup & { _sortDate: Date })[]) {
-            // NEVER merge a group that has a strict maqalId lock
-            const isPaymentOnly = current.totalMaqalka === 0 && current.totalAdjustment === 0 && current.totalPaid > 0 && current.maqalId == null;
-
-            if (isPaymentOnly && merged.length > 0) {
-                // FIFO: find the OLDEST product/adjustment receipt that is not yet fully paid
-                let targetIdx = -1;
-                for (let k = 0; k < merged.length; k++) {
-                    const m = merged[k];
-                    const owed = m.totalMaqalka + m.totalAdjustment;
-                    if ((m.totalMaqalka > 0 || m.totalAdjustment > 0) && m.totalPaid < owed) {
-                        targetIdx = k;
-                        break;
-                    }
-                }
-
-                // Fallback: if all previous receipts are fully paid, attach to most recent product receipt
-                if (targetIdx === -1) {
-                    for (let k = merged.length - 1; k >= 0; k--) {
-                        if (merged[k].totalMaqalka > 0 || merged[k].totalAdjustment > 0) {
-                            targetIdx = k;
-                            break;
-                        }
-                    }
-                }
-
-                if (targetIdx !== -1) {
-                    const target = merged[targetIdx];
-                    // Combine entries sorted oldest-first
-                    const mergedEntries = [...target.entries, ...current.entries].sort(
-                        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-                    );
-                    const latestEntry = mergedEntries[mergedEntries.length - 1];
-                    merged[targetIdx] = {
-                        ...target,
-                        entries: mergedEntries,
-                        totalPaid: target.totalPaid + current.totalPaid,
-                        closingBalance: latestEntry.new_debt,
-                    };
-                    continue; // payment absorbed — don't add it separately
-                }
-            }
-            merged.push(current as ReceiptGroup & { _sortDate: Date });
-        }
-
-        // 6.5 Dynamically recalculate running balances chronologically.
-        // Since late payments are inserted out-of-order in the database but grouped chronologically here,
-        // we must recalculate Reesto and Closing Balance so the UI flows perfectly without jumping.
-        if (merged.length > 0) {
-            let runningDebt = merged[0].openingBalance;
-            for (const m of merged) {
-                m.openingBalance = runningDebt;
-                m.closingBalance = runningDebt + m.totalMaqalka + m.totalAdjustment - m.totalPaid;
-                runningDebt = m.closingBalance;
-            }
-        }
-
-        // 7. Calculate sequential display IDs for this customer (count EVERY product maqal)
-        let displayCounter = 1;
-        const maqalIdMap = new Map<number, number>();
-        for (const m of merged) {
-            if (m.totalMaqalka > 0 || m.maqalId != null) {
-                m.displayMaqalId = displayCounter++;
-                if (m.maqalId != null) {
-                    maqalIdMap.set(m.maqalId, m.displayMaqalId);
-                }
-            }
-        }
-
-        // Apply it to all payment entries using their own maqal_id
-        for (const m of merged) {
-            for (const e of m.entries) {
-                if (e.type === 'PAYMENT' && e.maqal_id != null) {
-                    e.displayMaqalId = maqalIdMap.get(e.maqal_id);
-                }
-            }
-        }
-
-        // Re-sort newest-first for display using the stable product-anchor date
-        // (Using _sortDate = product reference_date ensures 04 Jul always sits between 02 Jul and 06 Jul
-        //  regardless of when payments were added)
-        return merged
-            .sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime())
-            .map(({ _sortDate, ...r }) => r as ReceiptGroup);
-    };
 
     const { data: allCustomers } = useSWR<Customer[]>('/api/customers?lite=true', fetcher, {
         revalidateOnFocus: false,
@@ -666,14 +412,14 @@ export default function CustomerDetailPage() {
         revalidateOnReconnect: false,
     });
     
-    // Construct the base URL for the first page of ledger data - HUGE egress fix (limit=50 instead of 200)
-    let baseLedgerUrl = `/api/ledger?customerId=${customerId}&limit=50&offset=0`;
+    // Construct the base URL for the full ledger data - FIFO requires ALL transactions
+    let baseLedgerUrl = `/api/ledger?customerId=${customerId}`;
     if (startDate) baseLedgerUrl += `&startDate=${startDate}`;
     if (endDate) baseLedgerUrl += `&endDate=${endDate}`;
     
     const { data: initialLedgerData, mutate: mutateLedger } = useSWR(baseLedgerUrl, fetcher, {
         revalidateOnFocus: false,
-        dedupingInterval: 10000,   // Prevent duplicate requests within 10 seconds to save bandwidth
+        dedupingInterval: 10000,
         revalidateIfStale: false,
         revalidateOnReconnect: false,
     });

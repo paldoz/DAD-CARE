@@ -158,13 +158,13 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
         const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
 
-        const productDates = sorted.filter(t => t.type === 'PRODUCT' && t.reference_date).map(t => new Date(t.reference_date));
+        const productDates = sorted.filter(t => t.type === 'PRODUCT').map(t => new Date(t.reference_date || 0));
         let titleString = format(new Date(last.created_at || last.reference_date || new Date()), 'EEEE, MMMM dd, yyyy');
 
         let sortDate: Date;
         if (productDates.length > 0) {
             productDates.sort((a, b) => a.getTime() - b.getTime());
-            sortDate = productDates[0]; // earliest product date = maqal anchor date
+            sortDate = productDates[0]; 
             const uniqueDates = Array.from(new Set(productDates.map(d => format(d, 'dd MMM'))));
             if (uniqueDates.length === 1) titleString = `Maqalka Taariikhda ${uniqueDates[0]}`;
             else if (uniqueDates.length === 2) titleString = `Maqalka Taariikhda ${uniqueDates[0]} iyo ${uniqueDates[1]}`;
@@ -177,11 +177,11 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
         return {
             id: `group-${idx}-${last.id}`,
-            mainDate: last.reference_date ? String(last.reference_date) : '',
+            mainDate: String(last.reference_date || ''),
             kind: isAdjustmentOnly ? 'ADJUSTMENT' : 'TRANSACTION',
             titleString: titleString,
             receiptId: productReceiptId,
-            entries: [...sorted].reverse(), // Store internally as oldest-first for the breakdown rendering
+            entries: [...sorted].reverse(),
             totalKilos,
             totalMaqalka,
             totalPaid,
@@ -190,11 +190,10 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             closingBalance: Number(last.new_debt || 0),
             note: sorted.find(t => t.note)?.note,
             maqalId: sorted.find(t => t.maqal_id != null)?.maqal_id || null,
-            _sortDate: sortDate, // internal: stable anchor for ordering
+            _sortDate: sortDate,
         } as ReceiptGroup & { _sortDate: Date; receiptId: string | null };
     });
 
-    // 6. MERGE STEP: fold payment-only receipts into the correct product receipt.
     const oldestFirst = [...processedReceipts].sort((a, b) =>
         (a as any)._sortDate.getTime() - (b as any)._sortDate.getTime()
     );
@@ -235,13 +234,12 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
                     totalPaid: target.totalPaid + current.totalPaid,
                     closingBalance: Number(latestEntry.new_debt || 0),
                 };
-                continue; // payment absorbed — don't add it separately
+                continue;
             }
         }
         merged.push(current as ReceiptGroup & { _sortDate: Date });
     }
 
-    // 6.5 Dynamically recalculate running balances chronologically.
     if (merged.length > 0) {
         let runningDebt = merged[0].openingBalance;
         for (const m of merged) {
@@ -251,7 +249,6 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         }
     }
 
-    // 7. Calculate sequential display IDs
     let displayCounter = 1;
     const maqalIdMap = new Map<number, number>();
     for (const m of merged) {
@@ -265,19 +262,12 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
     for (const m of merged) {
         for (const e of m.entries) {
-            if (e.maqal_id != null && maqalIdMap.has(e.maqal_id)) {
+            if (e.type === 'PAYMENT' && e.maqal_id != null) {
                 e.displayMaqalId = maqalIdMap.get(e.maqal_id);
-            }
-        }
-        if (m.maqalId == null && m.totalMaqalka === 0 && m.totalAdjustment === 0 && m.entries.length > 0) {
-            const firstEntry = m.entries[0];
-            if (firstEntry.maqal_id != null && maqalIdMap.has(firstEntry.maqal_id)) {
-                m.displayMaqalId = maqalIdMap.get(firstEntry.maqal_id);
             }
         }
     }
 
-    // 8. Return sorted newest-first for the UI
     return merged.sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
 };
 
