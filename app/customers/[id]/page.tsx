@@ -678,7 +678,7 @@ export default function CustomerDetailPage() {
         revalidateOnReconnect: false,
     });
 
-    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank?v=2`, fetcher, {
+    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank?v=3`, fetcher, {
         revalidateOnFocus: false,
         dedupingInterval: 10000,
     });
@@ -727,7 +727,7 @@ export default function CustomerDetailPage() {
         await mutateLedger(undefined, { revalidate: true });
         
         // Also seamlessly update the rank and global customer list so everything is instantly in-sync!
-        mutate(`/api/customers/${customerId}/rank`);
+        mutate(`/api/customers/${customerId}/rank?v=3`);
         mutate((key) => typeof key === 'string' && key.startsWith('/api/customers'));
         mutate('/api/dashboard');
     };

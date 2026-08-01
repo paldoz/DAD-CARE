@@ -156,6 +156,8 @@ export default function CustomersPage() {
             params.append('sort', filterType);
         }
         
+        params.append('v', '4'); // force cache bust
+        
         return `/api/customers?${params.toString()}`;
     };
 

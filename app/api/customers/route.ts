@@ -487,7 +487,10 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
     const maxAllTimeDate = searchParams.get('max_all_time_date');
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '20', 10);
-    const search = searchParams.get('search') || null;
+    let search = searchParams.get('search');
+    if (!search || search === 'null' || search === 'undefined' || search.trim() === '') {
+        search = null;
+    }
     const tab = searchParams.get('tab') || 'active';
     const sort = searchParams.get('sort') || null;
 
@@ -521,9 +524,11 @@ export const GET = trackApiRoute('/api/customers', async (request: Request) => {
         res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return res;
     } catch (error: any) {
-        require('fs').writeFileSync('C:/Users/abdiq/OneDrive/Desktop/dadcare app/API_ERROR.txt', error.stack || error.message);
         console.error('API Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ 
+            error: String(error.message),
+            stack: String(error.stack)
+        }, { status: 500 });
     }
 });
 
