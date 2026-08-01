@@ -17,8 +17,8 @@ export const SHARED_RELIABILITY_CTE = `
     ordered_groups AS (
         SELECT 
             *,
-            SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed,
-            ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as maqal_rank
+            SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC, group_key ASC) as running_owed,
+            ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC, group_key DESC) as maqal_rank
         FROM receipt_groups
     ),
     completed_maqals AS (
@@ -27,8 +27,8 @@ export const SHARED_RELIABILITY_CTE = `
             debt_amount,
             product_amount,
             group_paid,
-            CASE WHEN product_amount = 0 THEN 100 ELSE LEAST(100, ROUND((group_paid::numeric / product_amount::numeric) * 100))::int END as maqal_pct,
-            ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as completed_rank
+            CASE WHEN debt_amount = 0 THEN 100 ELSE LEAST(100, ROUND((group_paid::numeric / debt_amount::numeric) * 100))::int END as maqal_pct,
+            ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC, group_key DESC) as completed_rank
         FROM ordered_groups
         WHERE maqal_rank > 1
     ),
