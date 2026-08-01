@@ -17,13 +17,9 @@ export async function GET(request: Request) {
                 o.debt_amount,
                 o.group_paid,
                 o.maqal_rank,
-                cm.completed_rank,
-                cm.maqal_pct,
-                rs.reliability_score
+                CASE WHEN o.debt_amount = 0 THEN 100 ELSE LEAST(100, ROUND((o.group_paid::numeric / o.debt_amount::numeric) * 100))::int END as maqal_pct
             FROM ordered_groups o
-            LEFT JOIN completed_maqals cm ON o.customer_id = cm.customer_id AND o.group_key = cm.group_key
             JOIN "Customer" c ON o.customer_id = c.id
-            LEFT JOIN reliability_scores rs ON o.customer_id = rs.customer_id
             WHERE c.name ILIKE '%hamdi shaahle%'
             ORDER BY o.sort_date DESC, o.group_key DESC;
         `;
