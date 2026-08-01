@@ -13,7 +13,7 @@ const getBalanceLabel = (totalPaid: number, closingBalance: number): string => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useParams, useRouter } from 'next/navigation';
-import { cn } from '@/lib/utils';
+import { cn, getReliabilityTier } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import useSWR, { mutate } from 'swr';
 import { Button } from '@/components/ui/button';
@@ -245,6 +245,14 @@ export default function CustomerDetailPage() {
         }
     };
 
+    const revalidateAllCustomerCaches = () => {
+        // Universal SWR wildcard mutation to completely bust caches across the whole app
+        mutate(key => typeof key === 'string' && key.startsWith('/api/customers'), undefined, { revalidate: true });
+        mutate('/api/dashboard');
+        localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+        window.dispatchEvent(new Event('dadwork_customers_stale'));
+    };
+
     const handleInterceptUndo = (txId: string, originalTxDate: string) => {
         const txTime = new Date(originalTxDate).getTime();
         const isRecent = (Date.now() - txTime) < 24 * 60 * 60 * 1000;
@@ -295,11 +303,8 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error(data.error || 'Failed to update');
             toast.success(data.message || 'Updated successfully!');
             setTransactionToEdit(null);
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            // Hard refresh to show accurate calculations exactly like the save flow
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            revalidateAllCustomerCaches();
+            loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
             setUpdating(false);
@@ -329,11 +334,8 @@ export default function CustomerDetailPage() {
             setLatePaymentMaqal(null);
             setLatePaymentAmount('');
             setLatePaymentDate('');
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            // Hard refresh to show accurate calculations exactly like the save flow
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            revalidateAllCustomerCaches();
+            loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
             setUpdating(false);
@@ -352,11 +354,8 @@ export default function CustomerDetailPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to undo');
             toast.success(data.message || 'Entry successfully undone.');
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            // Hard refresh to show accurate warning signs exactly like the save flow
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            revalidateAllCustomerCaches();
+            loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -383,11 +382,8 @@ export default function CustomerDetailPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to delete receipt');
             toast.success('Receipt successfully deleted and balance recalculated.');
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            // Hard refresh to show accurate warning signs exactly like the save flow
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            revalidateAllCustomerCaches();
+            loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -682,9 +678,9 @@ export default function CustomerDetailPage() {
         revalidateOnReconnect: false,
     });
 
-    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank`, fetcher, {
+    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank?v=2`, fetcher, {
         revalidateOnFocus: false,
-        dedupingInterval: 300000,
+        dedupingInterval: 10000,
     });
 
     // Sync SWR cache instantly to local state
@@ -803,7 +799,7 @@ export default function CustomerDetailPage() {
 
             toast.success('Customer updated successfully');
             setIsEditDialogOpen(false);
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            revalidateAllCustomerCaches();
             loadCustomerData(); // Refresh info
         } catch (err) {
             toast.error('Failed to update customer');
@@ -826,8 +822,8 @@ export default function CustomerDetailPage() {
             });
             if (!res.ok) throw new Error('Failed to clear history');
             toast.success('All history cleared. Balance is now $0.');
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            loadCustomerData();
+            revalidateAllCustomerCaches();
+            loadCustomerData(true);
         } catch (e) {
             toast.error('Failed to clear history');
         } finally {
@@ -850,9 +846,7 @@ export default function CustomerDetailPage() {
             });
             if (res.ok) {
                 toast.success(`${customer.name} moved to Inactive. Their history is preserved.`);
-                localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-                mutate('/api/dashboard');
-                mutate('/api/customers?lite=true');
+                revalidateAllCustomerCaches();
                 router.push('/customers');
             } else {
                 const data = await res.json();
@@ -880,10 +874,7 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error((await res.json()).error || 'Failed');
 
             toast.success(`${customer.name} restored to Active!`);
-            localStorage.setItem('dadwork_customers_stale', Date.now().toString());
-            window.dispatchEvent(new Event('dadwork_customers_stale'));
-            mutate('/api/dashboard');
-            mutate('/api/customers?lite=true');
+            revalidateAllCustomerCaches();
             loadCustomerData(true);
         } catch (err: any) {
             toast.error(err.message || 'Failed to restore customer');
@@ -1274,18 +1265,11 @@ export default function CustomerDetailPage() {
                             {/* Single Source of Truth Percentage */}
                             {rankData && rankData.pct != null && (() => {
                                 const pct = Number(rankData.pct);
-                                let label = '';
-                                let colorClass = '';
-                                if (pct >= 100) { label = '🥇 Kaamil'; colorClass = 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30'; }
-                                else if (pct >= 98) { label = '🏆 Heer Sare'; colorClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'; }
-                                else if (pct >= 95) { label = '⭐ Wanaagsan'; colorClass = 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30'; }
-                                else if (pct >= 90) { label = '⚖️ Dhexdhexaad'; colorClass = 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'; }
-                                else if (pct >= 80) { label = '⚠️ Horumar u Baahan'; colorClass = 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-500/30'; }
-                                else { label = '🚫 Heer Hoose'; colorClass = 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'; }
+                                const { label, colorClass } = getReliabilityTier(pct);
 
                                 return (
                                     <div className="mt-1 flex flex-col items-end gap-1">
-                                        <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 ${colorClass}`}>
+                                        <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1.5 border ${colorClass}`}>
                                             ⚡ {pct}% Reliable <span className="opacity-40">|</span> {label}
                                         </span>
                                         {rankData.rank_maqal && (() => {

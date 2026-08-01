@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { cn, getReliabilityTier } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useEffect, useState, useMemo } from 'react';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
@@ -728,28 +729,17 @@ export default function CustomersPage() {
                                             )}
                                             {/* Dynamic Maqal % \u2014 SINGLE badge, purely from backend reliability_score */}
                                             {(() => {
-                                                // If a specific pair is selected, we show that. Otherwise we default to Reliability Score.
                                                 const isSpecificPair = selectedMaqalPair !== 'latest' && selectedMaqalPair !== 'all_time';
                                                 const maqalPct = isSpecificPair ? ((customer as any).selected_maqal_pct ?? 0) : ((customer as any).reliability_score ?? 0);
                                                 
-                                                const maqalTotal = isSpecificPair ? ((customer as any).selected_maqal_total ?? 0) : 1;
-                                                
-                                                const icon = isSpecificPair ? <CalendarDays className="w-2.5 h-2.5" /> : <Zap className="w-2.5 h-2.5" />;
-
-                                                if (maqalTotal <= 0) return null;
+                                                const { label, colorClass } = getReliabilityTier(maqalPct);
 
                                                 return (
                                                     <div
-                                                        className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                                                            maqalPct >= 98 ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
-                                                            : maqalPct >= 90 ? 'bg-blue-500/15 text-blue-400 border-blue-500/30' 
-                                                            : maqalPct >= 80 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                                                            : 'bg-red-500/15 text-red-400 border-red-500/30'
-                                                        }`}
+                                                        className={`flex items-center gap-1.5 text-[9px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full border ${colorClass}`}
                                                         title={`${isSpecificPair ? 'Maqal' : 'Reliability Score'}: ${maqalPct}%`}
                                                     >
-                                                        {icon}
-                                                        <span>{maqalPct}%</span>
+                                                        <span>{isSpecificPair ? `${maqalPct}% | ${label}` : label}</span>
                                                     </div>
                                                 );
                                             })()}

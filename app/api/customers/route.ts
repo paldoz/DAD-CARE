@@ -8,7 +8,10 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import bcrypt from 'bcryptjs';
 import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { SHARED_RELIABILITY_CTE } from '@/lib/sql-snippets';
 import { z } from 'zod';
+
+export const dynamic = 'force-dynamic';
 
 const customerSchema = z.object({
     name: z.string().min(1, 'Name is required'),
@@ -211,70 +214,8 @@ async function getCustomers(options: {
             ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
             GROUP BY customer_id
         ),
-        receipt_groups AS (
-            SELECT 
-                customer_id,
-                COALESCE(
-                    'maqal_' || maqal_id, 
-                    'pair_' || FLOOR((COALESCE(reference_date::date, created_at::date) - '2026-06-28'::date) / 2)::text
-                ) as group_key,
-                MAX(created_at) as sort_date,
-                SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as product_amount,
-                SUM(CASE WHEN type IN ('PRODUCT', 'ADJUSTMENT') THEN amount ELSE 0 END) as debt_amount,
-                SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END) as group_paid
-            FROM "Ledger"
-            WHERE deleted_at IS NULL
-            GROUP BY customer_id, group_key
-        ),
-        ordered_groups AS (
-            SELECT 
-                *,
-                SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC) as running_owed,
-                ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as maqal_rank
-            FROM receipt_groups
-        ),
-        latest_receipt_amount AS (
-            SELECT DISTINCT ON (customer_id)
-                customer_id,
-                product_amount,
-                debt_amount,
-                group_paid
-            FROM ordered_groups
-            ORDER BY customer_id, sort_date DESC
-        ),
-        completed_maqals AS (
-            SELECT 
-                customer_id,
-                debt_amount,
-                group_paid,
-                CASE WHEN debt_amount = 0 THEN 0 ELSE LEAST(100, ROUND((group_paid::numeric / debt_amount::numeric) * 100))::int END as maqal_pct,
-                ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC) as completed_rank
-            FROM ordered_groups
-            WHERE maqal_rank > 1
-        ),
-        reliability_scores AS (
-            SELECT 
-                customer_id,
-                SUM(
-                    CASE 
-                        WHEN completed_rank = 1 THEN maqal_pct * 50
-                        WHEN completed_rank = 2 THEN maqal_pct * 30
-                        WHEN completed_rank = 3 THEN maqal_pct * 20
-                        ELSE 0
-                    END
-                ) / NULLIF(SUM(
-                    CASE 
-                        WHEN completed_rank = 1 THEN 50
-                        WHEN completed_rank = 2 THEN 30
-                        WHEN completed_rank = 3 THEN 20
-                        ELSE 0
-                    END
-                ), 0) as reliability_score,
-                MAX(CASE WHEN completed_rank = 1 THEN GREATEST(0, debt_amount - group_paid) ELSE 0 END) as last_completed_reesto
-            FROM completed_maqals
-            WHERE completed_rank <= 3
-            GROUP BY customer_id
-        ),
+        ${SHARED_RELIABILITY_CTE},
+
         latest_ledger_entries AS (
             SELECT DISTINCT ON (customer_id)
                 customer_id,
@@ -291,9 +232,8 @@ async function getCustomers(options: {
                 l.customer_id,
                 l.new_debt,
                 l.type,
-                (COALESCE(lra.group_paid, 0) > 0) as last_receipt_has_payment
+                false as last_receipt_has_payment
             FROM latest_ledger_entries l
-            LEFT JOIN latest_receipt_amount lra ON l.customer_id = lra.customer_id
         ),
         base_customers AS (
             SELECT 
@@ -334,29 +274,7 @@ async function getCustomers(options: {
                 WHEN COALESCE(lms.maqal_total, 0) = 0 THEN 0
                 ELSE LEAST(100, ROUND((GREATEST(0, COALESCE(p.total_paid, 0) - COALESCE(lpd.prev_debt, 0)) / lms.maqal_total) * 100))::int
             END as latest_maqal_pct,
-            
-            -- All Time Maqal (Fixed Accounting)
-            CASE 
-                WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                THEN GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)))
-                ELSE COALESCE(lk.total_ledger_debt, 0)
-            END::float as all_time_maqal_total,
-            CASE 
-                WHEN (
-                    CASE 
-                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)))
-                        ELSE COALESCE(lk.total_ledger_debt, 0)
-                    END
-                ) = 0 THEN 0
-                ELSE LEAST(100, ROUND((COALESCE(p.total_paid, 0)::numeric / (
-                    CASE 
-                        WHEN COALESCE(p.total_paid, 0) <= (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)) 
-                        THEN GREATEST(0, (COALESCE(lk.total_ledger_debt, 0) - COALESCE(lra.debt_amount, 0)))
-                        ELSE COALESCE(lk.total_ledger_debt, 0)
-                    END
-                )::numeric) * 100))::int
-            END as all_time_maqal_pct,
+
             
             -- Selected Maqal (if pair provided)
             COALESCE(sms.maqal_total, 0)::float as selected_maqal_total,
@@ -408,7 +326,7 @@ async function getCustomers(options: {
         LEFT JOIN latest_prev_debt lpd ON c.id = lpd.customer_id
         LEFT JOIN selected_maqal_stats sms ON c.id = sms.customer_id
         LEFT JOIN selected_prev_debt spd ON c.id = spd.customer_id
-        LEFT JOIN latest_receipt_amount lra ON c.id = lra.customer_id
+
         LEFT JOIN (
             SELECT customer_id, COUNT(*) FILTER (WHERE group_paid >= debt_amount) as perfect_maqals
             FROM ordered_groups
