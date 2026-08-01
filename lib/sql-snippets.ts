@@ -4,7 +4,11 @@ export const SHARED_RELIABILITY_CTE = `
             customer_id,
             COALESCE(
                 'maqal_' || maqal_id, 
-                'pair_' || FLOOR((COALESCE(reference_date::date, created_at::date) - '2026-06-28'::date) / 2)::text
+                'receipt_' || receipt_id,
+                CASE 
+                    WHEN type = 'PAYMENT' THEN 'pay_' || id::text
+                    ELSE 'batch_' || FLOOR(EXTRACT(EPOCH FROM COALESCE(reference_date, created_at)) / 15)::text 
+                END
             ) as group_key,
             MIN(COALESCE(reference_date::timestamp, created_at::timestamp)) as sort_date,
             SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as product_amount,
@@ -14,12 +18,16 @@ export const SHARED_RELIABILITY_CTE = `
         WHERE deleted_at IS NULL
         GROUP BY customer_id, group_key
     ),
+    valid_maqals AS (
+        SELECT * FROM receipt_groups
+        WHERE group_key LIKE 'maqal_%' OR product_amount > 0
+    ),
     ordered_groups AS (
         SELECT 
             *,
             SUM(GREATEST(0, debt_amount)) OVER (PARTITION BY customer_id ORDER BY sort_date ASC, group_key ASC) as running_owed,
             ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY sort_date DESC, group_key DESC) as maqal_rank
-        FROM receipt_groups
+        FROM valid_maqals
     ),
     completed_maqals AS (
         SELECT 

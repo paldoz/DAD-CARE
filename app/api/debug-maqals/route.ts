@@ -20,7 +20,7 @@ export async function GET(request: Request) {
                 CASE WHEN o.debt_amount = 0 THEN 100 ELSE LEAST(100, ROUND((o.group_paid::numeric / o.debt_amount::numeric) * 100))::int END as maqal_pct
             FROM ordered_groups o
             JOIN "Customer" c ON o.customer_id = c.id
-            WHERE c.name ILIKE '%nasra cadow%'
+            WHERE c.name ILIKE '%canab cudon%'
             ORDER BY o.sort_date DESC, o.group_key DESC;
         `;
         
