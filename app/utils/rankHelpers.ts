@@ -42,12 +42,13 @@ export async function getAllCustomerStats(pool: any) {
         
         const current_debt = total_ledger_debt - total_paid;
         
-        const { score, perfect_maqals, last_completed_reesto } = calculateCustomerReliability(txns);
+        const { score, debugMaqals, perfect_maqals, last_completed_reesto } = calculateCustomerReliability(txns);
         
         return {
             id: c.id,
             customer_created_at: c.created_at,
             pct: score,
+            debugMaqals,
             current_debt,
             total_paid,
             last_completed_reesto,
@@ -56,16 +57,33 @@ export async function getAllCustomerStats(pool: any) {
     });
     
     const sortedByMaqal = [...customerStats].sort((a, b) => {
+        // Rule 1: Highest Reliability ranks first
         if (b.pct !== a.pct) return b.pct - a.pct;
         
-        if (b.perfect_maqals !== a.perfect_maqals) return b.perfect_maqals - a.perfect_maqals;
+        // Rule 5: Tie-breaker using the Last Completed Maqal (index 0)
+        const aMaqals = a.debugMaqals || [];
+        const bMaqals = b.debugMaqals || [];
         
-        if (a.current_debt !== b.current_debt) return a.current_debt - b.current_debt;
+        const aM = aMaqals[0];
+        const bM = bMaqals[0];
         
+        if (aM && !bM) return -1;
+        if (!aM && bM) return 1;
+        
+        if (aM && bM) {
+            // Rule 5: Lower Reesto (Ka dhiman) wins
+            if (aM.reesto !== bM.reesto) return aM.reesto - bM.reesto;
+            
+            // Rule 6: Lower Heyn (Kaso hartay) wins
+            if (aM.heyn !== bM.heyn) return aM.heyn - bM.heyn;
+        }
+        
+        // Rule 6: Customer Creation Date (Older ranks higher)
         const aTime = new Date(a.customer_created_at).getTime();
         const bTime = new Date(b.customer_created_at).getTime();
         if (aTime !== bTime) return aTime - bTime;
         
+        // Rule 7: Customer ID Ascending
         return a.id.localeCompare(b.id);
     });
     
