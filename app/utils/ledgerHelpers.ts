@@ -318,6 +318,12 @@ export const calculateCustomerReliability = (transactions: any[]): { score: numb
         totalScore += contribution;
         totalWeight += weight;
         
+        // Tie-breaker metrics (based on actual UI math)
+        // Reesto (Ka dhiman) = debt - paid
+        // Heyn (Kaso hartay) = paid - debt
+        const reesto = Math.max(0, debt - paid);
+        const heyn = Math.max(0, paid - debt);
+        
         return {
             id: m.id,
             title: m.titleString,
@@ -325,7 +331,10 @@ export const calculateCustomerReliability = (transactions: any[]): { score: numb
             paid: m.totalPaid,
             percentage: pct,
             weight,
-            contribution
+            contribution,
+            reesto,
+            heyn,
+            closingBalance: m.closingBalance
         };
     });
 

@@ -83,8 +83,8 @@ export async function getAllCustomerStats(pool: any) {
             if (!aM && bM) return 1;
             
             if (aM && bM) {
-                // Rule 3: Last Completed Maqal Reesto. Lower Reesto ranks higher (0 beats 303).
-                if (aM.reesto !== bM.reesto) return aM.reesto - bM.reesto;
+                // Rule 3: Last Completed Maqal Reesto (Outside Box). Lower Reesto ranks higher (0 beats 877).
+                if (aM.closingBalance !== bM.closingBalance) return aM.closingBalance - bM.closingBalance;
             }
         }
         
