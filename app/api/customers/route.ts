@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
-import { getAllCustomerStats } from '@/app/utils/rankHelpers';
+import { getAllCustomerStats, getCachedAllCustomerStats } from '@/app/utils/rankHelpers';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ const customerSchema = z.object({
     phone: z.string().optional().nullable(),
 });
 
-async function getCustomers(options: {
+export async function getCustomers(options: {
     maqalD1?: string | null;
     maqalD2?: string | null;
     maxAllTimeDate?: string | null;
@@ -35,7 +35,7 @@ async function getCustomers(options: {
     const { maqalD1, maqalD2, maxAllTimeDate, page = 1, limit = 20, search, tab = 'active', sort, username } = options;
     const offset = (page - 1) * limit;
 
-    const stats = await getAllCustomerStats(pool);
+    const stats = await getCachedAllCustomerStats();
     const jsScoresCte = `
         js_scores (customer_id, reliability_score, perfect_maqals, last_completed_reesto, rank_maqal) AS (
             VALUES 
@@ -360,10 +360,14 @@ async function getCustomers(options: {
     // PERFECT LABEL SYNC LOGIC
     if (rows.length > 0) {
         const customerIds = rows.map(c => c.id);
-        const ledgerResult = await pool.query(
-            `SELECT * FROM "Ledger" WHERE customer_id = ANY($1) AND deleted_at IS NULL ORDER BY created_at ASC`,
-            [customerIds]
-        );
+        const ledgerResult = await pool.query(`
+            WITH RankedLedger AS (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC) as rn
+                FROM "Ledger" 
+                WHERE customer_id = ANY($1) AND deleted_at IS NULL
+            )
+            SELECT * FROM RankedLedger WHERE rn <= 100 ORDER BY COALESCE(reference_date::date, created_at::date) ASC, id ASC
+        `, [customerIds]);
         const ledgerRows = ledgerResult.rows;
         for (const c of rows) {
             const custTxns = ledgerRows.filter(r => r.customer_id === c.id) as Transaction[];

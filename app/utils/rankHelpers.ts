@@ -1,8 +1,20 @@
 import { calculateCustomerReliability } from './ledgerHelpers';
 
+import { unstable_cache } from 'next/cache';
+
 export async function getAllCustomerStats(pool: any) {
     const customersQuery = `SELECT id, created_at FROM "Customer" WHERE deleted_at IS NULL AND is_kabarka = false AND is_unassignable = false`;
-    const ledgerQuery = `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger" WHERE deleted_at IS NULL ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC`;
+    const ledgerQuery = `
+        WITH RankedLedger AS (
+            SELECT 
+                id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at,
+                ROW_NUMBER() OVER(PARTITION BY customer_id ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC) as rn
+            FROM "Ledger" 
+            WHERE deleted_at IS NULL
+        )
+        SELECT * FROM RankedLedger WHERE rn <= 200
+        ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC
+    `;
     
     const [customersRes, ledgerRes] = await Promise.all([
         pool.query(customersQuery),
@@ -17,14 +29,7 @@ export async function getAllCustomerStats(pool: any) {
         if (!ledgerByCustomer.has(txn.customer_id)) {
             ledgerByCustomer.set(txn.customer_id, []);
         }
-        
-        // STRICT PROFILE SYNC:
-        // The Profile UI only fetches the first 200 transactions on load.
-        // This limits the backward FIFO loop. We MUST apply the exact same 
-        // 200 item limit here so the engine is just as "blind" to old debts as the UI.
-        if (ledgerByCustomer.get(txn.customer_id)!.length < 200) {
-            ledgerByCustomer.get(txn.customer_id)!.push(txn);
-        }
+        ledgerByCustomer.get(txn.customer_id)!.push(txn);
     }
     
     const customerStats = customers.map((c: any) => {
@@ -114,3 +119,13 @@ export async function getAllCustomerStats(pool: any) {
     
     return customerStats;
 }
+
+// Global cached wrapper to prevent re-querying the engine hundreds of times
+import pool from '@/lib/db';
+export const getCachedAllCustomerStats = unstable_cache(
+    async () => {
+        return getAllCustomerStats(pool);
+    },
+    ['global-customer-stats-v3'],
+    { tags: ['customers', 'ledger'] }
+);

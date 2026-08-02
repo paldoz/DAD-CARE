@@ -2,7 +2,7 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { getAllCustomerStats } from '@/app/utils/rankHelpers';
+import { getAllCustomerStats, getCachedAllCustomerStats } from '@/app/utils/rankHelpers';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,7 @@ export const GET = trackApiRoute('/api/customers/[id]/rank', async (request: Req
     if (errorResponse) return errorResponse;
 
     try {
-        const stats = await getAllCustomerStats(pool);
+        const stats = await getCachedAllCustomerStats();
         const target = stats.find((c: any) => c.id === id);
         
         if (!target) {
