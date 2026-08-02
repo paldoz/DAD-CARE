@@ -465,7 +465,7 @@ const getCachedCustomersLedger = unstable_cache(
         return rows;
     },
     ['customers-ledger-data'],
-    { revalidate: 600, tags: ['customers', 'max'] }
+    { revalidate: 5, tags: ['customers', 'max'] }
 );
 
 // Dynamic paginated/sorted data should not be cached on the server, SWR handles it on the client.
