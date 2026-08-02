@@ -1,7 +1,7 @@
 import { calculateCustomerReliability } from './ledgerHelpers';
 
 export async function getAllCustomerStats(pool: any) {
-    const customersQuery = `SELECT id, created_at FROM "Customer" WHERE deleted_at IS NULL`;
+    const customersQuery = `SELECT id, created_at FROM "Customer" WHERE deleted_at IS NULL AND is_kabarka = false AND is_unassignable = false`;
     const ledgerQuery = `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger" WHERE deleted_at IS NULL ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC`;
     
     const [customersRes, ledgerRes] = await Promise.all([
