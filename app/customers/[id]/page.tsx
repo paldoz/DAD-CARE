@@ -390,7 +390,7 @@ export default function CustomerDetailPage() {
         revalidateOnReconnect: false,
     });
 
-    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank?v=3`, fetcher, {
+    const { data: rankData } = useSWR(`/api/customers/${customerId}/rank?v=4`, fetcher, {
         revalidateOnFocus: false,
         dedupingInterval: 10000,
     });

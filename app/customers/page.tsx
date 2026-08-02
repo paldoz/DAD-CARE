@@ -156,7 +156,7 @@ export default function CustomersPage() {
             params.append('sort', filterType);
         }
         
-        params.append('v', '4'); // force cache bust
+        params.append('v', '5'); // force cache bust
         
         return `/api/customers?${params.toString()}`;
     };
@@ -659,7 +659,7 @@ export default function CustomersPage() {
                                                      : index === 1 ? <Star className="w-2.5 h-2.5 fill-slate-400" />
                                                      : index === 2 ? <Star className="w-2.5 h-2.5 fill-orange-700 dark:fill-orange-600" /> 
                                                      : null}
-                                                    Rank {index + 1}
+                                                    Rank {(customer as any).rank_maqal || index + 1}
                                                 </span>
                                             ) : currentUser?.role === 'SUPER_ADMIN' ? (
                                                 <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
