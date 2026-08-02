@@ -40,7 +40,7 @@ export async function getAllCustomerStats(pool: any) {
             if (t.type === 'PRODUCT') total_ledger_maqal += Number(t.amount || 0);
         });
         
-        const current_debt = total_ledger_debt - total_paid;
+        const current_debt = txns.length > 0 ? Number(txns[0].new_debt || 0) : 0;
         
         const { score, debugMaqals, perfect_maqals, last_completed_reesto } = calculateCustomerReliability(txns);
         
@@ -60,25 +60,35 @@ export async function getAllCustomerStats(pool: any) {
         // Rule 1: Highest Reliability ranks first
         if (b.pct !== a.pct) return b.pct - a.pct;
         
-        // Rule 5: Tie-breaker using the Last Completed Maqal (index 0)
+        // Rule 2: Header Profile Heyn (Total Current Debt)
+        // If a customer has Heyn (current_debt <= 0), they rank higher.
+        // The more negative the debt (more Heyn), the higher they rank.
+        const aHasHeyn = a.current_debt <= 0;
+        const bHasHeyn = b.current_debt <= 0;
+        
+        if (aHasHeyn || bHasHeyn) {
+            if (a.current_debt !== b.current_debt) return a.current_debt - b.current_debt;
+        }
+        
+        // Rule 3: Tie-breakers using the last 5 completed Maqals
         const aMaqals = a.debugMaqals || [];
         const bMaqals = b.debugMaqals || [];
         
-        const aM = aMaqals[0];
-        const bM = bMaqals[0];
-        
-        if (aM && !bM) return -1;
-        if (!aM && bM) return 1;
-        
-        if (aM && bM) {
-            // Rule 5: Lower Reesto (Ka dhiman) wins
-            if (aM.reesto !== bM.reesto) return aM.reesto - bM.reesto;
+        for (let i = 0; i < 5; i++) {
+            const aM = aMaqals[i];
+            const bM = bMaqals[i];
             
-            // Rule 6: Lower Heyn (Kaso hartay) wins
-            if (aM.heyn !== bM.heyn) return aM.heyn - bM.heyn;
+            // If one has a Maqal and the other doesn't, the one with the Maqal wins
+            if (aM && !bM) return -1;
+            if (!aM && bM) return 1;
+            
+            if (aM && bM) {
+                // Rule 3: Last Completed Maqal Reesto. Lower Reesto ranks higher (0 beats 303).
+                if (aM.reesto !== bM.reesto) return aM.reesto - bM.reesto;
+            }
         }
         
-        // Rule 6: Customer Creation Date (Older ranks higher)
+        // Rule 7: Final Stable Tie - Customer Creation Date (Older ranks higher)
         const aTime = new Date(a.customer_created_at).getTime();
         const bTime = new Date(b.customer_created_at).getTime();
         if (aTime !== bTime) return aTime - bTime;
