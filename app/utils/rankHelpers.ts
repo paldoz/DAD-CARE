@@ -2,7 +2,7 @@ import { calculateCustomerReliability } from './ledgerHelpers';
 
 export async function getAllCustomerStats(pool: any) {
     const customersQuery = `SELECT id, created_at FROM "Customer" WHERE deleted_at IS NULL`;
-    const ledgerQuery = `SELECT id, type, amount, created_at, reference_date, customer_id, maqal_id, receipt_id, previous_debt, new_debt FROM "Ledger" WHERE deleted_at IS NULL ORDER BY COALESCE(reference_date::date, created_at::date) ASC, created_at ASC`;
+    const ledgerQuery = `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger" WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC`;
     
     const [customersRes, ledgerRes] = await Promise.all([
         pool.query(customersQuery),
@@ -17,7 +17,14 @@ export async function getAllCustomerStats(pool: any) {
         if (!ledgerByCustomer.has(txn.customer_id)) {
             ledgerByCustomer.set(txn.customer_id, []);
         }
-        ledgerByCustomer.get(txn.customer_id)!.push(txn);
+        
+        // STRICT PROFILE SYNC:
+        // The Profile UI only fetches the first 200 transactions on load.
+        // This limits the backward FIFO loop. We MUST apply the exact same 
+        // 200 item limit here so the engine is just as "blind" to old debts as the UI.
+        if (ledgerByCustomer.get(txn.customer_id)!.length < 200) {
+            ledgerByCustomer.get(txn.customer_id)!.push(txn);
+        }
     }
     
     const customerStats = customers.map((c: any) => {
