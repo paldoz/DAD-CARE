@@ -37,12 +37,12 @@ async function getCustomers(options: {
 
     const stats = await getAllCustomerStats(pool);
     const jsScoresCte = `
-        js_scores (customer_id, reliability_score, perfect_maqals, last_completed_reesto) AS (
+        js_scores (customer_id, reliability_score, perfect_maqals, last_completed_reesto, rank_maqal) AS (
             VALUES 
-            ${stats.length > 0 ? stats.map((s: any) => `('${s.id}'::text, ${s.pct}::int, ${s.perfect_maqals}::int, ${s.last_completed_reesto}::numeric)`).join(',\n            ') : `(NULL::text, 0::int, 0::int, 0::numeric)`}
+            ${stats.length > 0 ? stats.map((s: any) => `('${s.id}'::text, ${s.pct}::int, ${s.perfect_maqals}::int, ${s.last_completed_reesto}::numeric, ${s.rank_maqal}::int)`).join(',\n            ') : `(NULL::text, 0::int, 0::int, 0::numeric, 0::int)`}
         ),
         reliability_scores AS (
-            SELECT customer_id, reliability_score, last_completed_reesto FROM js_scores WHERE customer_id IS NOT NULL
+            SELECT customer_id, reliability_score, last_completed_reesto, rank_maqal FROM js_scores WHERE customer_id IS NOT NULL
         ),
         gs_scores AS (
             SELECT customer_id, perfect_maqals FROM js_scores WHERE customer_id IS NOT NULL
@@ -91,28 +91,20 @@ async function getCustomers(options: {
     else if (sort === 'best_lacag' || sort === 'best') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ASC, COALESCE(p.total_paid, 0) DESC NULLS LAST";
     else if (sort === 'worst_lacag' || sort === 'worst') orderClause = "ORDER BY (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) DESC NULLS LAST";
     else if (sort === 'best_maqal') {
-        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'reliability_score';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `COALESCE(lk.total_ledger_debt, 0)`;
-
-        // Simplified Business Logic Ranking Hierarchy (Rule 5)
-        orderClause = `ORDER BY 
-            CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
-            ${pctCol} DESC, 
-            COALESCE(gs.perfect_maqals, 0) DESC, 
-            (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) ASC, 
-            c.created_at ASC, 
-            c.id ASC`;
+        if (maqalD1 && maqalD2) {
+            orderClause = `ORDER BY CASE WHEN COALESCE(sms.maqal_total, 0) > 0 THEN 0 ELSE 1 END ASC, selected_maqal_pct DESC, c.created_at ASC, c.id ASC`;
+        } else {
+            // Rule 8: Use the single global ranking engine for standard sorting
+            orderClause = `ORDER BY rs.rank_maqal ASC NULLS LAST`;
+        }
     }
     else if (sort === 'worst_maqal') {
-        const pctCol = (maqalD1 && maqalD2) ? 'selected_maqal_pct' : 'reliability_score';
-        const rawTotalExpr = (maqalD1 && maqalD2) ? 'COALESCE(sms.maqal_total, 0)' : `COALESCE(lk.total_ledger_debt, 0)`;
-        orderClause = `ORDER BY 
-            CASE WHEN ${rawTotalExpr} > 0 THEN 0 ELSE 1 END ASC, 
-            ${pctCol} ASC, 
-            COALESCE(gs.perfect_maqals, 0) ASC, 
-            (COALESCE(lk.total_ledger_debt, 0) - COALESCE(p.total_paid, 0)) DESC, 
-            c.created_at DESC, 
-            c.id DESC`;
+        if (maqalD1 && maqalD2) {
+            orderClause = `ORDER BY CASE WHEN COALESCE(sms.maqal_total, 0) > 0 THEN 0 ELSE 1 END ASC, selected_maqal_pct ASC, c.created_at DESC, c.id DESC`;
+        } else {
+            // Rule 8: Use the single global ranking engine for standard sorting
+            orderClause = `ORDER BY rs.rank_maqal DESC NULLS LAST`;
+        }
     }
     else if (sort === 'most_paid') orderClause = "ORDER BY total_paid DESC NULLS LAST";
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
@@ -283,6 +275,9 @@ async function getCustomers(options: {
             
             -- Reliability Score
             COALESCE(rs.reliability_score, 0)::int as reliability_score,
+            
+            -- Global Rank
+            COALESCE(rs.rank_maqal, 0)::int as rank_maqal,
             
             -- Priority 4: Perfect Maqals
             COALESCE(gs.perfect_maqals, 0) as perfect_maqals,
