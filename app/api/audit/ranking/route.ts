@@ -32,7 +32,7 @@ export const GET = trackApiRoute('/api/audit/ranking', async (request: Request) 
         });
 
         // Return perfectly sorted array by rank
-        auditLog.sort((a, b) => a.FinalRank - b.FinalRank);
+        auditLog.sort((a: any, b: any) => a.FinalRank - b.FinalRank);
 
         return NextResponse.json({
             status: 'Success',
