@@ -5,8 +5,8 @@ import pool from '@/lib/db';
 import { getAllCustomerStats } from '@/app/utils/rankHelpers';
 import { getCustomers } from '@/app/api/customers/route';
 
-// We store it in the workspace root for simplicity
-const SNAPSHOT_PATH = path.join(process.cwd(), 'before_optimization_snapshot.json');
+// Vercel Serverless requires writing to /tmp/
+const SNAPSHOT_PATH = path.join('/tmp', 'before_optimization_snapshot.json');
 
 export const dynamic = 'force-dynamic';
 
