@@ -275,8 +275,9 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
 export const calculateCustomerReliability = (transactions: any[]): { score: number, debugMaqals: any[], perfect_maqals: number, last_completed_reesto: number } => {
     const groups = groupTransactionsInfoReceipts(transactions);
-    
-    const validMaqals = groups.filter(g => g.totalMaqalka > 0 || g.totalAdjustment > 0);
+    // STRICT READ-ONLY CONSUMER: Use exactly the same filter as the Profile UI
+    // The Profile displays Maqals if they have debt OR if they have payments (Late Payments)
+    const validMaqals = groups.filter(g => g.totalMaqalka > 0 || g.totalAdjustment > 0 || g.totalPaid > 0);
     
     if (validMaqals.length <= 1) {
         return { score: 100, debugMaqals: [], perfect_maqals: 0, last_completed_reesto: 0 };
