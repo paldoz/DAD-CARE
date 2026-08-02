@@ -33,6 +33,8 @@ export interface ReceiptGroup {
     receiptId?: string | null;
     maqalId?: number | null;
     displayMaqalId?: number | null;
+    percentage?: number;
+    diff?: number;
 }
 
 export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGroup & { _sortDate: Date })[] => {
@@ -303,8 +305,10 @@ export const calculateCustomerReliability = (transactions: any[]): { score: numb
     let totalWeight = 0;
     
     const debugMaqals = completedMaqals.map((m, index) => {
+        // We MUST calculate the percentage here because groupTransactionsInfoReceipts 
+        // does not actually attach a 'percentage' property (the Profile UI calculates it locally).
         const debt = m.totalMaqalka + m.totalAdjustment;
-        const paid = m.totalPaid;
+        const paid = Math.abs(m.totalPaid); // Safety absolute to match UI
         const pct = debt === 0 ? 100 : Math.min(100, Math.round((paid / debt) * 100));
         
         const weight = weights[index] || 0;
@@ -316,8 +320,8 @@ export const calculateCustomerReliability = (transactions: any[]): { score: numb
         return {
             id: m.id,
             title: m.titleString,
-            debt,
-            paid,
+            debt: m.totalMaqalka + m.totalAdjustment,
+            paid: m.totalPaid,
             percentage: pct,
             weight,
             contribution
