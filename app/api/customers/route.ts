@@ -57,7 +57,7 @@ async function getCustomers(options: {
     } else if (tab === 'inactive') {
         filterCondition += " AND c.deleted_at IS NOT NULL";
     } else {
-        filterCondition += " AND c.deleted_at IS NULL"; // Ensure active tab hides deleted customers
+        filterCondition += " AND c.deleted_at IS NULL AND c.is_kabarka = false AND c.is_unassignable = false"; // Ensure active tab hides deleted, kabarka, and unassignable customers
     }
 
     let searchCondition = "1=1";
