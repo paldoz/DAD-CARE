@@ -464,7 +464,7 @@ const getCachedCustomersLedger = unstable_cache(
         const { rows } = await pool.query(query);
         return rows;
     },
-    ['customers-ledger-data'],
+    ['customers-ledger-data-v2'],
     { revalidate: 5, tags: ['customers', 'max'] }
 );
 
