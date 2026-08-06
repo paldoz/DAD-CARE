@@ -65,17 +65,7 @@ export async function getAllCustomerStats(pool: any) {
         // Rule 1: Highest Reliability ranks first
         if (b.pct !== a.pct) return b.pct - a.pct;
         
-        // Rule 2: Header Profile Heyn (Total Current Debt)
-        // If a customer has Heyn (current_debt <= 0), they rank higher.
-        // The more negative the debt (more Heyn), the higher they rank.
-        const aHasHeyn = a.current_debt <= 0;
-        const bHasHeyn = b.current_debt <= 0;
-        
-        if (aHasHeyn || bHasHeyn) {
-            if (a.current_debt !== b.current_debt) return a.current_debt - b.current_debt;
-        }
-        
-        // Rule 3: Tie-breakers using the last 5 completed Maqals
+        // Rule 2 & 3: Tie-breakers using the last 5 completed Maqals
         const aMaqals = a.debugMaqals || [];
         const bMaqals = b.debugMaqals || [];
         
@@ -88,17 +78,30 @@ export async function getAllCustomerStats(pool: any) {
             if (!aM && bM) return 1;
             
             if (aM && bM) {
-                // Rule 3: Last Completed Maqal Reesto (Outside Box). Lower Reesto ranks higher (0 beats 877).
-                if (aM.closingBalance !== bM.closingBalance) return aM.closingBalance - bM.closingBalance;
+                // Rule 2: Lowest Reesto ranks higher
+                if (aM.closingBalance !== bM.closingBalance) {
+                    return aM.closingBalance - bM.closingBalance;
+                }
+                
+                // Rule 3: If Reesto is identical, Heyn (negative current_debt) ranks higher
+                const aHasHeyn = a.current_debt <= 0;
+                const bHasHeyn = b.current_debt <= 0;
+                
+                if (aHasHeyn !== bHasHeyn) {
+                    // Whoever has Heyn ranks higher
+                    return aHasHeyn ? -1 : 1;
+                }
+                
+                // Rule 4: If both have Heyn or neither have Heyn, continue to next newest Maqal (loop continues)
             }
         }
         
-        // Rule 7: Final Stable Tie - Customer Creation Date (Older ranks higher)
+        // Rule 6: Final Stable Tie - Customer Creation Date (Older ranks higher)
         const aTime = new Date(a.customer_created_at).getTime();
         const bTime = new Date(b.customer_created_at).getTime();
         if (aTime !== bTime) return aTime - bTime;
         
-        // Rule 7: Customer ID Ascending
+        // Fallback: Customer ID Ascending
         return a.id.localeCompare(b.id);
     });
     

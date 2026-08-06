@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { logAudit } from '@/lib/audit';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { unstable_cache } from 'next/cache';
+import { unstable_cache, revalidateTag } from 'next/cache';
 
 const getCachedPayments = unstable_cache(
     async (limit: number, customerId: string | null, today: string) => {
@@ -117,6 +117,20 @@ export const POST = trackApiRoute('/api/payments', async (request: Request) => {
             );
 
             await client.query('COMMIT');
+
+            // BUST CACHE FOR FULL AUTOMATIC REFRESH
+            // @ts-ignore
+            revalidateTag('ledger');
+            // @ts-ignore
+            revalidateTag('customers');
+            // @ts-ignore
+            revalidateTag('dashboard');
+            // @ts-ignore
+            revalidateTag('customer-daily-entries');
+            // @ts-ignore
+            revalidateTag(`ledger-${customerId}`);
+            // @ts-ignore
+            revalidateTag(`daily-entries-${customerId}`);
 
             await logAudit(request, 'ADD_PAYMENT', `Payment of ${paymentAmount} recorded for customer ID: ${customerId}`);
             return NextResponse.json({ success: true, newDebt });

@@ -56,7 +56,8 @@ import {
     FileText,
     AlertTriangle,
     RefreshCw,
-    Star
+    Star,
+    Info
 } from 'lucide-react';
 import {
     Dialog,
@@ -193,6 +194,8 @@ export default function CustomerDetailPage() {
     const [latePaymentMaqal, setLatePaymentMaqal] = useState<ReceiptGroup | null>(null);
     const [latePaymentAmount, setLatePaymentAmount] = useState('');
     const [latePaymentDate, setLatePaymentDate] = useState('');
+    const [showLatePaymentNote, setShowLatePaymentNote] = useState(false);
+    const [latePaymentNote, setLatePaymentNote] = useState('');
 
     // Super Admin > 24h Security State
     const [pendingSuperAdminAction, setPendingSuperAdminAction] = useState<{
@@ -271,7 +274,8 @@ export default function CustomerDetailPage() {
             toast.success(data.message || 'Updated successfully!');
             setTransactionToEdit(null);
             revalidateAllCustomerCaches();
-            loadCustomerData(true);
+            loadCustomerData(); // DO NOT RESET SCREEN
+            setUpdating(false);
         } catch (err: any) {
             toast.error(err.message);
             setUpdating(false);
@@ -292,7 +296,7 @@ export default function CustomerDetailPage() {
                     reference_date: latePaymentDate || (latePaymentMaqal.mainDate ? latePaymentMaqal.mainDate : new Date().toISOString().split('T')[0]),
                     maqal_id: latePaymentMaqal.maqalId || null,
                     receipt_id: latePaymentMaqal.receiptId || null,
-                    note: 'Late Payment'
+                    note: latePaymentNote || null
                 })
             });
             const data = await res.json();
@@ -301,8 +305,11 @@ export default function CustomerDetailPage() {
             setLatePaymentMaqal(null);
             setLatePaymentAmount('');
             setLatePaymentDate('');
+            setShowLatePaymentNote(false);
+            setLatePaymentNote('');
             revalidateAllCustomerCaches();
-            loadCustomerData(true);
+            loadCustomerData(); // DO NOT RESET SCREEN
+            setUpdating(false);
         } catch (err: any) {
             toast.error(err.message);
             setUpdating(false);
@@ -320,9 +327,10 @@ export default function CustomerDetailPage() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to undo');
-            toast.success(data.message || 'Entry successfully undone.');
+            toast.success(data.message || 'Entry removed');
             revalidateAllCustomerCaches();
-            loadCustomerData(true);
+            loadCustomerData(); // DO NOT RESET SCREEN
+            setUpdating(false);
         } catch (err: any) {
             toast.error(err.message);
         } finally {
@@ -535,7 +543,7 @@ export default function CustomerDetailPage() {
             if (!res.ok) throw new Error('Failed to clear history');
             toast.success('All history cleared. Balance is now $0.');
             revalidateAllCustomerCaches();
-            loadCustomerData(true);
+            loadCustomerData();
         } catch (e) {
             toast.error('Failed to clear history');
         } finally {
@@ -587,7 +595,7 @@ export default function CustomerDetailPage() {
 
             toast.success(`${customer.name} restored to Active!`);
             revalidateAllCustomerCaches();
-            loadCustomerData(true);
+            loadCustomerData();
         } catch (err: any) {
             toast.error(err.message || 'Failed to restore customer');
         } finally {
@@ -800,6 +808,42 @@ export default function CustomerDetailPage() {
                                     onChange={e => setLatePaymentDate(e.target.value)}
                                     className="h-10 font-bold text-xs bg-background/50 border-border/50 rounded-xl shadow-inner"
                                 />
+                            </div>
+                            <div className="pt-1 flex flex-col gap-2">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowLatePaymentNote(!showLatePaymentNote)}
+                                    className="h-7 w-fit text-[10px] uppercase font-black tracking-wider text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-700 rounded-full px-3"
+                                >
+                                    {showLatePaymentNote ? (
+                                        <>
+                                            <ChevronUp className="w-3.5 h-3.5 mr-1" />
+                                            Hide Name
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ChevronDown className="w-3.5 h-3.5 mr-1" />
+                                            Add Name (Cafis, Heyn)
+                                        </>
+                                    )}
+                                </Button>
+                                {showLatePaymentNote && (
+                                    <div className="bg-muted/30 p-3 rounded-xl border border-emerald-500/20 animate-in slide-in-from-top-1 duration-150">
+                                        <Label className="text-[10px] uppercase font-black text-emerald-700/70 tracking-wider ml-1">Name / Note</Label>
+                                        <div className="relative group/input mt-1">
+                                            <Info className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/70 group-focus-within/input:text-emerald-500 transition-colors" />
+                                            <Input
+                                                type="text"
+                                                value={latePaymentNote}
+                                                onChange={e => setLatePaymentNote(e.target.value)}
+                                                className="h-10 pl-10 text-sm font-bold bg-background border-emerald-500/30 rounded-xl focus-visible:ring-emerald-500/30 transition-all shadow-inner text-foreground"
+                                                placeholder="e.g. Cafis, Heyn, or Notebook..."
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className="mt-5">
@@ -1413,13 +1457,18 @@ export default function CustomerDetailPage() {
                                                             {receipt.entries.filter(e => e.type === 'PAYMENT').map(e => (
                                                                 <div key={e.id} className="flex justify-between items-start py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-emerald-700 dark:text-emerald-500 font-bold">
                                                                     <div className="flex flex-col flex-1">
-                                                                        <span className="flex items-center gap-1.5">
+                                                                        <span className="flex items-center gap-1.5 flex-wrap">
                                                                             {format(new Date(e.reference_date), 'MMM dd')} Payment
                                                                             {receipt.displayMaqalId != null ? (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_5px_rgba(59,130,246,0.2)]">
                                                                                     ⚡MQ#{receipt.displayMaqalId}
                                                                                 </span>
                                                                             ) : null}
+                                                                            {e.note && e.note !== 'Late Payment' && (
+                                                                                <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-500 bg-emerald-500/10 px-2.5 py-0.5 rounded-full whitespace-nowrap animate-in fade-in zoom-in-95 duration-200">
+                                                                                    {e.note}
+                                                                                </span>
+                                                                            )}
                                                                         </span>
                                                                         {(() => {
                                                                             const txTime = new Date(e.created_at || e.reference_date).getTime();

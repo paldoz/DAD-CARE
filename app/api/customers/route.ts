@@ -362,11 +362,17 @@ export async function getCustomers(options: {
         const customerIds = rows.map(c => c.id);
         const ledgerResult = await pool.query(`
             WITH RankedLedger AS (
-                SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC) as rn
+                SELECT 
+                    id, customer_id, type, amount, created_at, reference_date, previous_debt, new_debt, kg, maqal_id, receipt_id, note,
+                    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY COALESCE(reference_date::date, created_at::date) DESC, id DESC) as rn
                 FROM "Ledger" 
                 WHERE customer_id = ANY($1) AND deleted_at IS NULL
             )
-            SELECT * FROM RankedLedger WHERE rn <= 100 ORDER BY COALESCE(reference_date::date, created_at::date) ASC, id ASC
+            SELECT 
+                id, customer_id, type, amount, created_at, reference_date, previous_debt, new_debt, kg, maqal_id, receipt_id, note, rn 
+            FROM RankedLedger 
+            WHERE rn <= 100 
+            ORDER BY COALESCE(reference_date::date, created_at::date) ASC, id ASC
         `, [customerIds]);
         const ledgerRows = ledgerResult.rows;
         for (const c of rows) {
