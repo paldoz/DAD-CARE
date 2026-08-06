@@ -48,86 +48,88 @@
 }
 
 /* 
-   PURE CLASSIC PROFESSIONAL THEME
+   PREMIUM SAAS DESIGN SYSTEM
 */
 :root {
-  --radius: 0.5rem; /* Classic subtle rounded corners */
+  --radius: 0.75rem; /* Modern smooth rounded corners */
 
-  /* LIGHT MODE */
-  --background: #f8fafc; /* Soft slate white */
-  --foreground: #0f172a; /* Deep slate text */
+  /* LIGHT MODE - Crisp, airy, high contrast */
+  --background: #fdfdfd; /* Off-white for luxury feel */
+  --foreground: #09090b; /* Near black text for contrast */
 
-  --card: #ffffff; /* Solid white */
-  --card-foreground: #0f172a;
+  --card: #ffffff; /* Pure white cards */
+  --card-foreground: #09090b;
 
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  --popover-foreground: #09090b;
 
-  --primary: #1e40af; /* Classic Deep Blue */
+  --primary: #0f172a; /* Deep executive slate instead of vibrant blue */
   --primary-foreground: #ffffff;
 
-  --secondary: #e2e8f0;
-  --secondary-foreground: #1e293b;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
 
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
 
-  --accent: #e0e7ff; /* Soft blue accent */
-  --accent-foreground: #1e40af;
+  --accent: #f4f4f5; /* Subtle hover state */
+  --accent-foreground: #09090b;
 
-  --destructive: #ef4444;
+  --destructive: #ef4444; /* Clean danger red */
+  --destructive-foreground: #ffffff;
 
-  --border: #e2e8f0; /* Crisp borders */
-  --input: #ffffff;
-  --ring: #1e40af;
+  --border: #e4e4e7; /* Crisp, nearly invisible borders */
+  --input: #e4e4e7;
+  --ring: #0f172a;
 
   --sidebar: #ffffff;
-  --sidebar-foreground: #0f172a;
-  --sidebar-primary: #1e40af;
+  --sidebar-foreground: #09090b;
+  --sidebar-primary: #0f172a;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #1e40af;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #1e40af;
+  --sidebar-accent: #f4f4f5;
+  --sidebar-accent-foreground: #09090b;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #0f172a;
 }
 
 .dark {
-  /* DARK MODE */
-  --background: #000000; /* Pure black */
-  --foreground: #fafafa; /* Crisp white */
+  /* DARK MODE - Premium OLED/Jet Black */
+  --background: #000000; /* True Black for infinite depth */
+  --foreground: #ededed; /* Soft white text to reduce eye strain */
 
-  --card: #000000; /* Pure black */
-  --card-foreground: #fafafa;
+  --card: #0a0a0a; /* Jet black cards for subtle elevation */
+  --card-foreground: #ededed;
 
-  --popover: #000000;
-  --popover-foreground: #fafafa;
+  --popover: #0a0a0a;
+  --popover-foreground: #ededed;
 
-  --primary: #3b82f6; /* Classic vibrant blue */
-  --primary-foreground: #ffffff;
+  --primary: #ffffff; /* Stark white primary buttons on black */
+  --primary-foreground: #000000;
 
-  --secondary: #27272a;
-  --secondary-foreground: #fafafa;
+  --secondary: #171717;
+  --secondary-foreground: #ededed;
 
-  --muted: #27272a;
+  --muted: #171717;
   --muted-foreground: #a1a1aa;
 
-  --accent: #1e3a8a;
-  --accent-foreground: #60a5fa;
+  --accent: #171717;
+  --accent-foreground: #ffffff;
 
   --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
 
-  --border: #27272a;
-  --input: #18181b;
-  --ring: #3b82f6;
+  --border: #1f1f1f; /* Barely visible boundaries */
+  --input: #1f1f1f;
+  --ring: #ffffff;
 
   --sidebar: #000000;
-  --sidebar-foreground: #fafafa;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #27272a;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #27272a;
-  --sidebar-ring: #3b82f6;
+  --sidebar-foreground: #ededed;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #171717;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #1f1f1f;
+  --sidebar-ring: #ffffff;
 }
 
 @layer base {
@@ -137,16 +139,18 @@
 
   body {
     @apply bg-background text-foreground antialiased transition-colors duration-500;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    /* Subtle premium background mesh */
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    /* Premium subtle radial gradient mesh for light mode */
     background-image: 
-      radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.12) 0px, transparent 50%);
+      radial-gradient(circle at 15% 50%, rgba(16, 185, 129, 0.04), transparent 25%),
+      radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.04), transparent 25%);
     background-attachment: fixed;
   }
 
   .dark body {
-    background-image: none; /* Pure black */
+    /* Subtle depth gradients for OLED black */
+    background-image: 
+      radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.03), transparent 40%);
   }
 
   .dark svg {

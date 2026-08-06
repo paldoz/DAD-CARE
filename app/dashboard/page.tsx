@@ -63,8 +63,8 @@ export default function DashboardPage() {
     const [dates, setDates] = useState({ standard: '', hijri: '' });
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
-        revalidateOnFocus: false,     // ⚡ use event signal instead of focus-revalidation
-        dedupingInterval: 60000,      // ⚡ 1 req per min max — saves Vercel compute
+        revalidateOnFocus: false,
+        dedupingInterval: 60000,
         revalidateOnReconnect: true,
         revalidateIfStale: true
     });
@@ -79,18 +79,13 @@ export default function DashboardPage() {
             hijri: hijriDateFull.replace(/ AH$/, '').replace(/,/, '')
         });
 
-        // Listen for cross-page invalidation signal (e.g. from Ledger saves)
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === 'dadwork_customers_stale') {
-                if (document.visibilityState === 'visible') {
-                    mutateDashboard(undefined, { revalidate: true });
-                }
+            if (e.key === 'dadwork_customers_stale' && document.visibilityState === 'visible') {
+                mutateDashboard(undefined, { revalidate: true });
             }
         };
 
-        const handleCustom = () => {
-            mutateDashboard(undefined, { revalidate: true });
-        };
+        const handleCustom = () => mutateDashboard(undefined, { revalidate: true });
 
         const handleFocus = () => {
             const staleSignal = localStorage.getItem('dadwork_customers_stale');
@@ -113,59 +108,60 @@ export default function DashboardPage() {
         };
     }, [mutateDashboard]);
 
-    // Only show the full-page spinner on the very first load (no cached data yet)
+    // ── PREMIUM SKELETON LOADER ──
     if (isLoading && !data) {
         return (
-            <div className="flex items-center justify-center h-[60vh]">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="relative">
-                        <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                        <div className="relative p-4 rounded-full bg-primary/10">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground font-medium">Loading dashboard...</p>
+            <div className="space-y-5 md:space-y-6 max-w-3xl mx-auto w-full px-1 md:px-0">
+                <div className="h-10 md:h-11 rounded-full bg-card border border-border/50 animate-pulse shadow-sm" />
+                <div className="h-[120px] rounded-2xl bg-card border border-border/50 animate-pulse shadow-sm" />
+                <div className="grid grid-cols-2 gap-3 md:gap-4">
+                    <div className="h-[140px] rounded-2xl bg-card border border-border/50 animate-pulse shadow-sm" />
+                    <div className="h-[140px] rounded-2xl bg-card border border-border/50 animate-pulse shadow-sm" />
                 </div>
+                <div className="h-[100px] rounded-2xl bg-card border border-border/50 animate-pulse shadow-sm" />
             </div>
         );
     }
 
-    // Derived lists (kept minimal since Customers List moved to reports)
     const totalCombinedDebt = (data?.totalDebt || 0) + (data?.totalReesto || 0);
 
     return (
-        <div className="space-y-5 md:space-y-6 max-w-3xl mx-auto w-full px-1 md:px-0">
+        <div className="space-y-5 md:space-y-6 max-w-3xl mx-auto w-full px-1 md:px-0 pb-10">
             <GlobalSearch />
             
             {/* Header / Cover */}
-            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm mb-2">
+            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border/60 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm hover:shadow-md transition-shadow duration-500 mb-2 group">
                 <AnimatedBackground />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 
                 <div className="relative z-10 flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">
-                            <Activity className="w-6 h-6" />
+                        <div className="p-2.5 rounded-xl bg-primary text-primary-foreground shadow-sm">
+                            <Activity className="w-5 h-5 md:w-6 md:h-6" />
                         </div>
-                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Dashboard</h2>
+                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Overview</h2>
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1">
-                        Business overview at a glance. Track customers, payments, debts, and daily operational volume.
+                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1 leading-relaxed">
+                        Business intelligence at a glance. Track operational volume and financial health.
                     </p>
                 </div>
             </div>
 
             {/* Stats Grid - Premium Cards */}
-            <div className="grid grid-cols-2 gap-2 md:gap-4">
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
                 {/* Total Customers */}
-                <Card className="glass-card overflow-hidden group flex flex-col justify-center">
-                    <CardContent className="p-3 md:p-4 flex flex-col items-center text-center justify-center h-full">
-                        <div className="p-1.5 md:p-2 rounded-xl bg-blue-500/10 group-hover:bg-blue-500/15 transition-colors mb-3">
-                            <Users className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
+                <Card className="bg-card border-border/60 overflow-hidden group flex flex-col justify-center shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300 hover:-translate-y-0.5">
+                    <CardContent className="p-4 md:p-5 flex flex-col items-center text-center justify-center h-full relative">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity duration-300 pointer-events-none">
+                            <Users className="w-24 h-24 text-primary" />
                         </div>
-                        <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
-                            Total Customers
+                        <div className="p-2 md:p-2.5 rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300 mb-3 z-10">
+                            <Users className="h-5 w-5" />
+                        </div>
+                        <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1 z-10">
+                            Active Customers
                         </p>
-                        <p className="text-2xl md:text-3xl font-black text-foreground tabular-nums">
+                        <p className="text-3xl md:text-4xl font-black text-foreground tabular-nums tracking-tight z-10">
                             {data?.totalCustomers || 0}
                         </p>
                     </CardContent>
@@ -173,60 +169,59 @@ export default function DashboardPage() {
 
                 {/* Deynta Guud Toggle Card */}
                 <Card 
-                    className="glass-card overflow-hidden cursor-pointer group hover:border-primary/50 transition-all shadow-sm group-hover:shadow-md group-hover:shadow-primary/10"
+                    className="bg-card border-border/60 overflow-hidden cursor-pointer group shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-300 hover:-translate-y-0.5"
                     onClick={() => setIsExpanded(!isExpanded)}
                 >
-                    <CardContent className="p-3 md:p-4 flex flex-col h-full">
-                        <div className="flex justify-between items-center mb-3">
+                    <CardContent className="p-4 md:p-5 flex flex-col h-full relative">
+                        <div className="flex justify-between items-center mb-3 relative z-10">
                             <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                Deynta Guud
+                                Total Receivables
                             </p>
                             <Link 
                                 href="/reports?tab=debtors" 
                                 onClick={(e) => e.stopPropagation()} 
-                                className="p-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1 group/link"
+                                className="p-1.5 rounded-xl bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground transition-colors duration-300 flex items-center gap-1 shadow-sm"
                             >
-                                <span className="text-[9px] font-bold uppercase tracking-widest hidden sm:inline opacity-80 group-hover/link:opacity-100">Reports</span>
-                                <ChevronRight className="h-3 w-3" />
+                                <ChevronRight className="h-3 w-3 md:h-4 md:w-4" />
                             </Link>
                         </div>
                         
-                        <div className="flex-1 flex flex-col justify-center text-center">
-                            <p className="text-2xl md:text-3xl font-black text-foreground tabular-nums flex items-baseline justify-center gap-1">
-                                <span className="text-lg md:text-xl text-muted-foreground font-bold">$</span>
+                        <div className="flex-1 flex flex-col justify-center text-center relative z-10">
+                            <p className="text-3xl md:text-4xl font-black text-foreground tabular-nums flex items-baseline justify-center gap-1 tracking-tight">
+                                <span className="text-xl md:text-2xl text-muted-foreground/60 font-medium">$</span>
                                 {totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                             </p>
                         </div>
 
                         {/* Expandable Split Details */}
-                        <div className={`grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-border/50 transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 border-transparent m-0 p-0'}`}>
-                            <div className="flex flex-col items-center border-r border-border/50">
-                                <div className="flex items-center gap-1 mb-1 text-red-500">
-                                    <TrendingUp className="h-3 w-3" />
-                                    <p className="text-[9px] font-bold uppercase tracking-widest">Lacagta Guud</p>
+                        <div className={`grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-border/50 transition-all duration-300 overflow-hidden relative z-10 ${isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 border-transparent m-0 p-0'}`}>
+                            <div className="flex flex-col items-center border-r border-border/50 px-2">
+                                <div className="flex items-center gap-1.5 mb-1.5 text-destructive">
+                                    <TrendingUp className="h-3.5 w-3.5" />
+                                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-80">Ledger</p>
                                 </div>
-                                <p className="text-base font-black text-red-500 tabular-nums">
+                                <p className="text-sm md:text-base font-black text-destructive tabular-nums tracking-tight">
                                     ${(data?.totalDebt || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
-                            <div className="flex flex-col items-center">
-                                <div className="flex items-center gap-1 mb-1 text-emerald-500">
-                                    <DollarSign className="h-3 w-3" />
-                                    <p className="text-[9px] font-bold uppercase tracking-widest">Reesto</p>
+                            <div className="flex flex-col items-center px-2">
+                                <div className="flex items-center gap-1.5 mb-1.5 text-emerald-500">
+                                    <DollarSign className="h-3.5 w-3.5" />
+                                    <p className="text-[9px] font-bold uppercase tracking-widest opacity-80">Reesto</p>
                                 </div>
-                                <p className="text-base font-black text-emerald-500 tabular-nums">
+                                <p className="text-sm md:text-base font-black text-emerald-500 tabular-nums tracking-tight">
                                     ${(data?.totalReesto || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
                         </div>
 
                         {!isExpanded && (
-                            <div className="text-center mt-1 text-muted-foreground/30 group-hover:text-primary transition-colors">
+                            <div className="text-center mt-2 text-muted-foreground/30 group-hover:text-primary transition-colors z-10">
                                 <ChevronDown className="h-4 w-4 mx-auto" />
                             </div>
                         )}
                         {isExpanded && (
-                            <div className="text-center mt-2 text-muted-foreground/30 group-hover:text-primary transition-colors">
+                            <div className="text-center mt-3 text-muted-foreground/30 group-hover:text-primary transition-colors z-10">
                                 <ChevronUp className="h-4 w-4 mx-auto" />
                             </div>
                         )}
@@ -234,51 +229,42 @@ export default function DashboardPage() {
                 </Card>
             </div>
 
-            {/* Today's Summary - Gradient Card */}
-            <Card className="glass-card overflow-hidden border-primary/20">
+            {/* Today's Summary - Premium Banner */}
+            <Card className="bg-card border-border/60 overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 group">
                 <CardContent className="p-0">
-                    <div className="p-4 md:p-5 bg-gradient-to-br from-primary/5 via-transparent to-blue-500/5">
+                    <div className="p-5 md:p-6 bg-gradient-to-r from-primary/5 via-transparent to-transparent">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-primary/10">
-                                    <Zap className="h-5 w-5 text-primary" />
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 rounded-2xl bg-primary text-primary-foreground shadow-sm group-hover:scale-105 transition-transform duration-300">
+                                    <Package className="h-5 w-5 md:h-6 md:w-6" />
                                 </div>
                                 <div>
-                                    <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                        Today&apos;s KG
+                                    <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                                        Today's Volume
                                     </p>
-                                    <div className="relative w-[130px] h-[36px] overflow-hidden mt-0.5">
-                                        <div className="animate-kinetic flex items-center w-max">
-                                            <p className="text-2xl md:text-3xl font-black text-primary tabular-nums animate-lightning">
-                                                ⚡ {Math.round(data?.todayKg || 0)} <span className="text-sm font-bold text-primary/60">KG</span>
-                                            </p>
-                                        </div>
+                                    <div className="flex items-baseline gap-1.5">
+                                        <p className="text-3xl md:text-4xl font-black text-foreground tabular-nums tracking-tight">
+                                            {Math.round(data?.todayKg || 0)}
+                                        </p>
+                                        <span className="text-sm font-bold text-muted-foreground uppercase">KG</span>
                                     </div>
                                 </div>
                             </div>
                             <div className="text-right">
-                                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-0.5">Active</p>
-                                <div className="relative w-[80px] h-[28px] overflow-hidden ml-auto">
-                                    <div className="animate-kinetic flex items-center w-max" style={{ animationDelay: '-1.5s' }}>
-                                        <p className="text-lg font-black text-foreground animate-lightning">
-                                            ⚡ {data?.todayCustomerCount || 0}
-                                        </p>
-                                    </div>
+                                <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
+                                    Active Now
+                                </p>
+                                <div className="flex items-baseline justify-end gap-1.5">
+                                    <p className="text-xl md:text-2xl font-black text-foreground tabular-nums tracking-tight">
+                                        {data?.todayCustomerCount || 0}
+                                    </p>
+                                    <span className="text-xs font-semibold text-muted-foreground/60 hidden sm:inline">served</span>
                                 </div>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">customers</p>
                             </div>
                         </div>
                     </div>
                 </CardContent>
             </Card>
-
-            {/* Admin Egress Monitor (System Link) */}
-            <div className="flex justify-center mt-6 mb-8">
-                <Link href="/api/egress-stats" target="_blank" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors bg-secondary/30 px-3 py-1.5 rounded-full border border-border/50">
-                    <Activity className="h-3 w-3" />
-                    <span>View Live Egress Monitor</span>
-                </Link>
-            </div>
         </div>
     );
 }
