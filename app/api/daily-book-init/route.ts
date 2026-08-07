@@ -9,9 +9,8 @@ const getDailyBookInit = unstable_cache(
     async () => {
         // Fetch customers sorted by their numeric customer_code (so #1 comes before #2, etc.)
         const { rows: customers } = await pool.query(`
-          SELECT id, name, customer_code, is_kabarka, is_unassignable
+          SELECT id, name, customer_code, is_kabarka, is_unassignable, created_at, deleted_at
           FROM "Customer"
-          WHERE deleted_at IS NULL
           ORDER BY 
             CASE WHEN customer_code ~ '^[0-9]+$' THEN customer_code::int ELSE 9999 END ASC,
             name ASC
