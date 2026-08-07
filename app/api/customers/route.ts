@@ -586,8 +586,8 @@ export const POST = trackApiRoute('/api/customers', async (request: Request) => 
 
         // 2. Create the Customer record
         const { rows: inserted } = await pool.query(
-            `INSERT INTO "Customer" (id, name, customer_code, gender, phone, created_at, updated_at)
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
+            `INSERT INTO "Customer" (id, name, customer_code, gender, phone, created_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
              RETURNING *`,
             [name, customer_code, gender || null, phone || null]
         );

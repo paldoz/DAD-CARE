@@ -31,7 +31,8 @@ export async function GET(request: Request) {
 
             // Fetch pending approvals
             const { rows } = await client.query(`
-                SELECT * FROM "PendingApprovals"
+                SELECT id, username, action_type, customer_id, ledger_id, payload, status, created_at 
+                FROM "PendingApprovals"
                 WHERE status = 'PENDING'
                 ORDER BY created_at DESC
                 LIMIT 50

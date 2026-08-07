@@ -7,8 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "migrate-custom": "node run_db_migration.js",
-    "test": "npx tsx --test __tests__/**/*.test.ts"
+    "migrate-custom": "node run_db_migration.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

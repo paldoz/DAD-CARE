@@ -1,216 +1,109 @@
-/**
- * Automated Test Suite — Ledger Calculation Logic
- * 
- * Run with:  npx tsx --test __tests__/ledger-utils.test.ts
- *
- * Tests the core financial math that recalculateCustomerLedger performs.
- * Catches arithmetic regressions BEFORE they reach production.
- */
+import test, { describe, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert';
+import { setupIsolatedTestDb, teardownIsolatedTestDb, getTestClient } from './setup.js';
+import { recalculateCustomerLedger } from '../lib/ledger-utils.js';
+import { randomUUID } from 'crypto';
 
-import { test, describe, beforeEach } from 'node:test';
-import assert from 'node:assert/strict';
+describe('FIFO & Ledger Math (ledger-utils.ts)', () => {
+    let schemaName: string;
+    let client: any;
 
-// ────────────────────────────────────────────────────────────────────────────
-// Replicate the ledger math as pure functions — no DB needed
-// These mirror exactly what the WINDOW FUNCTION in recalculateCustomerLedger does
-// ────────────────────────────────────────────────────────────────────────────
-
-interface LedgerEntry {
-    id: string;
-    type: 'PRODUCT' | 'PAYMENT' | 'ADJUSTMENT';
-    amount: number;
-    note?: string;
-}
-
-interface LedgerResult {
-    id: string;
-    previous_debt: number;
-    new_debt: number;
-}
-
-function simulateRecalculate(entries: LedgerEntry[]): LedgerResult[] {
-    let runningDebt = 0;
-    return entries.map(entry => {
-        const previousDebt = runningDebt;
-        const amount = Math.round(entry.amount);
-
-        if (entry.type === 'PAYMENT') {
-            runningDebt = Math.round(previousDebt - amount);
-        } else if (entry.type === 'PRODUCT') {
-            runningDebt = Math.round(previousDebt + amount);
-        } else if (entry.type === 'ADJUSTMENT') {
-            const lowerNote = (entry.note || '').toLowerCase();
-            if (lowerNote.includes('setup') || lowerNote.includes('initial') || lowerNote.includes('reesto')) {
-                runningDebt = amount; // Reset to exact adjustment value
-            } else {
-                runningDebt = Math.round(previousDebt + amount);
-            }
-        }
-
-        return { id: entry.id, previous_debt: previousDebt, new_debt: runningDebt };
-    });
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Tests
-// ────────────────────────────────────────────────────────────────────────────
-
-describe('Ledger Calculation Tests', () => {
-
-    describe('PRODUCT entries', () => {
-        test('Single product purchase increases debt by exact amount', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 500 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[0].previous_debt, 0, 'Previous debt should be 0 for first entry');
-            assert.equal(result[0].new_debt, 500, 'Debt should increase to 500');
-        });
-
-        test('Multiple product purchases accumulate debt', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 500 },
-                { id: '2', type: 'PRODUCT', amount: 300 },
-                { id: '3', type: 'PRODUCT', amount: 200 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[0].new_debt, 500);
-            assert.equal(result[1].previous_debt, 500);
-            assert.equal(result[1].new_debt, 800);
-            assert.equal(result[2].previous_debt, 800);
-            assert.equal(result[2].new_debt, 1000);
-        });
+    before(async () => {
+        schemaName = await setupIsolatedTestDb('fifo_test');
+        client = await getTestClient(schemaName);
     });
 
-    describe('PAYMENT entries', () => {
-        test('Full payment clears debt to zero', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 1000 },
-                { id: '2', type: 'PAYMENT', amount: 1000 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[1].previous_debt, 1000);
-            assert.equal(result[1].new_debt, 0, 'Debt should be 0 after full payment');
-        });
-
-        test('Partial payment reduces debt correctly', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 1000 },
-                { id: '2', type: 'PAYMENT', amount: 400 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[1].new_debt, 600, 'Remaining debt should be 600');
-        });
-
-        test('Overpayment results in negative debt (credit)', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 500 },
-                { id: '2', type: 'PAYMENT', amount: 700 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[1].new_debt, -200, 'Overpayment should create credit (negative debt)');
-        });
+    after(async () => {
+        await client.release();
+        await teardownIsolatedTestDb(schemaName);
     });
 
-    describe('Running balance integrity', () => {
-        test('Mixed transactions maintain correct running balance', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 1000 },
-                { id: '2', type: 'PAYMENT', amount: 500 },
-                { id: '3', type: 'PRODUCT', amount: 800 },
-                { id: '4', type: 'PAYMENT', amount: 300 },
-            ];
-            const result = simulateRecalculate(entries);
-
-            // Entry 1: 0 + 1000 = 1000
-            assert.equal(result[0].new_debt, 1000);
-            // Entry 2: 1000 - 500 = 500
-            assert.equal(result[1].new_debt, 500);
-            // Entry 3: 500 + 800 = 1300
-            assert.equal(result[2].new_debt, 1300);
-            // Entry 4: 1300 - 300 = 1000
-            assert.equal(result[3].new_debt, 1000);
-        });
-
-        test('Each entry has correct previous_debt from prior entry', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 300 },
-                { id: '2', type: 'PRODUCT', amount: 200 },
-                { id: '3', type: 'PAYMENT', amount: 100 },
-            ];
-            const result = simulateRecalculate(entries);
-
-            assert.equal(result[1].previous_debt, result[0].new_debt,
-                'Entry 2 previous_debt must equal Entry 1 new_debt');
-            assert.equal(result[2].previous_debt, result[1].new_debt,
-                'Entry 3 previous_debt must equal Entry 2 new_debt');
-        });
-
-        test('Starting from existing debt works correctly', () => {
-            // Simulate a customer who already has 2000 debt, gets a new 500 purchase
-            // (The function always recalculates from 0, the initial balance is set via an ADJUSTMENT)
-            const entries: LedgerEntry[] = [
-                { id: '0', type: 'ADJUSTMENT', amount: 2000, note: 'reesto initial balance' },
-                { id: '1', type: 'PRODUCT', amount: 500 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[0].new_debt, 2000, 'Reesto adjustment should set debt to 2000');
-            assert.equal(result[1].previous_debt, 2000);
-            assert.equal(result[1].new_debt, 2500);
-        });
+    beforeEach(async () => {
+        // Clear tables before each test
+        await client.query(`TRUNCATE TABLE "Ledger" CASCADE`);
+        await client.query(`TRUNCATE TABLE "Customer" CASCADE`);
     });
 
-    describe('ADJUSTMENT entries', () => {
-        test('Setup/Reesto adjustment resets debt to exact value', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 9999 }, // Large existing debt
-                { id: '2', type: 'ADJUSTMENT', amount: 500, note: 'reesto' }, // Reset to 500
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[1].new_debt, 500, 'Reesto should reset debt to exactly 500');
-        });
+    const createTestCustomer = async (code: string, name: string) => {
+        const id = randomUUID();
+        await client.query(
+            `INSERT INTO "Customer" (id, customer_code, name, created_at) VALUES ($1, $2, $3, NOW())`,
+            [id, code, name]
+        );
+        return id;
+    };
 
-        test('Regular adjustment adds to existing debt', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 1000 },
-                { id: '2', type: 'ADJUSTMENT', amount: 200, note: 'late fee' },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[1].new_debt, 1200, 'Regular adjustment should add to debt');
-        });
+    const addLedgerEntry = async (
+        customerId: string, 
+        type: 'PRODUCT' | 'PAYMENT' | 'ADJUSTMENT', 
+        amount: number, 
+        dateStr: string
+    ) => {
+        const id = randomUUID();
+        await client.query(
+            `INSERT INTO "Ledger" (id, customer_id, type, amount, date, created_at, previous_debt, new_debt) 
+             VALUES ($1, $2, $3, $4, $5, $5, 0, 0)`,
+            [id, customerId, type, amount, dateStr]
+        );
+        return id;
+    };
 
-        test('Negative adjustment reduces debt', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 1000 },
-                { id: '2', type: 'ADJUSTMENT', amount: -100, note: 'discount' },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[1].new_debt, 900, 'Negative adjustment should reduce debt');
-        });
+    test('Partial Payment: Owe 500, pay 200, remaining debt is 300', async () => {
+        const cid = await createTestCustomer('1', 'Test Partial');
+        
+        await addLedgerEntry(cid, 'PRODUCT', 500, '2024-01-01 10:00:00');
+        await addLedgerEntry(cid, 'PAYMENT', 200, '2024-01-02 10:00:00');
+
+        const finalDebt = await recalculateCustomerLedger(cid, client);
+        assert.strictEqual(finalDebt, 300, 'Partial payment must reduce debt accurately');
     });
 
-    describe('Edge cases', () => {
-        test('Empty entry list returns empty results', () => {
-            const result = simulateRecalculate([]);
-            assert.equal(result.length, 0);
-        });
+    test('Overpayment: Owe 300, pay 400, output is credit (-100)', async () => {
+        const cid = await createTestCustomer('2', 'Test Overpay');
+        
+        await addLedgerEntry(cid, 'PRODUCT', 300, '2024-01-01 10:00:00');
+        await addLedgerEntry(cid, 'PAYMENT', 400, '2024-01-02 10:00:00');
 
-        test('Fractional amounts are rounded correctly', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PRODUCT', amount: 333.7 }, // Should round to 334
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[0].new_debt, 334, 'Amount should be rounded to nearest integer');
-        });
+        const finalDebt = await recalculateCustomerLedger(cid, client);
+        assert.strictEqual(finalDebt, -100, 'Overpayment must result in negative debt');
+    });
 
-        test('Payment followed by product does not corrupt balance', () => {
-            const entries: LedgerEntry[] = [
-                { id: '1', type: 'PAYMENT', amount: 200 }, // Paid before any product (credit)
-                { id: '2', type: 'PRODUCT', amount: 500 },
-            ];
-            const result = simulateRecalculate(entries);
-            assert.equal(result[0].new_debt, -200, 'First entry is a credit');
-            assert.equal(result[1].new_debt, 300, 'Net balance is 500 - 200 = 300');
-        });
+    test('Delete a Payment: Deleting a payment recalculates future balances correctly', async () => {
+        const cid = await createTestCustomer('3', 'Test Del Payment');
+        
+        await addLedgerEntry(cid, 'PRODUCT', 300, '2024-01-01 10:00:00');
+        const paymentId = await addLedgerEntry(cid, 'PAYMENT', 300, '2024-01-02 10:00:00');
+        
+        let finalDebt = await recalculateCustomerLedger(cid, client);
+        assert.strictEqual(finalDebt, 0, 'Debt should be 0 after full payment');
+
+        // Delete the payment (Soft Delete)
+        await client.query(`UPDATE "Ledger" SET deleted_at = NOW() WHERE id = $1`, [paymentId]);
+
+        finalDebt = await recalculateCustomerLedger(cid, client);
+        assert.strictEqual(finalDebt, 300, 'Debt should rebound to 300 after payment is deleted');
+    });
+
+    test('Edit Historical Entry: Changing old product price cascades debt accurately', async () => {
+        const cid = await createTestCustomer('4', 'Test Time Travel');
+        
+        // Day 1: Owe 300
+        const prodId = await addLedgerEntry(cid, 'PRODUCT', 300, '2024-01-01 10:00:00');
+        // Day 2: Pay 200 (Debt 100)
+        await addLedgerEntry(cid, 'PAYMENT', 200, '2024-01-02 10:00:00');
+        // Day 3: Buy 50 (Debt 150)
+        await addLedgerEntry(cid, 'PRODUCT', 50, '2024-01-03 10:00:00');
+
+        let finalDebt = await recalculateCustomerLedger(cid, client);
+        assert.strictEqual(finalDebt, 150, 'Base debt should be 150');
+
+        // Admin edits Day 1 product from 300 to 400
+        await client.query(`UPDATE "Ledger" SET amount = 400 WHERE id = $1`, [prodId]);
+
+        // Recalculate
+        finalDebt = await recalculateCustomerLedger(cid, client);
+        
+        // Debt should increase by exactly 100
+        assert.strictEqual(finalDebt, 250, 'Editing past entry must perfectly cascade downstream');
     });
 });

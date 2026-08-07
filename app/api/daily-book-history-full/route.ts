@@ -24,7 +24,7 @@ const getCachedHistoryFull = unstable_cache(
                                 'customer_code', c.customer_code,
                                 'gender', c.gender
                             )
-                        )
+                        ) ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC
                     ) FILTER (WHERE dbi.id IS NOT NULL), 
                     '[]'::json
                 ) as items

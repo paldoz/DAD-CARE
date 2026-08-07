@@ -14,21 +14,31 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
             return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
         };
 
-        const [todayRes, maxDbRes, startRes, processedRes] = await Promise.all([
-            pool.query(`SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today`),
-            pool.query(`SELECT TO_CHAR(MAX(date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL`),
+        const [boundariesRes, processedRes] = await Promise.all([
             pool.query(`
-                SELECT TO_CHAR(MIN(date_val), 'YYYY-MM-DD') as min_date
-                FROM (
-                    SELECT db.date as date_val
-                    FROM "DailyBookItem" dbi
-                    JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-                    WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
-                    UNION ALL
-                    SELECT (reference_date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
-                    FROM "Ledger"
-                    WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL AND reference_date IS NOT NULL
-                ) as combined
+                WITH today_q AS (
+                    SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today
+                ),
+                max_db_q AS (
+                    SELECT TO_CHAR(MAX(date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL
+                ),
+                min_db_q AS (
+                    SELECT TO_CHAR(MIN(date_val), 'YYYY-MM-DD') as min_date
+                    FROM (
+                        SELECT db.date as date_val
+                        FROM "DailyBookItem" dbi
+                        JOIN "DailyBook" db ON dbi.daily_book_id = db.id
+                        WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
+                        UNION ALL
+                        SELECT (reference_date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
+                        FROM "Ledger"
+                        WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL AND reference_date IS NOT NULL
+                    ) as combined
+                )
+                SELECT 
+                    (SELECT today FROM today_q) as today,
+                    (SELECT max_date FROM max_db_q) as max_date,
+                    (SELECT min_date FROM min_db_q) as min_date
             `, [customerId]),
             pool.query(`
                 SELECT DISTINCT TO_CHAR((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date_str
@@ -40,12 +50,12 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
             `, [customerId])
         ]);
 
-        const todayStr = todayRes.rows[0]?.today as string;
+        const todayStr = boundariesRes.rows[0]?.today as string;
         const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
         const todayOffset = Math.floor((todayMs - epochMs) / 86400000);
         const activePairStart = Math.max(0, Math.floor((todayOffset - 2) / 2) * 2);
 
-        const maxDbDateStr = maxDbRes.rows[0]?.max_date as string | null;
+        const maxDbDateStr = boundariesRes.rows[0]?.max_date as string | null;
         let maxDbPairStart = -2;
         if (maxDbDateStr) {
             const maxDbMs = new Date(`${maxDbDateStr}T00:00:00Z`).getTime();
@@ -56,7 +66,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         const readyPairStartOffset = Math.max(0, activePairStart);
         const waitingPairStart = readyPairStartOffset + 2;
 
-        const minDateStr = startRes.rows[0]?.min_date as string | null;
+        const minDateStr = boundariesRes.rows[0]?.min_date as string | null;
         let startOffset = readyPairStartOffset; 
         if (minDateStr) {
             const minDateMs = new Date(`${minDateStr}T00:00:00Z`).getTime();
