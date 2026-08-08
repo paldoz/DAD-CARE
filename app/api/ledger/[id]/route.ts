@@ -108,7 +108,7 @@ export async function PATCH(
 
     const { id: ledgerId } = await params;
     const body = await request.json();
-    const { amount, kg, price_per_kg } = body;
+    const { amount, kg, price_per_kg, note } = body;
 
     if (!ledgerId) {
         return NextResponse.json({ error: 'Ledger ID required' }, { status: 400 });
@@ -163,15 +163,16 @@ export async function PATCH(
         const newKg = kg !== undefined ? parseFloat(kg) : ledger.kg;
         const newPrice = price_per_kg !== undefined ? parseFloat(price_per_kg) : ledger.price_per_kg;
         const newRefDate = body.reference_date || ledger.reference_date;
+        const newNote = note !== undefined ? note : ledger.note;
 
 
 
         // Update the ledger entry (Super Admin only)
         await client.query(
             `UPDATE "Ledger"
-             SET amount = $1, kg = $2, price_per_kg = $3, reference_date = $4, edit_count = edit_count + 1
-             WHERE id = $5`,
-            [newAmount, newKg, newPrice, newRefDate, ledgerId]
+             SET amount = $1, kg = $2, price_per_kg = $3, reference_date = $4, note = $5, edit_count = edit_count + 1
+             WHERE id = $6`,
+            [newAmount, newKg, newPrice, newRefDate, newNote, ledgerId]
         );
 
         // If it's a PRODUCT entry, attempt to update the DailyBookItem as well

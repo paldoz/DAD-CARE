@@ -158,7 +158,7 @@ export const GET = trackApiRoute('/api/maqal-per-user', async (request: NextRequ
         const data = await getMaqalData();
 
         const res = NextResponse.json(data);
-        res.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+        res.headers.set('Cache-Control', 'private, max-age=120, stale-while-revalidate=300');
         return res;
 
     } catch (error: any) {

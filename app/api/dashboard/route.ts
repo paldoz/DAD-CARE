@@ -91,7 +91,7 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         const data = await getCachedDashboardData(today);
 
         const response = NextResponse.json(data);
-        response.headers.set('Cache-Control', 's-maxage=10, stale-while-revalidate=10');
+        response.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
         return response;
 
     } catch (error: any) {

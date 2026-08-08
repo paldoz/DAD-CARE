@@ -83,8 +83,8 @@ export default function PaymentsPage() {
         revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
         dedupingInterval: 60000,      // ⚡ 1 req per min — was 10s (saves ~83% of calls)
         keepPreviousData: true,
-        revalidateIfStale: true,
-        revalidateOnReconnect: true,
+        revalidateIfStale: false,
+        revalidateOnReconnect: false,
     });
     const data = rawData || { payments: [], todayTotal: 0, totalAllTime: 0, count: 0 };
 

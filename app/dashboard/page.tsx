@@ -65,8 +65,8 @@ export default function DashboardPage() {
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
         revalidateOnFocus: false,     // ⚡ use event signal instead of focus-revalidation
         dedupingInterval: 60000,      // ⚡ 1 req per min max — saves Vercel compute
-        revalidateOnReconnect: true,
-        revalidateIfStale: true
+        revalidateOnReconnect: false,
+        revalidateIfStale: false
     });
 
     useEffect(() => {

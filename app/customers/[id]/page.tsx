@@ -189,6 +189,8 @@ export default function CustomerDetailPage() {
     const [editTxKg, setEditTxKg] = useState('');
     const [editTxPrice, setEditTxPrice] = useState('');
     const [editTxDate, setEditTxDate] = useState('');
+    const [editTxNote, setEditTxNote] = useState('');
+    const [isPaymentExpanded, setIsPaymentExpanded] = useState(false);
 
     // Add Late Payment State
     const [latePaymentMaqal, setLatePaymentMaqal] = useState<ReceiptGroup | null>(null);
@@ -253,6 +255,8 @@ export default function CustomerDetailPage() {
         setEditTxKg(tx.kg ? tx.kg.toString() : '');
         setEditTxPrice(tx.price_per_kg ? tx.price_per_kg.toString() : '');
         setEditTxDate(tx.reference_date ? new Date(tx.reference_date).toISOString().split('T')[0] : '');
+        setEditTxNote(tx.note || '');
+        setIsPaymentExpanded(false);
     };
 
     const handleEditTransaction = async () => {
@@ -266,7 +270,8 @@ export default function CustomerDetailPage() {
                     amount: editTxAmount ? parseFloat(editTxAmount) : undefined,
                     kg: editTxKg ? parseFloat(editTxKg) : undefined,
                     price_per_kg: editTxPrice ? parseFloat(editTxPrice) : undefined,
-                    reference_date: editTxDate || undefined
+                    reference_date: editTxDate || undefined,
+                    note: editTxNote // send the exact string (even if empty) to allow clearing the note
                 })
             });
             const data = await res.json();
@@ -713,56 +718,110 @@ export default function CustomerDetailPage() {
                             </div>
                         )}
                     </DialogHeader>
-                    <div className="grid gap-6 py-4">
-                        {transactionToEdit?.type === 'PRODUCT' && (
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2 opacity-60">
-                                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">KG <Lock className="w-2.5 h-2.5" /></Label>
-                                    <Input
-                                        type="number"
-                                        value={editTxKg}
-                                        disabled
-                                        className="h-12 font-bold bg-muted"
-                                    />
+                    <div className="grid gap-4 py-4">
+                        {transactionToEdit?.type === 'PRODUCT' ? (
+                            <>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2 opacity-60">
+                                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">KG <Lock className="w-2.5 h-2.5" /></Label>
+                                        <Input
+                                            type="number"
+                                            value={editTxKg}
+                                            disabled
+                                            className="h-12 font-bold bg-muted"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price/KG</Label>
+                                        <Input
+                                            type="number"
+                                            value={editTxPrice}
+                                            onChange={e => {
+                                                setEditTxPrice(e.target.value);
+                                                if (editTxKg && e.target.value) {
+                                                    setEditTxAmount((parseFloat(editTxKg) * parseFloat(e.target.value)).toString());
+                                                }
+                                            }}
+                                            className="h-12 font-bold"
+                                        />
+                                    </div>
                                 </div>
+                                <div className="grid grid-cols-2 gap-3 mt-2">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
+                                        <Input
+                                            type="number"
+                                            value={editTxAmount}
+                                            onChange={e => setEditTxAmount(e.target.value)}
+                                            className="h-10 font-bold text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Date (Opt)</Label>
+                                        <Input
+                                            type="date"
+                                            value={editTxDate}
+                                            onChange={e => setEditTxDate(e.target.value)}
+                                            className="h-10 font-bold text-[10px]"
+                                            disabled
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Price/KG</Label>
-                                    <Input
-                                        type="number"
-                                        value={editTxPrice}
-                                        onChange={e => {
-                                            setEditTxPrice(e.target.value);
-                                            if (editTxKg && e.target.value) {
-                                                setEditTxAmount((parseFloat(editTxKg) * parseFloat(e.target.value)).toString());
-                                            }
-                                        }}
-                                        className="h-12 font-bold"
-                                    />
+                                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Notebook</Label>
+                                    <div className="relative group/input">
+                                        <Info className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/70 group-focus-within/input:text-primary transition-colors" />
+                                        <Input
+                                            value={editTxNote}
+                                            onChange={e => setEditTxNote(e.target.value)}
+                                            placeholder="e.g. Cafis heyn / Ayuuto"
+                                            className="h-11 pl-10 text-sm font-bold bg-background shadow-inner"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="border border-border/60 rounded-xl overflow-hidden bg-muted/10">
+                                    <button 
+                                        type="button"
+                                        className="w-full flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors"
+                                        onClick={() => setIsPaymentExpanded(!isPaymentExpanded)}
+                                    >
+                                        <span className="text-xs font-black uppercase tracking-widest text-foreground flex items-center gap-2">
+                                            <span className="text-[14px]">💰</span> Payment {isPaymentExpanded ? '▾' : '▸'}
+                                        </span>
+                                        {!isPaymentExpanded && (
+                                            <span className="text-[10px] font-bold text-muted-foreground">${editTxAmount || '0'}</span>
+                                        )}
+                                    </button>
+                                    
+                                    {isPaymentExpanded && (
+                                        <div className="p-3.5 bg-background border-t border-border/50 grid grid-cols-2 gap-3 animate-in slide-in-from-top-2 duration-200">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={editTxAmount}
+                                                    onChange={e => setEditTxAmount(e.target.value)}
+                                                    className="h-10 font-bold text-sm"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Date</Label>
+                                                <Input
+                                                    type="date"
+                                                    value={editTxDate}
+                                                    onChange={e => setEditTxDate(e.target.value)}
+                                                    className="h-10 font-bold text-[10px]"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Amount ($)</Label>
-                                <Input
-                                    type="number"
-                                    value={editTxAmount}
-                                    onChange={e => setEditTxAmount(e.target.value)}
-                                    className="h-10 font-bold text-sm"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Date (Opt)</Label>
-                                <Input
-                                    type="date"
-                                    value={editTxDate}
-                                    onChange={e => setEditTxDate(e.target.value)}
-                                    className="h-10 font-bold text-[10px]"
-                                    disabled={transactionToEdit?.type === 'PRODUCT'}
-                                />
-                            </div>
-                        </div>
                     </div>
                     <DialogFooter>
                         <Button

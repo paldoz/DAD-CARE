@@ -293,8 +293,8 @@ export default function LedgerPage() {
         revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
         dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
         keepPreviousData: true,
-        revalidateIfStale: true,
-        revalidateOnReconnect: true
+        revalidateIfStale: false,
+        revalidateOnReconnect: false
     });
 
     const [currentUser, setCurrentUser] = useState<any>(null);
