@@ -405,7 +405,7 @@ export default function CustomerDetailPage() {
 
     const { data: rankData } = useSWR(`/api/customers/${customerId}/rank?v=4`, fetcher, {
         revalidateOnFocus: false,
-        dedupingInterval: 10000,
+        dedupingInterval: 60000,
     });
 
     // Sync SWR cache instantly to local state

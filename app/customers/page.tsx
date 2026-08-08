@@ -239,7 +239,7 @@ export default function CustomersPage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to toggle status');
             toast.success(`Successfully updated ${field === 'is_kabarka' ? 'Kabarka' : 'Assignment'} status!`);
-            setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
+            setTimeout(() => mutateCustomers(), 1500); // Wait 1.5s so spinner shows, then refresh data
         } catch (err: any) {
             toast.error(err.message);
         }
@@ -263,7 +263,7 @@ export default function CustomersPage() {
             toast.success('Customer reordered successfully!');
             setReorderOpenForId(null);
             setReorderTargetId('');
-            setTimeout(() => window.location.reload(), 1500); // Wait 1.5s so spinner shows, then reload
+            setTimeout(() => mutateCustomers(), 1500); // Wait 1.5s so spinner shows, then refresh data
         } catch (err: any) {
             toast.error(err.message);
             setIsReordering(false);

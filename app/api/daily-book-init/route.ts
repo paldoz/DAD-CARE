@@ -48,8 +48,8 @@ export const GET = trackApiRoute('/api/daily-book-init', async (request: Request
     try {
         const data = await getDailyBookInit();
         const response = NextResponse.json(data);
-        // Allow edge/browser to serve stale for up to 10 min while revalidating in bg.
-        // Customers list + latestDate change infrequently — this saves a DB hit on every page load.
+        // Reverting to max-age=0 because a browser cache (max-age > 0) intercepts SWR mutate() calls,
+        // causing the UI to fail to update instantly when a customer is reordered or toggled.
         response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return response;
     } catch (error: any) {
