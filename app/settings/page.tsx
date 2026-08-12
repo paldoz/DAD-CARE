@@ -1017,11 +1017,11 @@ export default function SettingsPage() {
             filteredTypeCustomers.forEach((c: any) => {
                 if (!c.basePrice && !c.isMultiple) {
                     // Use a dynamic filter to match ANY query parameters (like &startDate=...)
-                    mutate((key) => typeof key === 'string' && key.startsWith(`/api/ledger?customerId=${c.id}`));
-                    mutate((key) => typeof key === 'string' && key.startsWith(`/api/customer-daily-entries?customerId=${c.id}`));
+                    mutate((key) => typeof key === 'string' && key.startsWith(`/api/ledger?customerId=${c.customer_id}`));
+                    mutate((key) => typeof key === 'string' && key.startsWith(`/api/customer-daily-entries?customerId=${c.customer_id}`));
 
                     // SAFELY invalidate the local draft's dateEntries WITHOUT destroying paymentEntries
-                    if (draft && draft.selectedCustomerId === c.id) {
+                    if (draft && draft.selectedCustomerId === c.customer_id) {
                         draft.dateEntries = [];
                     }
                 }
