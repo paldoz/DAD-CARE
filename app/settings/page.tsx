@@ -1004,6 +1004,16 @@ export default function SettingsPage() {
             
             // Instantly update SWR cache to re-render without a page reload
             await mutate(`/api/daily-book?date=${newOverride.date}`);
+            
+            // Invalidate Maqalka data sources for affected customers!
+            mutate('/api/customers?mode=ledger');
+            filteredTypeCustomers.forEach((c: any) => {
+                if (!c.basePrice && !c.isMultiple) {
+                    mutate(`/api/ledger?customerId=${c.id}&limit=500`);
+                    mutate(`/api/ledger/daily-entries?customerId=${c.id}`);
+                }
+            });
+
             setTypePrice('');
             toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
         } catch (error: any) {
@@ -1050,6 +1060,12 @@ export default function SettingsPage() {
                 if (!res.ok) throw new Error('Failed to clear price');
                 
                 await mutate(`/api/daily-book?date=${newOverride.date}`);
+                
+                // Invalidate Maqalka data sources for the affected customer!
+                mutate('/api/customers?mode=ledger');
+                mutate(`/api/ledger?customerId=${customerId}&limit=500`);
+                mutate(`/api/ledger/daily-entries?customerId=${customerId}`);
+
                 toast.success('Price cleared successfully');
             } catch (error: any) {
                 toast.error(error.message || 'Error clearing price');

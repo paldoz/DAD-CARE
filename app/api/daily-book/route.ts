@@ -208,19 +208,64 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
 
                 const newKg = Number(dailyItem.kg) || 0;
 
-                // Compare rounded to 2 decimal places to avoid tiny float diffs
-                if (Math.abs((ledger.kg || 0) - newKg) > 0.001) {
+                let effectivePrice = parseFloat(ledger.price_per_kg);
+                // If price_per_kg is null or invalid, deduce it from amount / kg
+                if (isNaN(effectivePrice)) {
+                    const oldKg = parseFloat(ledger.kg) || 0;
+                    const oldAmt = parseFloat(ledger.amount) || 0;
+                    effectivePrice = oldKg > 0 ? (oldAmt / oldKg) : 0;
+                }
 
-                    let effectivePrice = parseFloat(ledger.price_per_kg);
-                    // If price_per_kg is null or invalid (like for a manual VIP entry), deduce it from amount / kg
-                    if (isNaN(effectivePrice)) {
-                        const oldKg = parseFloat(ledger.kg) || 0;
-                        const oldAmt = parseFloat(ledger.amount) || 0;
-                        effectivePrice = oldKg > 0 ? (oldAmt / oldKg) : 0;
+                let newAmount = Math.round(newKg * effectivePrice);
+
+                // --- NOTE PARSER SYNCHRONIZATION ---
+                if (dailyItem.note) {
+                    const noteText = dailyItem.note.trim();
+                    const results: { kg: number; price: number | null }[] = [];
+
+                    const fullPattern = /(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z\s]{0,20}?)\s+(\d+(?:\.\d+)?)/g;
+                    let match;
+                    while ((match = fullPattern.exec(noteText)) !== null) {
+                        const pkg = parseFloat(match[1]);
+                        const pprice = parseFloat(match[3]);
+                        if (pkg > 0 && pprice > 0) results.push({ kg: pkg, price: pprice });
                     }
 
-                    const newAmount = Math.round(newKg * effectivePrice);
+                    if (results.length === 0) {
+                        const simplePattern = /(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z]{1,20})/g;
+                        while ((match = simplePattern.exec(noteText)) !== null) {
+                            const pkg = parseFloat(match[1]);
+                            if (pkg > 0) results.push({ kg: pkg, price: null });
+                        }
+                    }
 
+                    if (results.length > 0) {
+                        const firstEntry = results[0];
+                        if (results.length > 1) {
+                            const secondEntry = results[1];
+                            const p1 = firstEntry.price !== null ? firstEntry.price : effectivePrice;
+                            const p2 = secondEntry.price !== null ? secondEntry.price : effectivePrice;
+                            newAmount = Math.round((firstEntry.kg * p1) + (secondEntry.kg * p2));
+                        } else {
+                            const p1 = firstEntry.price !== null ? firstEntry.price : effectivePrice;
+                            const mainKgNum = Math.max(0, newKg - firstEntry.kg);
+                            newAmount = Math.round((firstEntry.kg * p1) + (mainKgNum * effectivePrice));
+                        }
+                    } else {
+                        // Notebook Pricing Override fallback
+                        const priceMatch = noteText.match(/(?:^|\s)\$?(\d+(?:\.\d+)?)(?:\s|$)/);
+                        if (priceMatch) {
+                            newAmount = Math.round(newKg * parseFloat(priceMatch[1]));
+                        }
+                    }
+                }
+                // --- END NOTE PARSER SYNCHRONIZATION ---
+
+                const oldKg = parseFloat(ledger.kg) || 0;
+                const oldAmt = parseFloat(ledger.amount) || 0;
+
+                // UPDATE IF EITHER KG OR AMOUNT CHANGED!
+                if (Math.abs(oldKg - newKg) > 0.001 || Math.abs(oldAmt - newAmount) > 0.001) {
                     await client.query(
                         `UPDATE "Ledger" SET kg = $1, amount = $2 WHERE id = $3`,
                         [newKg, newAmount, ledger.id]
