@@ -1007,12 +1007,29 @@ export default function SettingsPage() {
             
             // Invalidate Maqalka data sources for affected customers!
             mutate('/api/customers?mode=ledger');
+
+            const draftRaw = localStorage.getItem('dadwork_ledger_draft');
+            let draft: any = null;
+            if (draftRaw) {
+                try { draft = JSON.parse(draftRaw); } catch (e) {}
+            }
+
             filteredTypeCustomers.forEach((c: any) => {
                 if (!c.basePrice && !c.isMultiple) {
-                    mutate(`/api/ledger?customerId=${c.id}&limit=500`);
-                    mutate(`/api/customer-daily-entries?customerId=${c.id}`);
+                    // Use a dynamic filter to match ANY query parameters (like &startDate=...)
+                    mutate((key) => typeof key === 'string' && key.startsWith(`/api/ledger?customerId=${c.id}`));
+                    mutate((key) => typeof key === 'string' && key.startsWith(`/api/customer-daily-entries?customerId=${c.id}`));
+
+                    // SAFELY invalidate the local draft's dateEntries WITHOUT destroying paymentEntries
+                    if (draft && draft.selectedCustomerId === c.id) {
+                        draft.dateEntries = [];
+                    }
                 }
             });
+
+            if (draft) {
+                localStorage.setItem('dadwork_ledger_draft', JSON.stringify(draft));
+            }
 
             setTypePrice('');
             toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
@@ -1063,8 +1080,20 @@ export default function SettingsPage() {
                 
                 // Invalidate Maqalka data sources for the affected customer!
                 mutate('/api/customers?mode=ledger');
-                mutate(`/api/ledger?customerId=${customerId}&limit=500`);
-                mutate(`/api/customer-daily-entries?customerId=${customerId}`);
+                mutate((key) => typeof key === 'string' && key.startsWith(`/api/ledger?customerId=${customerId}`));
+                mutate((key) => typeof key === 'string' && key.startsWith(`/api/customer-daily-entries?customerId=${customerId}`));
+
+                // SAFELY invalidate the local draft
+                const draftRaw = localStorage.getItem('dadwork_ledger_draft');
+                if (draftRaw) {
+                    try { 
+                        const draft = JSON.parse(draftRaw);
+                        if (draft && draft.selectedCustomerId === customerId) {
+                            draft.dateEntries = [];
+                            localStorage.setItem('dadwork_ledger_draft', JSON.stringify(draft));
+                        }
+                    } catch(e){}
+                }
 
                 toast.success('Price cleared successfully');
             } catch (error: any) {
