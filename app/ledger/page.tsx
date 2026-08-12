@@ -47,15 +47,11 @@ const dailyEntriesFetcher = async (url: string) => {
     }
     if (!res.ok) throw new Error('Fetch error');
     const data = await res.json();
-    let allUnprocessedDates = [];
-    try {
-        const headerDates = res.headers.get('x-all-unprocessed-dates');
-        if (headerDates) allUnprocessedDates = JSON.parse(headerDates);
-    } catch (e) {}
+    console.log('[DEBUG-TRACE] SWR API Response Data:', data);
     
     return {
         dailyData: data,
-        allUnprocessedDates,
+        allUnprocessedDates: JSON.parse(res.headers.get('x-all-unprocessed-dates') || '[]'),
         maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null
     };
 };
@@ -449,6 +445,7 @@ export default function LedgerPage() {
                     const parsed = JSON.parse(draft);
                     if (parsed.selectedCustomerId) setSelectedCustomerId(parsed.selectedCustomerId);
                     if (parsed.dateEntries && parsed.dateEntries.length > 0) {
+                        console.log('[DEBUG-TRACE] localStorage Restoring dateEntries:', parsed.dateEntries);
                         setDateEntries(parsed.dateEntries);
                         const expandedIds = new Set<string>();
                         parsed.dateEntries.forEach((entry: DateEntry) => {
@@ -551,7 +548,7 @@ export default function LedgerPage() {
                         });
                     }, 0);
                 }
-
+                console.log('[DEBUG-TRACE] setDateEntries from dailyEntriesRaw (API SWR Data):', newEntries);
                 return newEntries;
             });
         } finally {
@@ -746,17 +743,17 @@ export default function LedgerPage() {
         });
     };
 
-    const productGrandTotal = dateEntries.reduce((sum, p) => {
-        const kg = parseFloat(p.kg) || 0;
-        const price = parseFloat(p.pricePerKg) || 0;
-        const extraKg = parseFloat(p.extraKg || '') || 0;
-        const extraPrice = parseFloat(p.extraPricePerKg || '') || 0;
-        
-        let itemSum = 0;
-        if (kg > 0 && price > 0) itemSum += (kg * price);
-        if (extraKg > 0 && extraPrice > 0) itemSum += (extraKg * extraPrice);
-        return sum + itemSum;
-    }, 0);
+    const productGrandTotal = useMemo(() => {
+        const total = dateEntries.reduce((sum, p) => {
+            const kg = parseFloat(p.kg) || 0;
+            const price = parseFloat(p.pricePerKg) || 0;
+            const pExtra = parseFloat(p.extraKg || '0') * parseFloat(p.extraPricePerKg || '0');
+            const pMain = kg * price;
+            return sum + Math.round(pMain + pExtra);
+        }, 0);
+        console.log('[DEBUG-TRACE] Render productGrandTotal:', total, 'from dateEntries:', dateEntries);
+        return total;
+    }, [dateEntries]);
 
     const activePaymentAmount = paymentEntries.reduce((sum, pay) => {
         const lowerNote = (pay.note || '').toLowerCase();

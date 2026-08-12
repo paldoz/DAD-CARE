@@ -183,7 +183,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             }
         });
         
-        res.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=120');
+        res.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return res;
     } catch (error: any) {
         console.error('Fetch Customer Daily Entries Error:', error);
