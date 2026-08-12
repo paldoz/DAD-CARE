@@ -115,7 +115,7 @@ export default function SettingsPage() {
     
     const allowedDates = useMemo(() => {
         const pad = (n: number) => String(n).padStart(2, '0');
-        const toDateStr = (ms: number) => {
+        const formatToDateStr = (ms: number) => {
             const d = new Date(ms);
             return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
         };
@@ -129,35 +129,37 @@ export default function SettingsPage() {
             const prevDay2Ms = activeDay2Ms - 2 * 86400000;
 
             return [
-                toDateStr(activeDay2Ms), // New Day 2
-                toDateStr(activeDay1Ms), // New Day 1
-                toDateStr(prevDay2Ms),   // Old Day 2
-                toDateStr(prevDay1Ms),   // Old Day 1
+                formatToDateStr(activeDay2Ms), // New Day 2
+                formatToDateStr(activeDay1Ms), // New Day 1
+                formatToDateStr(prevDay2Ms),   // Old Day 2
+                formatToDateStr(prevDay1Ms),   // Old Day 1
             ];
         }
 
-        // Fallback
-        const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Mogadishu', year: 'numeric', month: '2-digit', day: '2-digit' });
-        const todayStr = formatter.format(new Date());
-        const maqalPairDates = JSON.parse(localStorage.getItem('dadwork_maqal_pair_dates') || '[]');
-        if (maqalPairDates && maqalPairDates.length >= 4) {
-            return maqalPairDates.map((d: string) => d.split('T')[0]);
+        let localMaqalPairDates: any[] = [];
+        if (typeof window !== 'undefined') {
+            try {
+                localMaqalPairDates = JSON.parse(localStorage.getItem('dadwork_maqal_pair_dates') || '[]');
+            } catch(e) {}
+        }
+        if (localMaqalPairDates && localMaqalPairDates.length >= 4) {
+            return localMaqalPairDates.map((d: string) => d.split('T')[0]);
         }
         
         // Fallback for strict alignment: 
         const today = new Date();
         const activePairOffset = Math.floor(today.getDate() / 2) * 2;
         const prevPairOffset = activePairOffset - 2;
-        const toDateStr = (ms: number) => new Date(ms).toISOString().split('T')[0];
+        const fallbackToDateStr = (ms: number) => new Date(ms).toISOString().split('T')[0];
         
         const epochMs = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
         return [
-            toDateStr(epochMs + (activePairOffset + 1) * 86400000),
-            toDateStr(epochMs + activePairOffset * 86400000),
-            toDateStr(epochMs + (prevPairOffset + 1) * 86400000),
-            toDateStr(epochMs + prevPairOffset * 86400000),
+            fallbackToDateStr(epochMs + (activePairOffset + 1) * 86400000),
+            fallbackToDateStr(epochMs + activePairOffset * 86400000),
+            fallbackToDateStr(epochMs + (prevPairOffset + 1) * 86400000),
+            fallbackToDateStr(epochMs + prevPairOffset * 86400000),
         ];
-    }, [maqalPairDates]);
+    }, [maqalPairDates.date1, maqalPairDates.date2]);
 
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
     const [newOverride, setNewOverride] = useState<{date: string, customerIds: string[], price: string}>({ date: allowedDates[0], customerIds: [], price: '' });
