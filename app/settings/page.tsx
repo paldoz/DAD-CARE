@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -918,48 +918,144 @@ export default function SettingsPage() {
             .filter((i: any) => i.note && i.note.toLowerCase().includes(typeFilter.toLowerCase()))
             .map((i: any) => {
                 const cust = allCustomers.find(c => c.id === i.customer_id);
-                let price = pricePerKg;
-                const match = i.note.match(/^(\d+)\s+([a-zA-Z]+)(?:\s+(\d+))?$/);
-                if (match && match[3]) price = match[3];
-                else if (dateSpecificPrices[newOverride.date]) price = dateSpecificPrices[newOverride.date];
+                let price: string | null = null;
+                let isMultiple = false;
                 
-                const manualOverride = dateSpecificOverrides[newOverride.date]?.[i.customer_id];
-                return { ...i, customer: cust, basePrice: price, manualOverride };
+                const parts = i.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+                const matchingParts = parts.filter((p: string) => p.toLowerCase().includes(typeFilter.toLowerCase()));
+                
+                if (matchingParts.length > 1) {
+                    isMultiple = true;
+                    const prices = matchingParts.map((p: string) => {
+                        const match = p.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                        return match && match[3] ? match[3] : null;
+                    }).filter(Boolean);
+                    if (prices.length > 0) {
+                        price = prices.join(' / ');
+                    }
+                } else if (matchingParts.length === 1) {
+                    const match = matchingParts[0].match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                    if (match && match[3]) {
+                        price = match[3];
+                    }
+                }
+                
+                return { ...i, customer: cust, basePrice: price, isMultiple };
             })
             .filter((i: any) => i.customer);
-    }, [typeFilter, dailyBookData, allCustomers, newOverride.date, dateSpecificOverrides, dateSpecificPrices, pricePerKg]);
+    }, [typeFilter, dailyBookData, allCustomers]);
 
-    const handleTypeApply = () => {
+    const handleTypeApply = async () => {
         const numericPrice = parseFloat(typePrice);
         if (isNaN(numericPrice) || numericPrice > 100 || numericPrice <= 0) {
             toast.error('Please enter a valid price (1-100)');
             return;
         }
 
-        const dateMap = { ...(dateSpecificOverrides[newOverride.date] || {}) };
+        if (!dailyBookData || !dailyBookData.items) return;
+
+        setDateActionLoading('type-apply');
+        
+        // Deep copy items to maintain their structure and kg safely
+        const newItems = JSON.parse(JSON.stringify(dailyBookData.items));
         let appliedCount = 0;
         
         filteredTypeCustomers.forEach((c: any) => {
-            // ONLY apply if they DO NOT already have a manual override!
-            if (!dateMap[c.customer_id]) {
-                dateMap[c.customer_id] = typePrice;
-                appliedCount++;
+            // ONLY apply if they DO NOT already have a manual price and are NOT multiple
+            if (!c.basePrice && !c.isMultiple) {
+                const itemToUpdate = newItems.find((i: any) => i.id === c.id);
+                if (itemToUpdate && itemToUpdate.note) {
+                    const parts = itemToUpdate.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+                    const updatedParts = parts.map((part: string) => {
+                        const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                        if (match) {
+                            const kg = match[1];
+                            const label = match[2];
+                            const price = match[3] || null;
+                            if (label.toLowerCase() === typeFilter?.toLowerCase() && !price) {
+                                return `${kg} ${label} ${typePrice}`; // Apply price
+                            }
+                        }
+                        return part;
+                    });
+                    itemToUpdate.note = updatedParts.join(', ');
+                    appliedCount++;
+                }
             }
         });
 
         if (appliedCount === 0) {
-            toast.info('No eligible customers to apply price to (all already overridden).');
+            toast.info('No eligible customers to apply price to (all already have prices).');
+            setDateActionLoading(null);
             return;
         }
 
-        const updated = { ...dateSpecificOverrides, [newOverride.date]: dateMap };
-        handleSaveDateOverrides(updated, 'type-apply');
-        setTypePrice('');
-        toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
+        try {
+            const res = await fetch('/api/daily-book', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: newOverride.date,
+                    items: newItems
+                })
+            });
+
+            if (!res.ok) throw new Error('Failed to save daily book');
+            
+            // Instantly update SWR cache to re-render without a page reload
+            await mutate(`/api/daily-book?date=${newOverride.date}`);
+            setTypePrice('');
+            toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
+        } catch (error: any) {
+            toast.error(error.message || 'Error updating daily book');
+        } finally {
+            setDateActionLoading(null);
+        }
     };
 
-    const handleTypeClear = (customerId: string) => {
-        handleRemoveOverride(newOverride.date, customerId);
+    const handleTypeClear = async (customerId: string) => {
+        if (!dailyBookData || !dailyBookData.items) return;
+        
+        setDateActionLoading(`clear-type-${customerId}`);
+        
+        const newItems = JSON.parse(JSON.stringify(dailyBookData.items));
+        const itemToUpdate = newItems.find((i: any) => i.customer_id === customerId);
+        
+        if (itemToUpdate && itemToUpdate.note) {
+            const parts = itemToUpdate.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+            const updatedParts = parts.map((part: string) => {
+                const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                if (match) {
+                    const kg = match[1];
+                    const label = match[2];
+                    const price = match[3] || null;
+                    if (label.toLowerCase() === typeFilter?.toLowerCase() && price) {
+                        return `${kg} ${label}`; // Strip the price
+                    }
+                }
+                return part;
+            });
+            itemToUpdate.note = updatedParts.join(', ');
+            
+            try {
+                const res = await fetch('/api/daily-book', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date: newOverride.date,
+                        items: newItems
+                    })
+                });
+
+                if (!res.ok) throw new Error('Failed to clear price');
+                
+                await mutate(`/api/daily-book?date=${newOverride.date}`);
+                toast.success('Price cleared successfully');
+            } catch (error: any) {
+                toast.error(error.message || 'Error clearing price');
+            }
+        }
+        setDateActionLoading(null);
     };
 
     // Backup/Export
@@ -1714,18 +1810,20 @@ export default function SettingsPage() {
                                                                 <div key={c.customer_id} className="flex items-center justify-between p-2 rounded-lg bg-background/60 border border-border/40 hover:border-blue-500/30 transition-colors">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-xs font-bold text-foreground">#{c.customer?.customer_code} {c.customer?.name}</span>
-                                                                        {c.manualOverride && (
-                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded">Manual</span>
+                                                                        {c.basePrice && (
+                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                                                                                {c.isMultiple ? 'Multiple' : 'Manual'}
+                                                                            </span>
                                                                         )}
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
                                                                         <span className={cn(
                                                                             "text-xs font-black",
-                                                                            c.manualOverride ? "text-amber-500" : "text-blue-500"
+                                                                            c.basePrice ? "text-amber-500" : "text-muted-foreground opacity-50"
                                                                         )}>
-                                                                            ${c.manualOverride || c.basePrice}
+                                                                            {c.basePrice ? (c.basePrice.includes('/') ? `$${c.basePrice}` : `$${c.basePrice}`) : 'empty'}
                                                                         </span>
-                                                                        {c.manualOverride && (
+                                                                        {c.basePrice && !c.isMultiple && (
                                                                             <Button
                                                                                 variant="ghost"
                                                                                 size="sm"
