@@ -297,6 +297,16 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
             
             // @ts-ignore
             revalidateTag('dashboard');
+
+            // Purge server cache for EVERY customer affected by this Daily Book save!
+            if (items && Array.isArray(items)) {
+                for (const item of items) {
+                    if (item.customer_id) {
+                        // @ts-ignore
+                        revalidateTag(`daily-entries-${item.customer_id}`);
+                    }
+                }
+            }
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }
