@@ -452,7 +452,21 @@ function DailyBookPageInner() {
             if (!res.ok) throw new Error(await res.text());
 
             toast.success('Customer removed.', { id: loadingToastId });
+            const deletedId = pendingDeleteCustomerId;
             setPendingDeleteCustomerId(null);
+            
+            // Optimistic update so it immediately disappears
+            setCustomers(prev => prev.filter(c => c.id !== deletedId));
+            mutateInit((currentData: any) => {
+                if (currentData && currentData.customers) {
+                    return {
+                        ...currentData,
+                        customers: currentData.customers.filter((c: any) => c.id !== deletedId)
+                    };
+                }
+                return currentData;
+            }, { revalidate: true });
+
             // Broadcast stale signal so the dashboard/customer page refreshes its counter
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
             window.dispatchEvent(new Event('dadwork_customers_stale')); // Trigger listeners on the SAME tab immediately
@@ -462,8 +476,8 @@ function DailyBookPageInner() {
             if (userStr) {
                 try {
                     const user = JSON.parse(userStr);
-                    if (user.assigned_customer_ids?.includes(pendingDeleteCustomerId)) {
-                        user.assigned_customer_ids = user.assigned_customer_ids.filter((id: string) => id !== pendingDeleteCustomerId);
+                    if (user.assigned_customer_ids?.includes(deletedId)) {
+                        user.assigned_customer_ids = user.assigned_customer_ids.filter((id: string) => id !== deletedId);
                         localStorage.setItem('currentUser', JSON.stringify(user));
                     }
                 } catch (e) { }
@@ -552,7 +566,7 @@ function DailyBookPageInner() {
         // 3. Historical Deletion Date Filter
         if (c.deleted_at) {
             const customerDeletedStr = format(parseISO(c.deleted_at), 'yyyy-MM-dd');
-            if (customerDeletedStr < bookDateStr) {
+            if (customerDeletedStr <= bookDateStr) {
                 return false;
             }
         }

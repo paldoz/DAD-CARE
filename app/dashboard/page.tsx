@@ -83,13 +83,13 @@ export default function DashboardPage() {
         const handleStorage = (e: StorageEvent) => {
             if (e.key === 'dadwork_customers_stale') {
                 if (document.visibilityState === 'visible') {
-                    mutateDashboard(undefined, { revalidate: true });
+                    mutateDashboard();
                 }
             }
         };
 
         const handleCustom = () => {
-            mutateDashboard(undefined, { revalidate: true });
+            mutateDashboard();
         };
 
         const handleFocus = () => {
@@ -97,7 +97,7 @@ export default function DashboardPage() {
             const lastCheck = sessionStorage.getItem('dashboard_last_check');
             if (staleSignal && staleSignal !== lastCheck) {
                 sessionStorage.setItem('dashboard_last_check', staleSignal);
-                mutateDashboard(undefined, { revalidate: true });
+                mutateDashboard();
             }
         };
 

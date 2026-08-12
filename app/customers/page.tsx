@@ -194,7 +194,7 @@ export default function CustomersPage() {
 
             toast.success('Customer restored & IDs updated!');
             // Step 3: Silently refresh the list — no screen freeze
-            mutateCustomers(undefined, { revalidate: true });
+            mutateCustomers((prev: any) => prev ? prev.filter((c: any) => c.id !== customerId) : [], { revalidate: true });
             
             // Instantly refresh priority trackers across the app
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
@@ -210,8 +210,8 @@ export default function CustomersPage() {
         if (!confirm(`⚠️ PERMANENTLY DELETE "${name}"? This will erase ALL their ledger entries, daily book history, and cannot be undone!`)) return;
         setManagingCustomerId(customerId);
         
-        // Optimistic UI Update is disabled when paginating to avoid complex state management
-        // mutateCustomers((prev: any) => prev ? prev.filter((c: any) => c.id !== customerId) : [], { revalidate: false });
+        // Optimistic UI Update so it immediately vanishes
+        mutateCustomers((prev: any) => prev ? prev.filter((c: any) => c.id !== customerId) : [], { revalidate: true });
 
         try {
             const res = await fetch(`/api/customers?id=${customerId}&permanent=true`, {
