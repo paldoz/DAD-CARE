@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import useSWR from 'swr';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -138,14 +139,18 @@ export default function SettingsPage() {
         // Fallback
         const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Mogadishu', year: 'numeric', month: '2-digit', day: '2-digit' });
         const todayStr = formatter.format(new Date());
-        const epochMs = new Date('2026-06-28T00:00:00Z').getTime();
-        const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
-        const diffDaysToday = Math.floor((todayMs - epochMs) / 86400000);
-
-        const currentPairOffset = Math.floor(diffDaysToday / 2) * 2;
-        const activePairOffset = Math.max(0, currentPairOffset - 2);
-        const prevPairOffset = Math.max(0, activePairOffset - 2);
-
+        const maqalPairDates = JSON.parse(localStorage.getItem('dadwork_maqal_pair_dates') || '[]');
+        if (maqalPairDates && maqalPairDates.length >= 4) {
+            return maqalPairDates.map((d: string) => d.split('T')[0]);
+        }
+        
+        // Fallback for strict alignment: 
+        const today = new Date();
+        const activePairOffset = Math.floor(today.getDate() / 2) * 2;
+        const prevPairOffset = activePairOffset - 2;
+        const toDateStr = (ms: number) => new Date(ms).toISOString().split('T')[0];
+        
+        const epochMs = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
         return [
             toDateStr(epochMs + (activePairOffset + 1) * 86400000),
             toDateStr(epochMs + activePairOffset * 86400000),
@@ -157,6 +162,15 @@ export default function SettingsPage() {
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
     const [newOverride, setNewOverride] = useState<{date: string, customerIds: string[], price: string}>({ date: allowedDates[0], customerIds: [], price: '' });
     const [expandedOverrideDates, setExpandedOverrideDates] = useState<string[]>([]);
+    
+    // Type Pricing feature state
+    const [typeFilter, setTypeFilter] = useState<'VIP' | 'Heshiish' | null>(null);
+    const [typePrice, setTypePrice] = useState<string>('');
+    const { data: dailyBookData, isValidating: isDailyBookLoading } = useSWR(
+        typeFilter && newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
+        (url) => fetch(url).then(res => res.json()),
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
+    );
     
     const toggleOverrideDate = (date: string) => {
         setExpandedOverrideDates(prev => prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]);
@@ -896,6 +910,56 @@ export default function SettingsPage() {
         handleSaveDateOverrides(updated, `delete-override-${date}-${customerId}`);
     };
 
+    const filteredTypeCustomers = useMemo(() => {
+        if (!typeFilter || !dailyBookData?.items) return [];
+        return dailyBookData.items
+            .filter((i: any) => i.note && i.note.toLowerCase().includes(typeFilter.toLowerCase()))
+            .map((i: any) => {
+                const cust = allCustomers.find(c => c.id === i.customer_id);
+                let price = pricePerKg;
+                const match = i.note.match(/^(\d+)\s+([a-zA-Z]+)(?:\s+(\d+))?$/);
+                if (match && match[3]) price = match[3];
+                else if (dateSpecificPrices[newOverride.date]) price = dateSpecificPrices[newOverride.date];
+                
+                const manualOverride = dateSpecificOverrides[newOverride.date]?.[i.customer_id];
+                return { ...i, customer: cust, basePrice: price, manualOverride };
+            })
+            .filter((i: any) => i.customer);
+    }, [typeFilter, dailyBookData, allCustomers, newOverride.date, dateSpecificOverrides, dateSpecificPrices, pricePerKg]);
+
+    const handleTypeApply = () => {
+        const numericPrice = parseFloat(typePrice);
+        if (isNaN(numericPrice) || numericPrice > 100 || numericPrice <= 0) {
+            toast.error('Please enter a valid price (1-100)');
+            return;
+        }
+
+        const dateMap = { ...(dateSpecificOverrides[newOverride.date] || {}) };
+        let appliedCount = 0;
+        
+        filteredTypeCustomers.forEach((c: any) => {
+            // ONLY apply if they DO NOT already have a manual override!
+            if (!dateMap[c.customer_id]) {
+                dateMap[c.customer_id] = typePrice;
+                appliedCount++;
+            }
+        });
+
+        if (appliedCount === 0) {
+            toast.info('No eligible customers to apply price to (all already overridden).');
+            return;
+        }
+
+        const updated = { ...dateSpecificOverrides, [newOverride.date]: dateMap };
+        handleSaveDateOverrides(updated, 'type-apply');
+        setTypePrice('');
+        toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
+    };
+
+    const handleTypeClear = (customerId: string) => {
+        handleRemoveOverride(newOverride.date, customerId);
+    };
+
     // Backup/Export
     const handleExportPDF = async () => {
         setLoading(true);
@@ -1536,43 +1600,58 @@ export default function SettingsPage() {
                                                     </optgroup>
                                                 </select>
 
-                                                <div className="relative w-full sm:w-1/2">
-                                                    <div 
-                                                        className="flex h-10 w-full items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs text-muted-foreground cursor-pointer"
-                                                        onClick={() => setIsCustomerSelectOpen(!isCustomerSelectOpen)}
-                                                    >
-                                                        {newOverride.customerIds.length === 0 
-                                                            ? 'Select Customers...' 
-                                                            : `${newOverride.customerIds.length} customer${newOverride.customerIds.length > 1 ? 's' : ''} selected`}
-                                                        <ChevronDown className="w-4 h-4 opacity-50" />
+                                                <div className="relative w-full sm:w-1/2 flex gap-1 items-center">
+                                                    <div className="relative flex-1">
+                                                        <div 
+                                                            className="flex h-10 w-full items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs text-muted-foreground cursor-pointer"
+                                                            onClick={() => setIsCustomerSelectOpen(!isCustomerSelectOpen)}
+                                                        >
+                                                            {newOverride.customerIds.length === 0 
+                                                                ? 'Select Customers...' 
+                                                                : `${newOverride.customerIds.length} customer${newOverride.customerIds.length > 1 ? 's' : ''} selected`}
+                                                            <ChevronDown className="w-4 h-4 opacity-50" />
+                                                        </div>
+                                                        
+                                                        {isCustomerSelectOpen && (
+                                                            <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border/50 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto p-2 space-y-1">
+                                                                {allCustomers
+                                                                    .filter(c => !c.is_inactive && !c.is_kabarka)
+                                                                    .map(c => (
+                                                                    <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            className="rounded border-border/50 text-purple-600 focus:ring-purple-500 w-4 h-4 bg-background/50"
+                                                                            checked={newOverride.customerIds.includes(c.id)}
+                                                                            onChange={(e) => {
+                                                                                if (e.target.checked) {
+                                                                                    setNewOverride({ ...newOverride, customerIds: [...newOverride.customerIds, c.id] });
+                                                                                } else {
+                                                                                    setNewOverride({ ...newOverride, customerIds: newOverride.customerIds.filter(id => id !== c.id) });
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                        <span className="text-xs font-medium text-foreground">#{c.customer_code} - {c.name}</span>
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     
-                                                    {isCustomerSelectOpen && (
-                                                        <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border/50 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto p-2 space-y-1">
-                                                            {allCustomers
-                                                                .filter(c => !c.is_inactive && !c.is_kabarka)
-                                                                .map(c => (
-                                                                <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
-                                                                    <input 
-                                                                        type="checkbox" 
-                                                                        className="rounded border-border/50 text-purple-600 focus:ring-purple-500 w-4 h-4 bg-background/50"
-                                                                        checked={newOverride.customerIds.includes(c.id)}
-                                                                        onChange={(e) => {
-                                                                            if (e.target.checked) {
-                                                                                setNewOverride({ ...newOverride, customerIds: [...newOverride.customerIds, c.id] });
-                                                                            } else {
-                                                                                setNewOverride({ ...newOverride, customerIds: newOverride.customerIds.filter(id => id !== c.id) });
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                    <span className="text-xs font-medium text-foreground">#{c.customer_code} - {c.name}</span>
-                                                                </label>
-                                                            ))}
+                                                    {/* Glassmorphism Type button */}
+                                                    <div className="relative group shrink-0">
+                                                        <div 
+                                                            className={cn(
+                                                                "flex h-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur-md px-3 text-xs font-semibold cursor-pointer transition-all select-none shadow-sm",
+                                                                typeFilter ? "text-blue-500 border-blue-500/30 bg-blue-500/10" : "text-foreground hover:bg-white/20"
+                                                            )}
+                                                            onClick={() => setTypeFilter(prev => prev === 'VIP' ? 'Heshiish' : prev === 'Heshiish' ? null : 'VIP')}
+                                                        >
+                                                            {typeFilter ? typeFilter : 'Type'}
                                                         </div>
-                                                    )}
+                                                    </div>
                                                 </div>
 
-                                                <div className="relative w-full sm:w-24">
+                                                <div className="relative w-full sm:w-24 shrink-0">
                                                     <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-xs">$</div>
                                                     <Input 
                                                         type="number" 
@@ -1590,6 +1669,78 @@ export default function SettingsPage() {
                                                     {dateActionLoading === 'add-override' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                                 </Button>
                                             </div>
+
+                                            {/* Type Filter Panel */}
+                                            {typeFilter && (
+                                                <div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 animate-in fade-in slide-in-from-top-2">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="text-xs font-bold text-blue-600">
+                                                                {typeFilter} Customers ({newOverride.date})
+                                                            </div>
+                                                            {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="relative w-20">
+                                                                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-xs">$</div>
+                                                                <Input 
+                                                                    type="number" 
+                                                                    value={typePrice} 
+                                                                    onChange={e => setTypePrice(e.target.value)}
+                                                                    placeholder="Price"
+                                                                    className="pl-6 h-8 w-full text-xs font-bold bg-background border-border/60 rounded-lg"
+                                                                />
+                                                            </div>
+                                                            <Button 
+                                                                size="sm"
+                                                                onClick={handleTypeApply}
+                                                                disabled={dateActionLoading !== null || !typePrice}
+                                                                className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                                            >
+                                                                Apply
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                                        {filteredTypeCustomers.length === 0 ? (
+                                                            <div className="text-center py-4 text-[10px] text-muted-foreground">
+                                                                {isDailyBookLoading ? 'Loading...' : `No customers with ${typeFilter} found on this date.`}
+                                                            </div>
+                                                        ) : (
+                                                            filteredTypeCustomers.map((c: any) => (
+                                                                <div key={c.customer_id} className="flex items-center justify-between p-2 rounded-lg bg-background/60 border border-border/40 hover:border-blue-500/30 transition-colors">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="text-xs font-bold text-foreground">#{c.customer?.customer_code} {c.customer?.name}</span>
+                                                                        {c.manualOverride && (
+                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded">Manual</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={cn(
+                                                                            "text-xs font-black",
+                                                                            c.manualOverride ? "text-amber-500" : "text-blue-500"
+                                                                        )}>
+                                                                            ${c.manualOverride || c.basePrice}
+                                                                        </span>
+                                                                        {c.manualOverride && (
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={() => handleTypeClear(c.customer_id)}
+                                                                                disabled={dateActionLoading !== null}
+                                                                                className="h-6 px-2 text-[10px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md"
+                                                                            >
+                                                                                Clear
+                                                                            </Button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {Object.entries(dateSpecificOverrides).filter(([date]) => allowedDates.includes(date)).length > 0 ? (
                                                 <div className="space-y-3">
