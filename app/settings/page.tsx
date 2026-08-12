@@ -1010,7 +1010,7 @@ export default function SettingsPage() {
             filteredTypeCustomers.forEach((c: any) => {
                 if (!c.basePrice && !c.isMultiple) {
                     mutate(`/api/ledger?customerId=${c.id}&limit=500`);
-                    mutate(`/api/ledger/daily-entries?customerId=${c.id}`);
+                    mutate(`/api/customer-daily-entries?customerId=${c.id}`);
                 }
             });
 
@@ -1064,7 +1064,7 @@ export default function SettingsPage() {
                 // Invalidate Maqalka data sources for the affected customer!
                 mutate('/api/customers?mode=ledger');
                 mutate(`/api/ledger?customerId=${customerId}&limit=500`);
-                mutate(`/api/ledger/daily-entries?customerId=${customerId}`);
+                mutate(`/api/customer-daily-entries?customerId=${customerId}`);
 
                 toast.success('Price cleared successfully');
             } catch (error: any) {
