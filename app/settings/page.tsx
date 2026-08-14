@@ -1,7 +1,5 @@
 'use client';
 
-import { AnimatedBackground } from '@/components/animated-background';
-
 import { useState, useEffect, useMemo, useRef } from 'react';
 import useSWR, { mutate } from 'swr';
 import { cn } from '@/lib/utils';

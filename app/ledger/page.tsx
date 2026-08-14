@@ -1,7 +1,5 @@
 'use client';
 
-import { AnimatedBackground } from '@/components/animated-background';
-
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { format, parseISO } from 'date-fns';
 import { groupTransactionsInfoReceipts, type Transaction } from '@/app/utils/ledgerHelpers';
