@@ -10,6 +10,7 @@ import {
     Activity,
     ChevronDown,
     ChevronUp,
+    ArrowRight,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -301,39 +302,32 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* ── Today's Activity Card ── */}
-            <div className="rounded-2xl border border-border bg-card overflow-hidden">
-                <div className="px-5 py-4 md:px-6 md:py-5 border-b border-border/60 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-primary" />
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-                            Today&apos;s Activity
-                        </span>
-                    </div>
+            {/* ── Recent Activity Card ── */}
+            <div className="rounded-2xl border border-border bg-card p-5 md:p-6 relative overflow-hidden group">
+                {/* Subtle gradient background effect on hover */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                
+                <h3 className="text-sm font-semibold text-foreground mb-4">Recent Activity</h3>
+                
+                <div className="space-y-1.5 mb-6">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Today</p>
+                    <p className="text-sm text-foreground flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        <span className="font-medium">{data?.todayCustomerCount || 0}</span> customers active
+                    </p>
+                    <p className="text-sm text-foreground flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                        <span className="font-medium">{Math.round(data?.todayKg || 0)}</span> KG processed
+                    </p>
                 </div>
-                <div className="px-5 py-4 md:px-6 md:py-5">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 md:gap-6">
-                        <div className="flex flex-col gap-0.5">
-                            <p className="text-2xl md:text-3xl font-bold text-foreground tabular-nums">
-                                {Math.round(data?.todayKg || 0)}
-                                <span className="text-sm font-semibold text-muted-foreground ml-1">KG</span>
-                            </p>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total KG</p>
-                        </div>
-                        <div className="flex flex-col gap-0.5">
-                            <p className="text-2xl md:text-3xl font-bold text-emerald-500 tabular-nums">
-                                {data?.todayCustomerCount || 0}
-                            </p>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Active Customers</p>
-                        </div>
-                        <div className="flex flex-col gap-0.5 col-span-2 sm:col-span-1">
-                            <p className="text-2xl md:text-3xl font-bold text-foreground tabular-nums flex items-baseline gap-0.5">
-                                <span className="text-sm font-semibold text-muted-foreground">$</span>
-                                {(data?.totalPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                            </p>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Collected</p>
-                        </div>
-                    </div>
+                
+                <div className="flex justify-end">
+                    <Link 
+                        href="/daily-book" 
+                        className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                    >
+                        View Daily Book <ArrowRight className="w-4 h-4" />
+                    </Link>
                 </div>
             </div>
 
