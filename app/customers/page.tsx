@@ -320,10 +320,10 @@ export default function CustomersPage() {
     return (
         <div className="space-y-4 max-w-2xl mx-auto px-1 md:px-0" suppressHydrationWarning>
             {/* Header */}
-            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4 mb-2">
+            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-3 md:gap-4 mb-2">
                 <AnimatedBackground />
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
-                <div className="relative z-10 flex-1 min-w-0">
+                <div className="relative z-10 flex-1 min-w-0 w-full">
                     <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
                         <Users className="w-5 h-5 text-primary shrink-0" />
                         Customers
@@ -345,8 +345,8 @@ export default function CustomersPage() {
                         )}
                     </div>
                 </div>
-                <div className="relative z-10 flex items-center gap-2 shrink-0">
-                    <div className="relative w-[180px]">
+                <div className="relative z-10 flex items-center gap-2 shrink-0 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-[180px]">
                         {isSearching
                             ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
                             : <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -355,7 +355,7 @@ export default function CustomersPage() {
                             placeholder="Search by name or ID..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-9 h-11 bg-background/50 backdrop-blur-sm border-border/60 focus:border-primary transition-colors w-full rounded-xl shrink"
+                            className="pl-9 h-11 bg-background/50 backdrop-blur-sm border-border/60 focus:border-primary transition-colors w-full rounded-xl"
                         />
                     </div>
                     <div className="shrink-0 flex items-center gap-2">

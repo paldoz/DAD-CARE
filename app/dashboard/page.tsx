@@ -201,71 +201,71 @@ export default function DashboardPage() {
             </div>
 
             {/* ── 3 Stat Cards ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+            <div className="grid grid-cols-3 gap-2 md:gap-4">
 
                 {/* Card 1 — Total Customers */}
-                <div className="stat-card rounded-2xl border border-border bg-card p-5 md:p-6 flex flex-col gap-3">
+                <div className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-6 flex flex-col gap-2 md:gap-3">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-muted-foreground line-clamp-1">
                             Total Customers
                         </span>
-                        <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10">
-                            <Users className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                        <div className="p-1 md:p-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 shrink-0">
+                            <Users className="h-3 w-3 md:h-3.5 md:w-3.5 text-blue-600 dark:text-blue-400" />
                         </div>
                     </div>
-                    <div>
-                        <p className="text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none">
+                    <div className="mt-auto">
+                        <p className="text-xl xs:text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none">
                             {data?.totalCustomers || 0}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1.5">Active accounts</p>
+                        <p className="text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-1.5 line-clamp-1">Active accounts</p>
                     </div>
                 </div>
 
                 {/* Card 2 — Deynta Guud */}
                 <div
-                    className="stat-card rounded-2xl border border-border bg-card p-5 md:p-6 flex flex-col gap-3 cursor-pointer hover:border-primary/30 transition-colors"
+                    className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-6 flex flex-col gap-2 md:gap-3 cursor-pointer hover:border-primary/30 transition-colors"
                     onClick={() => setIsExpanded(!isExpanded)}
                 >
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-muted-foreground line-clamp-1">
                             Deynta Guud
                         </span>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1 shrink-0">
                             <Link
                                 href="/reports?tab=debtors"
                                 onClick={(e) => e.stopPropagation()}
-                                className="p-1.5 rounded-lg bg-muted hover:bg-primary/10 transition-colors"
+                                className="p-1 md:p-1.5 rounded-lg bg-muted hover:bg-primary/10 transition-colors"
                             >
-                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+                                <ChevronRight className="h-3 w-3 md:h-3.5 md:w-3.5 text-muted-foreground hover:text-primary" />
                             </Link>
                         </div>
                     </div>
-                    <div>
-                        <p className="text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-1">
-                            <span className="text-lg text-muted-foreground font-semibold">$</span>
+                    <div className="mt-auto">
+                        <p className="text-xl xs:text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-0.5 md:gap-1">
+                            <span className="text-sm md:text-lg text-muted-foreground font-semibold">$</span>
                             {totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1.5">Total outstanding</p>
+                        <p className="text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-1.5 line-clamp-1">Total outstanding</p>
                     </div>
 
                     {/* Expandable breakdown */}
                     <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-24 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
-                        <div className="pt-3 border-t border-border grid grid-cols-2 gap-2">
+                        <div className="pt-2 md:pt-3 border-t border-border flex flex-col gap-1 md:gap-2">
                             <div>
-                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
-                                    <TrendingUp className="h-2.5 w-2.5 text-red-400" />
-                                    Lacagta Guud
+                                <p className="text-[8px] md:text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5 flex items-center gap-1">
+                                    <TrendingUp className="h-2 w-2 md:h-2.5 md:w-2.5 text-red-400" />
+                                    Lacagta
                                 </p>
-                                <p className="text-sm font-bold text-red-500 tabular-nums">
+                                <p className="text-[11px] md:text-sm font-bold text-red-500 tabular-nums">
                                     ${(data?.totalDebt || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
                             <div>
-                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
-                                    <DollarSign className="h-2.5 w-2.5 text-emerald-400" />
+                                <p className="text-[8px] md:text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5 flex items-center gap-1">
+                                    <DollarSign className="h-2 w-2 md:h-2.5 md:w-2.5 text-emerald-400" />
                                     Reesto
                                 </p>
-                                <p className="text-sm font-bold text-emerald-500 tabular-nums">
+                                <p className="text-[11px] md:text-sm font-bold text-emerald-500 tabular-nums">
                                     ${(data?.totalReesto || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
@@ -274,29 +274,29 @@ export default function DashboardPage() {
 
                     <div className="text-center mt-auto">
                         {isExpanded
-                            ? <ChevronUp className="h-3.5 w-3.5 mx-auto text-muted-foreground/40" />
-                            : <ChevronDown className="h-3.5 w-3.5 mx-auto text-muted-foreground/40" />
+                            ? <ChevronUp className="h-3 w-3 md:h-3.5 md:w-3.5 mx-auto text-muted-foreground/40" />
+                            : <ChevronDown className="h-3 w-3 md:h-3.5 md:w-3.5 mx-auto text-muted-foreground/40" />
                         }
                     </div>
                 </div>
 
                 {/* Card 3 — Today's KG */}
-                <div className="stat-card rounded-2xl border border-border bg-card p-5 md:p-6 flex flex-col gap-3">
+                <div className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-6 flex flex-col gap-2 md:gap-3">
                     <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-muted-foreground line-clamp-1">
                             Today&apos;s KG
                         </span>
-                        <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10">
-                            <Zap className="h-3.5 w-3.5 text-amber-500" />
+                        <div className="p-1 md:p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 shrink-0">
+                            <Zap className="h-3 w-3 md:h-3.5 md:w-3.5 text-amber-500" />
                         </div>
                     </div>
-                    <div>
-                        <p className="text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-1">
+                    <div className="mt-auto">
+                        <p className="text-xl xs:text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-0.5 md:gap-1">
                             {Math.round(data?.todayKg || 0)}
-                            <span className="text-base font-semibold text-muted-foreground ml-0.5">KG</span>
+                            <span className="text-[10px] md:text-base font-semibold text-muted-foreground ml-0.5">KG</span>
                         </p>
-                        <p className="text-xs text-muted-foreground mt-1.5">
-                            {data?.todayCustomerCount || 0} active customers
+                        <p className="text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-1.5 line-clamp-1">
+                            {data?.todayCustomerCount || 0} active
                         </p>
                     </div>
                 </div>
