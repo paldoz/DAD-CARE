@@ -1,7 +1,5 @@
 'use client';
 
-import { AnimatedBackground } from '@/components/animated-background';
-
 import Link from 'next/link';
 import { cn, getReliabilityTier } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';

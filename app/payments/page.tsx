@@ -1,7 +1,5 @@
 'use client';
 
-import { AnimatedBackground } from '@/components/animated-background';
-
 import { useState, useEffect, useMemo } from 'react';
 import { format, isToday, isThisMonth, isThisYear, isThisWeek } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

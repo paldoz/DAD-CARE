@@ -1,7 +1,5 @@
 'use client';
 
-import { AnimatedBackground } from '@/components/animated-background';
-
 import { useState, useEffect } from 'react';
 import { mutate as swrMutate } from 'swr';
 import { format, addDays, parseISO, isSameDay } from 'date-fns';
