@@ -343,6 +343,7 @@ export default function CustomersPage() {
                             </button>
                         )}
                     </div>
+                </div>
                 <div className="relative z-10 flex items-center gap-2 shrink-0">
                     <div className="relative w-[180px]">
                         {isSearching
