@@ -189,7 +189,7 @@ export default function DashboardPage() {
                         ))}
                     </h1>
                     {dates.standard && (
-                        <p className="text-xs text-muted-foreground mt-1 font-medium">
+                        <p className="hidden md:block text-xs text-muted-foreground mt-1 font-medium">
                             {dates.standard}
                             {dates.hijri && (
                                 <span className="ml-2 opacity-60">· {dates.hijri}</span>
