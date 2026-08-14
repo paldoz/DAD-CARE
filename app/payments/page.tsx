@@ -130,18 +130,13 @@ export default function PaymentsPage() {
         <div className="space-y-5 md:space-y-6 max-w-3xl mx-auto w-full px-1 md:px-0">
 
             {/* Header */}
-            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-                <AnimatedBackground />
-                <div className="relative z-10 flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">
-                            <Wallet className="w-6 h-6" />
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Lacagaha</h2>
-                    </div>
-                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1">
-                        Track and manage all customer payments securely.
-                    </p>
+            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+                <div className="relative z-10">
+                    <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                        <Wallet className="w-5 h-5 text-primary shrink-0" />
+                        Lacagaha
+                    </h1>
                 </div>
             </div>
 

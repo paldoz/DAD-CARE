@@ -20,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GlobalSearch } from '@/components/global-search';
-import { AnimatedBackground } from '@/components/animated-background';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
@@ -61,6 +60,9 @@ export default function DashboardPage() {
     const { theme, setTheme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
     const [dates, setDates] = useState({ standard: '', hijri: '' });
+    const [username, setUsername] = useState('');
+    const [greetingWords, setGreetingWords] = useState<string[]>([]);
+    const [visibleCount, setVisibleCount] = useState(0);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
         revalidateOnFocus: false,     // ⚡ use event signal instead of focus-revalidation
@@ -78,6 +80,31 @@ export default function DashboardPage() {
             standard: standardDate,
             hijri: hijriDateFull.replace(/ AH$/, '').replace(/,/, '')
         });
+
+        // Load username from localStorage
+        const storedUser = localStorage.getItem('currentUser');
+        let name = '';
+        if (storedUser) {
+            try {
+                const parsed = JSON.parse(storedUser);
+                name = parsed.username || parsed.name || '';
+            } catch (e) {}
+        }
+        setUsername(name);
+
+        // Build time-based greeting
+        const hour = todayDate.getHours();
+        let timeGreeting = 'Good evening';
+        if (hour >= 5 && hour < 12) timeGreeting = 'Good morning';
+        else if (hour >= 12 && hour < 17) timeGreeting = 'Good afternoon';
+        else if (hour >= 17 && hour < 22) timeGreeting = 'Good evening';
+        else timeGreeting = 'Good night';
+
+        // Build word array for animation
+        const words = name
+            ? [...timeGreeting.split(' '), name + ',', '👋']
+            : [...timeGreeting.split(' '), '👋'];
+        setGreetingWords(words);
 
         // Listen for cross-page invalidation signal (e.g. from Ledger saves)
         const handleStorage = (e: StorageEvent) => {
@@ -113,6 +140,19 @@ export default function DashboardPage() {
         };
     }, [mutateDashboard]);
 
+    // Word-by-word animation: reveal one word at a time
+    useEffect(() => {
+        if (greetingWords.length === 0) return;
+        setVisibleCount(0);
+        let i = 0;
+        const interval = setInterval(() => {
+            i++;
+            setVisibleCount(i);
+            if (i >= greetingWords.length) clearInterval(interval);
+        }, 90);
+        return () => clearInterval(interval);
+    }, [greetingWords]);
+
     // Only show the full-page spinner on the very first load (no cached data yet)
     if (isLoading && !data) {
         return (
@@ -137,21 +177,38 @@ export default function DashboardPage() {
         <div className="space-y-5 md:space-y-6 max-w-3xl mx-auto w-full px-1 md:px-0">
             <GlobalSearch />
             
-            {/* Header / Cover */}
-            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm mb-2">
-                <AnimatedBackground />
-                
-                <div className="relative z-10 flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">
-                            <Activity className="w-6 h-6" />
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Dashboard</h2>
-                    </div>
-                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1">
-                        Business overview at a glance. Track customers, payments, debts, and daily operational volume.
-                    </p>
-                </div>
+            {/* Compact Greeting Header */}
+            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+                <style>{`
+                    @keyframes wordFadeUp {
+                        from { opacity: 0; transform: translateY(6px); }
+                        to   { opacity: 1; transform: translateY(0); }
+                    }
+                    .greeting-word {
+                        display: inline-block;
+                        animation: wordFadeUp 0.22s ease forwards;
+                    }
+                `}</style>
+                <h1 className="text-2xl md:text-[28px] font-bold tracking-tight text-foreground leading-snug">
+                    {greetingWords.map((word, i) => (
+                        <span
+                            key={i}
+                            className="greeting-word"
+                            style={{
+                                opacity: i < visibleCount ? 1 : 0,
+                                marginRight: '0.28em'
+                            }}
+                        >
+                            {word}
+                        </span>
+                    ))}
+                    {/* Placeholder to prevent layout shift before animation runs */}
+                    {greetingWords.length === 0 && <span className="opacity-0">‎</span>}
+                </h1>
+                {dates.standard && (
+                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{dates.standard}</p>
+                )}
             </div>
 
             {/* Stats Grid - Premium Cards */}

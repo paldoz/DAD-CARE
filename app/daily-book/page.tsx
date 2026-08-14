@@ -639,40 +639,34 @@ function DailyBookPageInner() {
                 title="Remove Customer"
                 description={`⚠️ Move "${customers.find(c => c.id === pendingDeleteCustomerId)?.name || 'this customer'}" to Inactive? Their history is preserved and they can be recovered anytime from the Customers page.`}
             />
-            {/* Header / Cover */}
-            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-                <AnimatedBackground />
-
-                <div className="relative z-10">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">
-                            <BookOpen className="w-6 h-6" />
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Buuga Maalinlaha</h2>
-                    </div>
-                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1">
-                        Record and manage daily product entries, attendance, and notes for all customers in one centralized location.
-                    </p>
+            {/* Header */}
+            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+                <div className="relative z-10 flex-1 min-w-0">
+                    <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                        <BookOpen className="w-5 h-5 text-primary shrink-0" />
+                        Buuga Maalinlaha
+                    </h1>
                 </div>
 
-                <div className="relative z-10 flex gap-3 self-start md:self-center">
+                <div className="relative z-10 flex gap-2 shrink-0">
                     {isSuperAdmin && (
                         <Button
                             variant={viewMode === 'edit' ? 'default' : 'outline'}
                             onClick={() => setViewMode('edit')}
-                            className={`h-11 rounded-xl px-5 font-black uppercase tracking-wider text-xs transition-all ${viewMode === 'edit' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 hover:-translate-y-0.5' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
+                            className={`h-9 rounded-xl px-4 font-bold text-xs transition-all ${viewMode === 'edit' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
                         >
-                            <Plus className="w-4 h-4 mr-2 text-current opacity-80" />
+                            <Plus className="w-3.5 h-3.5 mr-1.5 text-current opacity-80" />
                             New Entry
                         </Button>
                     )}
                     <Button
                         variant={viewMode === 'details' ? 'default' : 'outline'}
                         onClick={() => setViewMode('details')}
-                        className={`h-11 rounded-xl px-5 font-black uppercase tracking-wider text-xs transition-all ${viewMode === 'details' ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90 hover:-translate-y-0.5' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
+                        className={`h-9 rounded-xl px-4 font-bold text-xs transition-all ${viewMode === 'details' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
                     >
-                        <FileText className="w-4 h-4 mr-2 text-current opacity-80" />
-                        History <span className="ml-1.5 opacity-70">({savedEntries.length || initData?.historyCount || 0})</span>
+                        <FileText className="w-3.5 h-3.5 mr-1.5 text-current opacity-80" />
+                        History <span className="ml-1 opacity-70">({savedEntries.length || initData?.historyCount || 0})</span>
                     </Button>
                 </div>
             </div>

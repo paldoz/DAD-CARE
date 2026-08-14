@@ -1073,22 +1073,13 @@ export default function LedgerPage() {
 
     return (
         <div className="space-y-8 pb-20">
-            {/* Header / Cover */}
-            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm mb-2">
-                <AnimatedBackground />
-
-                <div className="relative z-10 flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">
-                            <BookOpen className="w-6 h-6" />
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Buuga Maqalka</h2>
-                    </div>
-                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1 flex items-center gap-1.5">
-                        <Lock className="w-3.5 h-3.5 text-muted-foreground/70" />
-                        Manually record kilos and payments into master ledger.
-                    </p>
-                </div>
+            {/* Header */}
+            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden mb-2">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+                <h1 className="relative z-10 text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-primary shrink-0" />
+                    Buuga Maqalka
+                </h1>
             </div>
 
             <div className="max-w-3xl mx-auto">

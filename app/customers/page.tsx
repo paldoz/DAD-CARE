@@ -319,21 +319,18 @@ export default function CustomersPage() {
 
     return (
         <div className="space-y-4 max-w-2xl mx-auto px-1 md:px-0" suppressHydrationWarning>
-            {/* Header / Cover */}
-            <div className="relative p-6 md:p-8 rounded-2xl bg-card overflow-hidden border border-border flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm mb-6">
-                <AnimatedBackground />
-
-                <div className="relative z-10 flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                        <div className="p-2.5 rounded-xl bg-primary/20 text-primary shadow-inner">
-                            <Users className="w-6 h-6" />
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight uppercase">Customers</h2>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 ml-1 flex-wrap">
+            {/* Header */}
+            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4 mb-2">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+                <div className="relative z-10 flex-1 min-w-0">
+                    <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                        <Users className="w-5 h-5 text-primary shrink-0" />
+                        Customers
+                    </h1>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <button 
                             onClick={() => setActiveTab('active')}
-                            className={`text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full transition-colors ${activeTab === 'active' ? 'text-emerald-500 bg-emerald-500/20 ring-1 ring-emerald-500/50' : 'text-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20'}`}
+                            className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full transition-colors ${activeTab === 'active' ? 'text-emerald-500 bg-emerald-500/20 ring-1 ring-emerald-500/50' : 'text-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20'}`}
                         >
                             Active: {activeCustomers.length}
                         </button>
@@ -346,13 +343,8 @@ export default function CustomersPage() {
                             </button>
                         )}
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium max-w-md ml-1 mt-1">
-                        Manage all registered clients, review balances, and find individuals in your ledger instantly.
-                    </p>
-                </div>
-
-                <div className="relative z-10 flex flex-col sm:flex-row gap-3 self-stretch md:self-center md:flex-wrap lg:flex-nowrap justify-end items-stretch sm:items-center">
-                    <div className="relative flex-1 sm:max-w-[220px] w-full shrink">
+                <div className="relative z-10 flex items-center gap-2 shrink-0">
+                    <div className="relative w-[180px]">
                         {isSearching
                             ? <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary animate-spin" />
                             : <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
