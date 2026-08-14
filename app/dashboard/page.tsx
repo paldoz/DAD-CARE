@@ -14,6 +14,7 @@ import {
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GlobalSearch } from '@/components/global-search';
+import { AnimatedBackground } from '@/components/animated-background';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
@@ -51,7 +52,6 @@ export default function DashboardPage() {
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [username, setUsername] = useState('');
     const [greetingWords, setGreetingWords] = useState<string[]>([]);
-    const [visibleCount, setVisibleCount] = useState(0);
     const [reducedMotion, setReducedMotion] = useState(false);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -121,22 +121,6 @@ export default function DashboardPage() {
         };
     }, [mutateDashboard]);
 
-    // Word-by-word animation
-    useEffect(() => {
-        if (greetingWords.length === 0 || reducedMotion) {
-            setVisibleCount(greetingWords.length);
-            return;
-        }
-        setVisibleCount(0);
-        let i = 0;
-        const interval = setInterval(() => {
-            i++;
-            setVisibleCount(i);
-            if (i >= greetingWords.length) clearInterval(interval);
-        }, 100);
-        return () => clearInterval(interval);
-    }, [greetingWords, reducedMotion]);
-
     if (isLoading && !data) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
@@ -158,6 +142,7 @@ export default function DashboardPage() {
 
             {/* ── Greeting Hero Card ── */}
             <div className="dashboard-greeting-card relative overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 md:px-6 md:py-5">
+                <AnimatedBackground />
                 {/* Subtle diagonal stripe decoration */}
                 <div className="pointer-events-none absolute inset-0 greeting-stripes opacity-[0.025]" />
                 {/* Very soft blue glow top-right */}
@@ -174,33 +159,33 @@ export default function DashboardPage() {
                         );
                     }
                     @keyframes wordReveal {
-                        from { opacity: 0; transform: translateY(5px); }
-                        to   { opacity: 1; transform: translateY(0); }
+                        0% { opacity: 0; transform: translateY(8px); }
+                        100% { opacity: 1; transform: translateY(0); }
                     }
                     .greeting-word {
                         display: inline-block;
-                        animation: wordReveal 0.2s ease forwards;
+                        opacity: 0; /* starts hidden before animation runs */
+                        animation: wordReveal 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
                     }
                     @media (prefers-reduced-motion: reduce) {
-                        .greeting-word { animation: none; opacity: 1; }
+                        .greeting-word { animation: none !important; opacity: 1 !important; transform: none !important; }
                     }
                 `}</style>
 
                 <div className="relative z-10">
-                    <h1 className="text-xl md:text-2xl font-semibold text-foreground tracking-tight leading-snug">
+                    <h1 className="text-xl md:text-2xl font-semibold text-foreground tracking-tight leading-snug flex flex-wrap">
                         {greetingWords.map((word, i) => (
                             <span
                                 key={i}
                                 className="greeting-word"
                                 style={{
-                                    opacity: i < visibleCount ? 1 : 0,
+                                    animationDelay: `${i * 0.15}s`,
                                     marginRight: '0.3em',
                                 }}
                             >
                                 {word}
                             </span>
                         ))}
-                        {greetingWords.length === 0 && <span className="opacity-0">‎</span>}
                     </h1>
                     {dates.standard && (
                         <p className="text-xs text-muted-foreground mt-1 font-medium">
