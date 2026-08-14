@@ -1031,6 +1031,9 @@ export default function SettingsPage() {
                 localStorage.setItem('dadwork_ledger_draft', JSON.stringify(draft));
             }
 
+            // Signal other tabs/pages (like Ledger) to re-fetch immediately on focus
+            localStorage.setItem('dadwork_ledger_stale', Date.now().toString());
+
             setTypePrice('');
             toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
         } catch (error: any) {

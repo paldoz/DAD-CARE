@@ -464,14 +464,44 @@ export default function LedgerPage() {
         setIsRestored(true);
 
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === 'dadwork_customers_stale') {
+            if (e.key === 'dadwork_customers_stale' || e.key === 'dadwork_ledger_stale') {
                 mutateCustomers(undefined, { revalidate: true });
+                mutateDailyEntries();
+                mutateLedger();
             }
         };
+
+        const checkStale = () => {
+            const staleSignal = localStorage.getItem('dadwork_ledger_stale');
+            const lastCheck = sessionStorage.getItem('ledger_last_check');
+            if (staleSignal && staleSignal !== lastCheck) {
+                sessionStorage.setItem('ledger_last_check', staleSignal);
+                mutateCustomers(undefined, { revalidate: true });
+                mutateDailyEntries();
+                mutateLedger();
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                checkStale();
+            }
+        };
+
         window.addEventListener('storage', handleStorage);
-        return () => window.removeEventListener('storage', handleStorage);
+        window.addEventListener('focus', checkStale);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        // Initial check in case it mounted after signal
+        checkStale();
+
+        return () => {
+            window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('focus', checkStale);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
         // Customer fetching is now handled seamlessly by SWR!
-    }, []);
+    }, [mutateCustomers, mutateDailyEntries, mutateLedger]);
 
     // Ensure new customers without history don't get stuck in 'Read Last Maqal' mode
     useEffect(() => {
