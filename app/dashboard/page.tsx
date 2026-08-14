@@ -158,14 +158,15 @@ export default function DashboardPage() {
                             transparent 18px
                         );
                     }
-                    @keyframes wordReveal {
-                        0% { opacity: 0; transform: translateY(8px); }
-                        100% { opacity: 1; transform: translateY(0); }
+                    @keyframes wordRevealLoop {
+                        0%, 5% { opacity: 0; transform: translateY(8px); }
+                        15%, 80% { opacity: 1; transform: translateY(0); }
+                        90%, 100% { opacity: 0; transform: translateY(-4px); }
                     }
                     .greeting-word {
                         display: inline-block;
-                        opacity: 0; /* starts hidden before animation runs */
-                        animation: wordReveal 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+                        opacity: 0;
+                        animation: wordRevealLoop 8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
                     }
                     @media (prefers-reduced-motion: reduce) {
                         .greeting-word { animation: none !important; opacity: 1 !important; transform: none !important; }

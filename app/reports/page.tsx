@@ -1,5 +1,7 @@
 'use client';
 
+import { AnimatedBackground } from '@/components/animated-background';
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -201,6 +203,7 @@ export default function ReportsPage() {
         <div className="space-y-6 pb-20 max-w-4xl mx-auto w-full px-1 md:px-0">
             {/* Header */}
             <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4">
+                <AnimatedBackground />
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
                 <div className="relative z-10 flex-1 min-w-0">
                     <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">

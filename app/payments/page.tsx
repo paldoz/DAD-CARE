@@ -1,5 +1,7 @@
 'use client';
 
+import { AnimatedBackground } from '@/components/animated-background';
+
 import { useState, useEffect, useMemo } from 'react';
 import { format, isToday, isThisMonth, isThisYear, isThisWeek } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -131,6 +133,7 @@ export default function PaymentsPage() {
 
             {/* Header */}
             <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4">
+                <AnimatedBackground />
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
                 <div className="relative z-10">
                     <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
