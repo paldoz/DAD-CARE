@@ -62,7 +62,7 @@ export function GlobalSearch() {
                     }}
                     onFocus={() => { setIsOpen(true); setHasInteracted(true); }}
                     placeholder="Search by name, phone number, or ID..."
-                    className="pl-11 h-14 bg-white/40 dark:bg-black/40 backdrop-blur-2xl border-2 border-primary/20 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/20 text-base shadow-sm rounded-2xl transition-all"
+                    className="pl-11 h-12 bg-card border border-border hover:border-primary/40 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 text-sm shadow-sm rounded-2xl transition-all"
                 />
                 {loading && (
                     <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">

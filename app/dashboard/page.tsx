@@ -1,35 +1,25 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Users,
-    TrendingUp,
     DollarSign,
-    Package,
+    Zap,
     Loader2,
     ChevronRight,
-    ArrowDownWideNarrow,
-    ArrowUpNarrowWide,
+    TrendingUp,
+    Activity,
     ChevronDown,
     ChevronUp,
-    Activity,
-    Zap
 } from 'lucide-react';
-import { useTheme } from 'next-themes';
-import { Button } from '@/components/ui/button';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GlobalSearch } from '@/components/global-search';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
-    // Cookie-only auth (credentials: include) — NO x-session-token header.
-    const res = await fetch(url, { 
+    const res = await fetch(url, {
         credentials: 'include',
-        headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-        }
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
     });
     if (res.status === 401) {
         if (typeof window !== 'undefined') {
@@ -57,22 +47,25 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
-    const { theme, setTheme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [username, setUsername] = useState('');
     const [greetingWords, setGreetingWords] = useState<string[]>([]);
     const [visibleCount, setVisibleCount] = useState(0);
+    const [reducedMotion, setReducedMotion] = useState(false);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
-        revalidateOnFocus: false,     // ⚡ use event signal instead of focus-revalidation
-        dedupingInterval: 60000,      // ⚡ 1 req per min max — saves Vercel compute
+        revalidateOnFocus: false,
+        dedupingInterval: 60000,
         revalidateOnReconnect: false,
         revalidateIfStale: false
     });
 
     useEffect(() => {
-        // Calculate dates safely on client to prevent hydration mismatch
+        // Detect reduced motion preference
+        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+        setReducedMotion(mq.matches);
+
         const todayDate = new Date();
         const standardDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(todayDate);
         const hijriDateFull = new Intl.DateTimeFormat('en-GB-u-ca-islamic', { day: 'numeric', month: 'long', year: 'numeric' }).format(todayDate);
@@ -100,25 +93,17 @@ export default function DashboardPage() {
         else if (hour >= 17 && hour < 22) timeGreeting = 'Good evening';
         else timeGreeting = 'Good night';
 
-        // Build word array for animation
         const words = name
-            ? [...timeGreeting.split(' '), name + ',', '👋']
+            ? [...timeGreeting.split(' '), `${name},`, '👋']
             : [...timeGreeting.split(' '), '👋'];
         setGreetingWords(words);
 
-        // Listen for cross-page invalidation signal (e.g. from Ledger saves)
+        // Cross-page invalidation
         const handleStorage = (e: StorageEvent) => {
-            if (e.key === 'dadwork_customers_stale') {
-                if (document.visibilityState === 'visible') {
-                    mutateDashboard();
-                }
+            if (e.key === 'dadwork_customers_stale' && document.visibilityState === 'visible') {
+                mutateDashboard();
             }
         };
-
-        const handleCustom = () => {
-            mutateDashboard();
-        };
-
         const handleFocus = () => {
             const staleSignal = localStorage.getItem('dadwork_customers_stale');
             const lastCheck = sessionStorage.getItem('dashboard_last_check');
@@ -127,215 +112,257 @@ export default function DashboardPage() {
                 mutateDashboard();
             }
         };
-
         window.addEventListener('storage', handleStorage);
-        window.addEventListener('dadwork_customers_stale', handleCustom);
         window.addEventListener('focus', handleFocus);
         handleFocus();
-
         return () => {
             window.removeEventListener('storage', handleStorage);
-            window.removeEventListener('dadwork_customers_stale', handleCustom);
             window.removeEventListener('focus', handleFocus);
         };
     }, [mutateDashboard]);
 
-    // Word-by-word animation: reveal one word at a time
+    // Word-by-word animation
     useEffect(() => {
-        if (greetingWords.length === 0) return;
+        if (greetingWords.length === 0 || reducedMotion) {
+            setVisibleCount(greetingWords.length);
+            return;
+        }
         setVisibleCount(0);
         let i = 0;
         const interval = setInterval(() => {
             i++;
             setVisibleCount(i);
             if (i >= greetingWords.length) clearInterval(interval);
-        }, 90);
+        }, 100);
         return () => clearInterval(interval);
-    }, [greetingWords]);
+    }, [greetingWords, reducedMotion]);
 
-    // Only show the full-page spinner on the very first load (no cached data yet)
     if (isLoading && !data) {
         return (
             <div className="flex items-center justify-center h-[60vh]">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="relative">
-                        <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                        <div className="relative p-4 rounded-full bg-primary/10">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground font-medium">Loading dashboard...</p>
+                <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Loading...</p>
                 </div>
             </div>
         );
     }
 
-    // Derived lists (kept minimal since Customers List moved to reports)
     const totalCombinedDebt = (data?.totalDebt || 0) + (data?.totalReesto || 0);
 
     return (
-        <div className="space-y-5 md:space-y-6 max-w-3xl mx-auto w-full px-1 md:px-0">
+        <div className="w-full max-w-3xl mx-auto space-y-4 md:space-y-5">
+
+            {/* ── Global Search ── */}
             <GlobalSearch />
-            
-            {/* Compact Greeting Header */}
-            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
+
+            {/* ── Greeting Hero Card ── */}
+            <div className="dashboard-greeting-card relative overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 md:px-6 md:py-5">
+                {/* Subtle diagonal stripe decoration */}
+                <div className="pointer-events-none absolute inset-0 greeting-stripes opacity-[0.025]" />
+                {/* Very soft blue glow top-right */}
+                <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
+
                 <style>{`
-                    @keyframes wordFadeUp {
-                        from { opacity: 0; transform: translateY(6px); }
+                    .greeting-stripes {
+                        background-image: repeating-linear-gradient(
+                            135deg,
+                            #2563eb 0px,
+                            #2563eb 1px,
+                            transparent 1px,
+                            transparent 18px
+                        );
+                    }
+                    @keyframes wordReveal {
+                        from { opacity: 0; transform: translateY(5px); }
                         to   { opacity: 1; transform: translateY(0); }
                     }
                     .greeting-word {
                         display: inline-block;
-                        animation: wordFadeUp 0.22s ease forwards;
+                        animation: wordReveal 0.2s ease forwards;
+                    }
+                    @media (prefers-reduced-motion: reduce) {
+                        .greeting-word { animation: none; opacity: 1; }
                     }
                 `}</style>
-                <h1 className="text-2xl md:text-[28px] font-bold tracking-tight text-foreground leading-snug">
-                    {greetingWords.map((word, i) => (
-                        <span
-                            key={i}
-                            className="greeting-word"
-                            style={{
-                                opacity: i < visibleCount ? 1 : 0,
-                                marginRight: '0.28em'
-                            }}
-                        >
-                            {word}
-                        </span>
-                    ))}
-                    {/* Placeholder to prevent layout shift before animation runs */}
-                    {greetingWords.length === 0 && <span className="opacity-0">‎</span>}
-                </h1>
-                {dates.standard && (
-                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{dates.standard}</p>
-                )}
+
+                <div className="relative z-10">
+                    <h1 className="text-xl md:text-2xl font-semibold text-foreground tracking-tight leading-snug">
+                        {greetingWords.map((word, i) => (
+                            <span
+                                key={i}
+                                className="greeting-word"
+                                style={{
+                                    opacity: i < visibleCount ? 1 : 0,
+                                    marginRight: '0.3em',
+                                }}
+                            >
+                                {word}
+                            </span>
+                        ))}
+                        {greetingWords.length === 0 && <span className="opacity-0">‎</span>}
+                    </h1>
+                    {dates.standard && (
+                        <p className="text-xs text-muted-foreground mt-1 font-medium">
+                            {dates.standard}
+                            {dates.hijri && (
+                                <span className="ml-2 opacity-60">· {dates.hijri}</span>
+                            )}
+                        </p>
+                    )}
+                </div>
             </div>
 
-            {/* Stats Grid - Premium Cards */}
-            <div className="grid grid-cols-2 gap-2 md:gap-4">
-                {/* Total Customers */}
-                <Card className="glass-card overflow-hidden group flex flex-col justify-center">
-                    <CardContent className="p-3 md:p-4 flex flex-col items-center text-center justify-center h-full">
-                        <div className="p-1.5 md:p-2 rounded-xl bg-blue-500/10 group-hover:bg-blue-500/15 transition-colors mb-3">
-                            <Users className="h-5 w-5 md:h-6 md:w-6 text-blue-500" />
-                        </div>
-                        <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">
+            {/* ── 3 Stat Cards ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+
+                {/* Card 1 — Total Customers */}
+                <div className="stat-card rounded-2xl border border-border bg-card p-5 md:p-6 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                             Total Customers
-                        </p>
-                        <p className="text-2xl md:text-3xl font-black text-foreground tabular-nums">
+                        </span>
+                        <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10">
+                            <Users className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                    </div>
+                    <div>
+                        <p className="text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none">
                             {data?.totalCustomers || 0}
                         </p>
-                    </CardContent>
-                </Card>
+                        <p className="text-xs text-muted-foreground mt-1.5">Active accounts</p>
+                    </div>
+                </div>
 
-                {/* Deynta Guud Toggle Card */}
-                <Card 
-                    className="glass-card overflow-hidden cursor-pointer group hover:border-primary/50 transition-all shadow-sm group-hover:shadow-md group-hover:shadow-primary/10"
+                {/* Card 2 — Deynta Guud */}
+                <div
+                    className="stat-card rounded-2xl border border-border bg-card p-5 md:p-6 flex flex-col gap-3 cursor-pointer hover:border-primary/30 transition-colors"
                     onClick={() => setIsExpanded(!isExpanded)}
                 >
-                    <CardContent className="p-3 md:p-4 flex flex-col h-full">
-                        <div className="flex justify-between items-center mb-3">
-                            <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                Deynta Guud
-                            </p>
-                            <Link 
-                                href="/reports?tab=debtors" 
-                                onClick={(e) => e.stopPropagation()} 
-                                className="p-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors flex items-center gap-1 group/link"
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Deynta Guud
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <Link
+                                href="/reports?tab=debtors"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 rounded-lg bg-muted hover:bg-primary/10 transition-colors"
                             >
-                                <span className="text-[9px] font-bold uppercase tracking-widest hidden sm:inline opacity-80 group-hover/link:opacity-100">Reports</span>
-                                <ChevronRight className="h-3 w-3" />
+                                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
                             </Link>
                         </div>
-                        
-                        <div className="flex-1 flex flex-col justify-center text-center">
-                            <p className="text-2xl md:text-3xl font-black text-foreground tabular-nums flex items-baseline justify-center gap-1">
-                                <span className="text-lg md:text-xl text-muted-foreground font-bold">$</span>
-                                {totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                            </p>
-                        </div>
+                    </div>
+                    <div>
+                        <p className="text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-1">
+                            <span className="text-lg text-muted-foreground font-semibold">$</span>
+                            {totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1.5">Total outstanding</p>
+                    </div>
 
-                        {/* Expandable Split Details */}
-                        <div className={`grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-border/50 transition-all duration-300 overflow-hidden ${isExpanded ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0 border-transparent m-0 p-0'}`}>
-                            <div className="flex flex-col items-center border-r border-border/50">
-                                <div className="flex items-center gap-1 mb-1 text-red-500">
-                                    <TrendingUp className="h-3 w-3" />
-                                    <p className="text-[9px] font-bold uppercase tracking-widest">Lacagta Guud</p>
-                                </div>
-                                <p className="text-base font-black text-red-500 tabular-nums">
+                    {/* Expandable breakdown */}
+                    <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-24 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                        <div className="pt-3 border-t border-border grid grid-cols-2 gap-2">
+                            <div>
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+                                    <TrendingUp className="h-2.5 w-2.5 text-red-400" />
+                                    Lacagta Guud
+                                </p>
+                                <p className="text-sm font-bold text-red-500 tabular-nums">
                                     ${(data?.totalDebt || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
-                            <div className="flex flex-col items-center">
-                                <div className="flex items-center gap-1 mb-1 text-emerald-500">
-                                    <DollarSign className="h-3 w-3" />
-                                    <p className="text-[9px] font-bold uppercase tracking-widest">Reesto</p>
-                                </div>
-                                <p className="text-base font-black text-emerald-500 tabular-nums">
+                            <div>
+                                <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+                                    <DollarSign className="h-2.5 w-2.5 text-emerald-400" />
+                                    Reesto
+                                </p>
+                                <p className="text-sm font-bold text-emerald-500 tabular-nums">
                                     ${(data?.totalReesto || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
                         </div>
+                    </div>
 
-                        {!isExpanded && (
-                            <div className="text-center mt-1 text-muted-foreground/30 group-hover:text-primary transition-colors">
-                                <ChevronDown className="h-4 w-4 mx-auto" />
-                            </div>
-                        )}
-                        {isExpanded && (
-                            <div className="text-center mt-2 text-muted-foreground/30 group-hover:text-primary transition-colors">
-                                <ChevronUp className="h-4 w-4 mx-auto" />
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+                    <div className="text-center mt-auto">
+                        {isExpanded
+                            ? <ChevronUp className="h-3.5 w-3.5 mx-auto text-muted-foreground/40" />
+                            : <ChevronDown className="h-3.5 w-3.5 mx-auto text-muted-foreground/40" />
+                        }
+                    </div>
+                </div>
 
-            {/* Today's Summary - Gradient Card */}
-            <Card className="glass-card overflow-hidden border-primary/20">
-                <CardContent className="p-0">
-                    <div className="p-4 md:p-5 bg-gradient-to-br from-primary/5 via-transparent to-blue-500/5">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-primary/10">
-                                    <Zap className="h-5 w-5 text-primary" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                        Today&apos;s KG
-                                    </p>
-                                    <div className="relative w-[130px] h-[36px] overflow-hidden mt-0.5">
-                                        <div className="animate-kinetic flex items-center w-max">
-                                            <p className="text-2xl md:text-3xl font-black text-primary tabular-nums animate-lightning">
-                                                ⚡ {Math.round(data?.todayKg || 0)} <span className="text-sm font-bold text-primary/60">KG</span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-0.5">Active</p>
-                                <div className="relative w-[80px] h-[28px] overflow-hidden ml-auto">
-                                    <div className="animate-kinetic flex items-center w-max" style={{ animationDelay: '-1.5s' }}>
-                                        <p className="text-lg font-black text-foreground animate-lightning">
-                                            ⚡ {data?.todayCustomerCount || 0}
-                                        </p>
-                                    </div>
-                                </div>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">customers</p>
-                            </div>
+                {/* Card 3 — Today's KG */}
+                <div className="stat-card rounded-2xl border border-border bg-card p-5 md:p-6 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Today&apos;s KG
+                        </span>
+                        <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10">
+                            <Zap className="h-3.5 w-3.5 text-amber-500" />
                         </div>
                     </div>
-                </CardContent>
-            </Card>
+                    <div>
+                        <p className="text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-1">
+                            {Math.round(data?.todayKg || 0)}
+                            <span className="text-base font-semibold text-muted-foreground ml-0.5">KG</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1.5">
+                            {data?.todayCustomerCount || 0} active customers
+                        </p>
+                    </div>
+                </div>
+            </div>
 
-            {/* Admin Egress Monitor (System Link) */}
-            <div className="flex justify-center mt-6 mb-8">
-                <Link href="/api/egress-stats" target="_blank" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors bg-secondary/30 px-3 py-1.5 rounded-full border border-border/50">
+            {/* ── Today's Activity Card ── */}
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+                <div className="px-5 py-4 md:px-6 md:py-5 border-b border-border/60 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-primary" />
+                        <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Today&apos;s Activity
+                        </span>
+                    </div>
+                </div>
+                <div className="px-5 py-4 md:px-6 md:py-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 md:gap-6">
+                        <div className="flex flex-col gap-0.5">
+                            <p className="text-2xl md:text-3xl font-bold text-foreground tabular-nums">
+                                {Math.round(data?.todayKg || 0)}
+                                <span className="text-sm font-semibold text-muted-foreground ml-1">KG</span>
+                            </p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total KG</p>
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                            <p className="text-2xl md:text-3xl font-bold text-emerald-500 tabular-nums">
+                                {data?.todayCustomerCount || 0}
+                            </p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Active Customers</p>
+                        </div>
+                        <div className="flex flex-col gap-0.5 col-span-2 sm:col-span-1">
+                            <p className="text-2xl md:text-3xl font-bold text-foreground tabular-nums flex items-baseline gap-0.5">
+                                <span className="text-sm font-semibold text-muted-foreground">$</span>
+                                {(data?.totalPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Collected</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Admin Egress Monitor link */}
+            <div className="flex justify-center pb-2">
+                <Link
+                    href="/api/egress-stats"
+                    target="_blank"
+                    className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                >
                     <Activity className="h-3 w-3" />
-                    <span>View Live Egress Monitor</span>
+                    <span>Egress Monitor</span>
                 </Link>
             </div>
+
         </div>
     );
 }
