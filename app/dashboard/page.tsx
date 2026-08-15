@@ -7,7 +7,6 @@ import {
     Loader2,
     Activity,
     ArrowRight,
-    Settings,
     Bell,
     LogOut,
     AlertTriangle,
@@ -122,6 +121,7 @@ export default function DashboardPage() {
     const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year'>('week');
     const [overviewTab, setOverviewTab] = useState<'money' | 'kg' | 'payment'>('money');
     const [expandedMq, setExpandedMq] = useState<string | null>(null);
+    const [selectedDot, setSelectedDot] = useState<number | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -323,20 +323,11 @@ export default function DashboardPage() {
                                     )}
                                 </button>
 
-                                {/* Profile dropdown */}
+                                {/* Profile dropdown — logout only, compact */}
                                 {showProfileMenu && (
-                                    <div className="absolute top-14 left-0 z-[999] bg-card border border-border rounded-2xl shadow-2xl p-2.5 min-w-[180px] animate-in fade-in slide-in-from-top-2 duration-200">
-                                        <div className="px-2 pb-2 mb-2 border-b border-border/50">
-                                            <p className="text-xs font-black uppercase tracking-widest text-foreground">{username || 'DadWork'}</p>
-                                            <p className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground mt-0.5">{roleBadgeLabel || 'Admin'}</p>
-                                        </div>
-                                        <Link href="/settings" onClick={() => setShowProfileMenu(false)}
-                                            className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl text-foreground hover:bg-muted transition-colors">
-                                            <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-                                            <span className="text-xs font-semibold">Settings</span>
-                                        </Link>
+                                    <div className="absolute top-14 left-0 z-[999] bg-card border border-border rounded-xl shadow-xl p-1.5 min-w-[130px] animate-in fade-in slide-in-from-top-2 duration-150">
                                         <button onClick={handleLogout}
-                                            className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors mt-1">
+                                            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors">
                                             <LogOut className="h-3.5 w-3.5 shrink-0" />
                                             <span className="text-xs font-bold">Logout</span>
                                         </button>
@@ -613,72 +604,122 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <>
-                        {/* 1. Chart + Summaries (Side by side on md, stacked on sm) */}
-                        <div className="flex flex-col md:flex-row gap-4 md:gap-6 mb-6">
-                            {/* SVG Chart */}
-                            <div className="flex-1 min-w-0 mt-2">
-                                <div className="flex items-center gap-4 mb-2 pl-4">
+                        {/* Chart Section — compact, all inside */}
+                        <div className="mb-5">
+                            {/* Legend + Totals row */}
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-1.5">
-                                        <span className="w-2.5 h-2.5 rounded-full" style={{background:'#2563eb'}} />
-                                        <span className="text-[11px] font-semibold text-muted-foreground">Collected</span>
+                                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                        <span className="text-[10px] font-semibold text-muted-foreground">Collected</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                        <span className="w-2.5 h-2.5 rounded-full" style={{background:'#22c55e'}} />
-                                        <span className="text-[11px] font-semibold text-muted-foreground">Debt</span>
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        <span className="text-[10px] font-semibold text-muted-foreground">Debt</span>
                                     </div>
                                 </div>
-                                <div className="relative">
-                                    <svg viewBox={`0 -8 ${OV_W} ${OV_H + 10}`} className="w-full overflow-visible" style={{ height: 130 }} preserveAspectRatio="none">
-                                        <defs>
-                                            <linearGradient id="ovGradPaid" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.15" />
-                                                <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-                                            </linearGradient>
-                                            <linearGradient id="ovGradRem" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="#22c55e" stopOpacity="0.12" />
-                                                <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                                            </linearGradient>
-                                        </defs>
-
-                                        {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
-                                            <g key={`grid-${i}`}>
-                                                <line x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t} stroke="currentColor" strokeOpacity="0.04" strokeWidth="1" strokeDasharray={i > 0 && i < 4 ? "4 4" : "0"} />
-                                                <text x={0} y={OV_H * t + 3} fontSize="8" fill="currentColor" fillOpacity="0.3" textAnchor="start">
-                                                    {i === 4 ? 0 : `${Math.round((ovMaxVal * (1 - t)) / 1000)}k`}
-                                                </text>
-                                            </g>
-                                        ))}
-
-                                        {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradPaid)" />}
-                                        {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradRem)" />}
-
-                                        {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
-                                        {remPath && <path d={remPath} fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-
-                                        {paidCoords.map((c, i) => <circle key={`p-${i}`} cx={c.x} cy={c.y} r="3" fill="#2563eb" />)}
-                                        {remCoords.map((c, i) => <circle key={`r-${i}`} cx={c.x} cy={c.y} r="3" fill="#22c55e" />)}
-                                    </svg>
-                                    <div className="flex justify-between mt-2 pl-4">
-                                        {ovLabels.map((lbl, i) => (
-                                            <span key={i} className="text-[9px] font-semibold text-muted-foreground/60 flex-1 text-center truncate px-1">
-                                                {lbl.replace('MQ', 'M')}
-                                            </span>
-                                        ))}
+                                <div className="flex items-center gap-4 text-right">
+                                    <div>
+                                        <p className="text-sm font-black text-blue-500 tabular-nums">{fmtMoney(ovTotals.paid)}</p>
+                                        <p className="text-[9px] font-semibold text-muted-foreground">Collected</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-black text-emerald-500 tabular-nums">{fmtMoney(ovTotals.remaining)}</p>
+                                        <p className="text-[9px] font-semibold text-muted-foreground">Outstanding</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Summary Right Sidebar */}
-                            <div className="w-full md:w-32 flex flex-row md:flex-col justify-between md:justify-center gap-4 shrink-0 md:border-l md:border-border/40 md:pl-5 mt-4 md:mt-0">
-                                <div>
-                                    <p className="text-xl md:text-2xl font-black text-foreground tabular-nums tracking-tight">{fmtMoney(ovTotals.paid)}</p>
-                                    <p className="text-[11px] font-semibold text-blue-500 mt-0.5">Collected</p>
-                                </div>
-                                <div className="h-px bg-border/40 hidden md:block w-full"></div>
-                                <div>
-                                    <p className="text-xl md:text-2xl font-black text-foreground tabular-nums tracking-tight">{fmtMoney(ovTotals.remaining)}</p>
-                                    <p className="text-[11px] font-semibold text-emerald-500 mt-0.5">Outstanding</p>
-                                </div>
+                            {/* SVG Chart — no x-axis labels, clickable dots */}
+                            <div className="relative w-full">
+                                <svg viewBox={`0 -8 ${OV_W} ${OV_H + 8}`} className="w-full overflow-visible" style={{ height: 120 }} preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="ovGradPaid2" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.18" />
+                                            <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                                        </linearGradient>
+                                        <linearGradient id="ovGradRem2" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#10b981" stopOpacity="0.15" />
+                                            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                                        </linearGradient>
+                                    </defs>
+
+                                    {/* Subtle gridlines */}
+                                    {[0, 0.33, 0.66, 1].map((t, i) => (
+                                        <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
+                                            stroke="currentColor" strokeOpacity="0.05" strokeWidth="1"
+                                            strokeDasharray={i > 0 && i < 3 ? "3 3" : "0"} />
+                                    ))}
+
+                                    {/* Area fills */}
+                                    {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradPaid2)" />}
+                                    {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradRem2)" />}
+
+                                    {/* Lines */}
+                                    {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                                    {remPath && <path d={remPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+
+                                    {/* Clickable dots — highlight selected */}
+                                    {paidCoords.map((c, i) => (
+                                        <circle key={`p-${i}`} cx={c.x} cy={c.y} r={selectedDot === i ? 5 : 3.5}
+                                            fill="#2563eb"
+                                            stroke={selectedDot === i ? '#fff' : 'none'} strokeWidth="1.5"
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={() => setSelectedDot(selectedDot === i ? null : i)} />
+                                    ))}
+                                    {remCoords.map((c, i) => (
+                                        <circle key={`r-${i}`} cx={c.x} cy={c.y} r={selectedDot === i ? 5 : 3}
+                                            fill="#10b981"
+                                            stroke={selectedDot === i ? '#fff' : 'none'} strokeWidth="1.5"
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={() => setSelectedDot(selectedDot === i ? null : i)} />
+                                    ))}
+                                </svg>
+
+                                {/* Inline dot-click detail panel */}
+                                {selectedDot !== null && mqs[selectedDot] && (
+                                    <div className="mt-2 p-3 rounded-xl border border-primary/30 bg-primary/5 animate-in slide-in-from-top-1 duration-150">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-black text-foreground">{mqs[selectedDot].label}</span>
+                                            <button onClick={() => setSelectedDot(null)} className="text-[10px] text-muted-foreground hover:text-foreground font-bold px-2 py-0.5 rounded-md hover:bg-muted transition-colors">✕</button>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <div className="bg-card rounded-lg p-2 border border-border/40">
+                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">KG</p>
+                                                <p className="text-[11px] font-black text-foreground tabular-nums">{fmtKg(mqs[selectedDot].kg)}</p>
+                                            </div>
+                                            <div className="bg-card rounded-lg p-2 border border-border/40">
+                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
+                                                <p className="text-[11px] font-black text-foreground tabular-nums">{fmtMoney(mqs[selectedDot].expected)}</p>
+                                            </div>
+                                            <div className="bg-card rounded-lg p-2 border border-border/40">
+                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Paid</p>
+                                                <p className="text-[11px] font-black text-blue-500 tabular-nums">{fmtMoney(mqs[selectedDot].paid)}</p>
+                                            </div>
+                                            <div className="bg-card rounded-lg p-2 border border-border/40">
+                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Rem</p>
+                                                <p className="text-[11px] font-black text-amber-500 tabular-nums">{fmtMoney(mqs[selectedDot].remaining)}</p>
+                                            </div>
+                                        </div>
+                                        {mqs[selectedDot].customers.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {mqs[selectedDot].customers.slice(0, 4).map(c => (
+                                                    <Link key={c.id} href={`/customers/${c.id}`}
+                                                        className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-card border border-transparent hover:border-border/40 transition-colors">
+                                                        <span className="text-[11px] font-semibold text-foreground truncate max-w-[120px]">{c.name}</span>
+                                                        <div className="flex items-center gap-2 text-[10px] font-bold shrink-0">
+                                                            <span className="text-blue-500">{fmtMoney(c.paid)}</span>
+                                                            {c.remaining > 0 && <span className="text-amber-500">{fmtMoney(c.remaining)} owed</span>}
+                                                        </div>
+                                                    </Link>
+                                                ))}
+                                                {mqs[selectedDot].customers.length > 4 && (
+                                                    <p className="text-[10px] text-muted-foreground text-center pt-1">+{mqs[selectedDot].customers.length - 4} more customers</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
