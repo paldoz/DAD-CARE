@@ -11,11 +11,14 @@ import {
     ChevronDown,
     ChevronUp,
     ArrowRight,
+    Settings,
+    Bell,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GlobalSearch } from '@/components/global-search';
 import { AnimatedBackground } from '@/components/animated-background';
+import { SecurityBell } from '@/components/security-bell';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
@@ -52,6 +55,9 @@ export default function DashboardPage() {
     const [isExpanded, setIsExpanded] = useState(false);
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [username, setUsername] = useState('');
+    const [userRole, setUserRole] = useState('');
+    const [avatarUrl, setAvatarUrl] = useState('');
+    const [avatarInitial, setAvatarInitial] = useState('D');
     const [greetingWords, setGreetingWords] = useState<string[]>([]);
     const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -75,16 +81,23 @@ export default function DashboardPage() {
             hijri: hijriDateFull.replace(/ AH$/, '').replace(/,/, '')
         });
 
-        // Load username from localStorage
+        // Load user info from localStorage
         const storedUser = localStorage.getItem('currentUser');
         let name = '';
+        let role = '';
+        let avatar = '';
         if (storedUser) {
             try {
                 const parsed = JSON.parse(storedUser);
                 name = parsed.username || parsed.name || '';
+                role = parsed.role || '';
+                avatar = parsed.avatar_url || '';
             } catch (e) {}
         }
         setUsername(name);
+        setUserRole(role);
+        setAvatarUrl(avatar);
+        setAvatarInitial(name ? name.charAt(0).toUpperCase() : 'D');
 
         // Build time-based greeting
         const hour = todayDate.getHours();
@@ -134,101 +147,161 @@ export default function DashboardPage() {
     }
 
     const totalCombinedDebt = (data?.totalDebt || 0) + (data?.totalReesto || 0);
+    const isSuperAdmin = userRole === 'SUPER_ADMIN';
+    const isAdmin = userRole === 'ADMIN' || isSuperAdmin;
+
+    const roleBadgeLabel =
+        userRole === 'SUPER_ADMIN' ? 'Super Admin'
+        : userRole === 'ADMIN' ? 'Admin'
+        : userRole ? userRole.replace(/_/g, ' ') : null;
+
+    const topDebtors = (data?.topDebtors || []).slice(0, 3);
 
     return (
-        <div className="w-full max-w-3xl mx-auto space-y-4 md:space-y-5">
+        <div className="w-full max-w-3xl mx-auto space-y-3 md:space-y-4">
+
+            {/* ── Inline styles for greeting animation ── */}
+            <style>{`
+                @keyframes wordRevealLoop {
+                    0%, 5%  { opacity: 0; transform: translateY(8px); }
+                    15%, 80% { opacity: 1; transform: translateY(0); }
+                    90%, 100% { opacity: 0; transform: translateY(-4px); }
+                }
+                .greeting-word {
+                    display: inline-block;
+                    opacity: 0;
+                    animation: wordRevealLoop 8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .greeting-word { animation: none !important; opacity: 1 !important; transform: none !important; }
+                }
+            `}</style>
+
+            {/* ── Hero Header Panel ── */}
+            <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
+                <AnimatedBackground />
+                {/* Subtle gradient overlay for readability */}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-blue-500/8" />
+
+                <div className="relative z-10 px-4 py-4 md:px-5 md:py-5">
+                    {/* Top row: avatar+greeting on left, icons+date on right */}
+                    <div className="flex items-start justify-between gap-3">
+
+                        {/* LEFT: Avatar + Greeting + Role */}
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                            {/* Compact Avatar */}
+                            <div className="shrink-0 w-11 h-11 md:w-12 md:h-12 rounded-xl border-2 border-primary/20 shadow-md overflow-hidden bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center">
+                                {avatarUrl ? (
+                                    <img src={avatarUrl} alt={username} className="w-full h-full object-cover" />
+                                ) : (
+                                    <span className="text-primary-foreground font-black text-base md:text-lg">
+                                        {avatarInitial}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Greeting + Role badge */}
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Welcome back</p>
+                                {/* Word-by-word animated greeting */}
+                                <h1 className="text-lg md:text-xl font-bold text-foreground tracking-tight leading-snug flex flex-wrap gap-x-1.5 mb-1.5">
+                                    {greetingWords.map((word, i) => (
+                                        <span
+                                            key={i}
+                                            className="greeting-word"
+                                            style={{ animationDelay: `${i * 0.15}s` }}
+                                        >
+                                            {word}
+                                        </span>
+                                    ))}
+                                </h1>
+                                {/* Role badge */}
+                                {roleBadgeLabel && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-primary/10 text-primary border border-primary/20">
+                                        <span className="w-1 h-1 rounded-full bg-primary inline-block animate-pulse" />
+                                        {roleBadgeLabel}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* RIGHT: Notification + Settings icons + Date */}
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                            {/* Icon row */}
+                            <div className="flex items-center gap-1.5">
+                                {/* Notification bell — SecurityBell for admins, plain bell for others */}
+                                {isSuperAdmin ? (
+                                    <div className="[&>button]:!h-9 [&>button]:!w-9 [&>button]:!rounded-xl [&>button]:!border [&>button]:!border-border/60 [&>button]:!bg-card/50">
+                                        <SecurityBell />
+                                    </div>
+                                ) : (
+                                    <Link
+                                        href="/settings"
+                                        className="h-9 w-9 rounded-xl border border-border/60 bg-card/50 flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-colors"
+                                        title="Notifications"
+                                    >
+                                        <Bell className="h-4 w-4" />
+                                    </Link>
+                                )}
+                                <Link
+                                    href="/settings"
+                                    className="h-9 w-9 rounded-xl border border-border/60 bg-card/50 flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-colors"
+                                    title="Settings"
+                                >
+                                    <Settings className="h-4 w-4" />
+                                </Link>
+                            </div>
+
+                            {/* Date — desktop only */}
+                            {dates.standard && (
+                                <div className="hidden md:flex flex-col items-end gap-0.5">
+                                    <p className="text-[11px] font-semibold text-foreground/80 flex items-center gap-1">
+                                        📅 {dates.standard}
+                                    </p>
+                                    {dates.hijri && (
+                                        <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
+                                            🌙 {dates.hijri}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* ── Global Search ── */}
             <GlobalSearch />
 
-            {/* ── Greeting Hero Card ── */}
-            <div className="dashboard-greeting-card relative overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 md:px-6 md:py-5">
-                <AnimatedBackground />
-                {/* Subtle diagonal stripe decoration */}
-                <div className="pointer-events-none absolute inset-0 greeting-stripes opacity-[0.025]" />
-                {/* Very soft blue glow top-right */}
-                <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
-
-                <style>{`
-                    .greeting-stripes {
-                        background-image: repeating-linear-gradient(
-                            135deg,
-                            #2563eb 0px,
-                            #2563eb 1px,
-                            transparent 1px,
-                            transparent 18px
-                        );
-                    }
-                    @keyframes wordRevealLoop {
-                        0%, 5% { opacity: 0; transform: translateY(8px); }
-                        15%, 80% { opacity: 1; transform: translateY(0); }
-                        90%, 100% { opacity: 0; transform: translateY(-4px); }
-                    }
-                    .greeting-word {
-                        display: inline-block;
-                        opacity: 0;
-                        animation: wordRevealLoop 8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
-                    }
-                    @media (prefers-reduced-motion: reduce) {
-                        .greeting-word { animation: none !important; opacity: 1 !important; transform: none !important; }
-                    }
-                `}</style>
-
-                <div className="relative z-10">
-                    <h1 className="text-xl md:text-2xl font-semibold text-foreground tracking-tight leading-snug flex flex-wrap">
-                        {greetingWords.map((word, i) => (
-                            <span
-                                key={i}
-                                className="greeting-word"
-                                style={{
-                                    animationDelay: `${i * 0.15}s`,
-                                    marginRight: '0.3em',
-                                }}
-                            >
-                                {word}
-                            </span>
-                        ))}
-                    </h1>
-                    {dates.standard && (
-                        <p className="hidden md:block text-xs text-muted-foreground mt-1 font-medium">
-                            {dates.standard}
-                            {dates.hijri && (
-                                <span className="ml-2 opacity-60">· {dates.hijri}</span>
-                            )}
-                        </p>
-                    )}
-                </div>
-            </div>
-
             {/* ── 3 Stat Cards ── */}
-            <div className="grid grid-cols-3 gap-2 md:gap-4">
+            <div className="grid grid-cols-3 gap-2 md:gap-3">
 
                 {/* Card 1 — Total Customers */}
-                <div className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-6 flex flex-col gap-2 md:gap-3">
+                <div className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-5 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-muted-foreground line-clamp-1">
-                            Total Customers
+                            Customers
                         </span>
                         <div className="p-1 md:p-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 shrink-0">
                             <Users className="h-3 w-3 md:h-3.5 md:w-3.5 text-blue-600 dark:text-blue-400" />
                         </div>
                     </div>
                     <div className="mt-auto">
-                        <p className="text-xl xs:text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none">
+                        <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none">
                             {data?.totalCustomers || 0}
                         </p>
-                        <p className="text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-1.5 line-clamp-1">Active accounts</p>
+                        <p className="text-[9px] md:text-[10px] text-muted-foreground mt-1 line-clamp-1">Active accounts</p>
                     </div>
                 </div>
 
                 {/* Card 2 — Deynta Guud */}
                 <div
-                    className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-6 flex flex-col gap-2 md:gap-3 cursor-pointer hover:border-primary/30 transition-colors"
+                    className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-5 flex flex-col gap-2 cursor-pointer hover:border-primary/30 transition-colors"
                     onClick={() => setIsExpanded(!isExpanded)}
                 >
                     <div className="flex items-center justify-between">
                         <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-muted-foreground line-clamp-1">
-                            Deynta Guud
+                            Debt
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
                             <Link
@@ -241,31 +314,31 @@ export default function DashboardPage() {
                         </div>
                     </div>
                     <div className="mt-auto">
-                        <p className="text-xl xs:text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-0.5 md:gap-1">
-                            <span className="text-sm md:text-lg text-muted-foreground font-semibold">$</span>
+                        <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-0.5">
+                            <span className="text-xs md:text-sm text-muted-foreground font-semibold">$</span>
                             {totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </p>
-                        <p className="text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-1.5 line-clamp-1">Total outstanding</p>
+                        <p className="text-[9px] md:text-[10px] text-muted-foreground mt-1 line-clamp-1">Outstanding</p>
                     </div>
 
                     {/* Expandable breakdown */}
                     <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-24 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
-                        <div className="pt-2 md:pt-3 border-t border-border flex flex-col gap-1 md:gap-2">
-                            <div>
-                                <p className="text-[8px] md:text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5 flex items-center gap-1">
-                                    <TrendingUp className="h-2 w-2 md:h-2.5 md:w-2.5 text-red-400" />
+                        <div className="pt-2 border-t border-border flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                                <p className="text-[8px] md:text-[9px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <TrendingUp className="h-2 w-2 text-red-400" />
                                     Lacagta
                                 </p>
-                                <p className="text-[11px] md:text-sm font-bold text-red-500 tabular-nums">
+                                <p className="text-[10px] md:text-xs font-bold text-red-500 tabular-nums">
                                     ${(data?.totalDebt || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
-                            <div>
-                                <p className="text-[8px] md:text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5 flex items-center gap-1">
-                                    <DollarSign className="h-2 w-2 md:h-2.5 md:w-2.5 text-emerald-400" />
+                            <div className="flex items-center justify-between">
+                                <p className="text-[8px] md:text-[9px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <DollarSign className="h-2 w-2 text-emerald-400" />
                                     Reesto
                                 </p>
-                                <p className="text-[11px] md:text-sm font-bold text-emerald-500 tabular-nums">
+                                <p className="text-[10px] md:text-xs font-bold text-emerald-500 tabular-nums">
                                     ${(data?.totalReesto || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </p>
                             </div>
@@ -281,52 +354,85 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Card 3 — Today's KG */}
-                <div className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-6 flex flex-col gap-2 md:gap-3">
+                <div className="stat-card rounded-xl md:rounded-2xl border border-border bg-card p-3 sm:p-4 md:p-5 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                         <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-muted-foreground line-clamp-1">
-                            Today&apos;s KG
+                            Today
                         </span>
                         <div className="p-1 md:p-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 shrink-0">
                             <Zap className="h-3 w-3 md:h-3.5 md:w-3.5 text-amber-500" />
                         </div>
                     </div>
                     <div className="mt-auto">
-                        <p className="text-xl xs:text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-0.5 md:gap-1">
+                        <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tabular-nums leading-none flex items-baseline gap-0.5">
                             {Math.round(data?.todayKg || 0)}
-                            <span className="text-[10px] md:text-base font-semibold text-muted-foreground ml-0.5">KG</span>
+                            <span className="text-[9px] md:text-xs font-semibold text-muted-foreground ml-0.5">KG</span>
                         </p>
-                        <p className="text-[10px] md:text-xs text-muted-foreground mt-1 md:mt-1.5 line-clamp-1">
+                        <p className="text-[9px] md:text-[10px] text-muted-foreground mt-1 line-clamp-1">
                             {data?.todayCustomerCount || 0} active
                         </p>
                     </div>
                 </div>
             </div>
 
-            {/* ── Recent Activity Card ── */}
-            <div className="rounded-2xl border border-border bg-card p-5 md:p-6 relative overflow-hidden group">
-                {/* Subtle gradient background effect on hover */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                
-                <h3 className="text-sm font-semibold text-foreground mb-4">Recent Activity</h3>
-                
-                <div className="space-y-1.5 mb-6">
-                    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Today</p>
-                    <p className="text-sm text-foreground flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                        <span className="font-medium">{data?.todayCustomerCount || 0}</span> customers active
-                    </p>
-                    <p className="text-sm text-foreground flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                        <span className="font-medium">{Math.round(data?.todayKg || 0)}</span> KG processed
-                    </p>
+            {/* ── Top Outstanding Debtors (if data exists) ── */}
+            {topDebtors.length > 0 && (
+                <div className="rounded-xl md:rounded-2xl border border-border bg-card overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
+                        <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Top Outstanding</h3>
+                        <Link href="/reports?tab=debtors" className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors">
+                            View all →
+                        </Link>
+                    </div>
+                    <div className="divide-y divide-border/50">
+                        {topDebtors.map((debtor) => (
+                            <div key={debtor.id} className="flex items-center justify-between px-4 py-2.5">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-foreground truncate">{debtor.name}</p>
+                                    <p className="text-[10px] text-muted-foreground">#{debtor.code}</p>
+                                </div>
+                                <span className="text-sm font-bold text-red-500 tabular-nums ml-3 shrink-0">
+                                    ${debtor.debt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                
-                <div className="flex justify-end">
-                    <Link 
-                        href="/daily-book" 
+            )}
+
+            {/* ── Recent Activity Card ── */}
+            <div className="rounded-xl md:rounded-2xl border border-border bg-card p-4 md:p-5 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Recent Activity</h3>
+                    <Link href="/daily-book" className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors">
+                        View all →
+                    </Link>
+                </div>
+
+                <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Today</p>
+                    <div className="flex items-center gap-2.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="text-sm text-foreground">
+                            <span className="font-semibold">{data?.todayCustomerCount || 0}</span> customers active
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        <span className="text-sm text-foreground">
+                            <span className="font-semibold">{Math.round(data?.todayKg || 0)}</span> KG processed
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex justify-end mt-4">
+                    <Link
+                        href="/daily-book"
                         className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                     >
-                        View Daily Book <ArrowRight className="w-4 h-4" />
+                        View Daily Book <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                 </div>
             </div>
