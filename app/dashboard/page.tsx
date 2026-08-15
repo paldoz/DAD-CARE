@@ -243,6 +243,39 @@ export default function DashboardPage() {
     const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
+    const OV_H = 110;
+    const OV_W = 320;
+    const OV_PAD_X = 20;
+    const ovLabels = mqs.map(m => m.label);
+    const ovPaid = mqs.map(m => m.paid);
+    const ovRemaining = mqs.map(m => m.remaining);
+    const ovMaxVal = Math.max(10, ...ovPaid, ...ovRemaining);
+    const n = ovLabels.length || 1;
+
+    const ovCoords = (values: number[]) =>
+        values.map((v, i) => ({
+            x: OV_PAD_X + i * ((OV_W - OV_PAD_X * 2) / Math.max(n - 1, 1)),
+            y: OV_H - (v / ovMaxVal) * OV_H,
+        }));
+
+    const ovPath = (coords: { x: number; y: number }[]) => {
+        if (coords.length === 0) return '';
+        if (coords.length === 1) return `M ${coords[0].x} ${coords[0].y}`;
+        let d = `M ${coords[0].x} ${coords[0].y}`;
+        for (let i = 1; i < coords.length; i++) {
+            const prev = coords[i - 1];
+            const curr = coords[i];
+            const cpx = prev.x + (curr.x - prev.x) / 2;
+            d += ` C ${cpx} ${prev.y}, ${cpx} ${curr.y}, ${curr.x} ${curr.y}`;
+        }
+        return d;
+    };
+
+    const paidCoords = ovCoords(ovPaid);
+    const remCoords = ovCoords(ovRemaining);
+    const paidPath = ovPath(paidCoords);
+    const remPath = ovPath(remCoords);
+
     return (
         <div className="w-full max-w-3xl mx-auto space-y-3 md:space-y-4">
 
@@ -265,9 +298,11 @@ export default function DashboardPage() {
             {/* ══════════════════════════════════════
                 HERO HEADER
             ══════════════════════════════════════ */}
-            <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
-                <AnimatedBackground />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-blue-500/8" />
+            <div className="relative rounded-2xl border border-border bg-card">
+                <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+                    <AnimatedBackground />
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-blue-500/8" />
+                </div>
 
                 <div className="relative z-10 px-4 py-5 md:px-5">
                     <div className="flex items-start justify-between gap-3">
@@ -578,43 +613,74 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <>
-                        {/* 1. MQ Totals Summary */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 mt-2">
-                            <div className="bg-muted/50 rounded-xl p-2.5">
-                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">MQs / KG</p>
-                                <p className="text-sm font-black text-foreground tabular-nums flex items-baseline gap-1">
-                                    {ovTotals.totalMqs} <span className="text-[10px] font-semibold text-muted-foreground">MQs</span> / {fmtKg(ovTotals.kg)}
-                                </p>
+                        {/* 1. Chart + Summaries (Side by side on md, stacked on sm) */}
+                        <div className="flex flex-col md:flex-row gap-4 md:gap-6 mb-6">
+                            {/* SVG Chart */}
+                            <div className="flex-1 min-w-0 mt-2">
+                                <div className="flex items-center gap-4 mb-2 pl-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full" style={{background:'#2563eb'}} />
+                                        <span className="text-[11px] font-semibold text-muted-foreground">Collected</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full" style={{background:'#22c55e'}} />
+                                        <span className="text-[11px] font-semibold text-muted-foreground">Debt</span>
+                                    </div>
+                                </div>
+                                <div className="relative">
+                                    <svg viewBox={`0 -8 ${OV_W} ${OV_H + 10}`} className="w-full overflow-visible" style={{ height: 130 }} preserveAspectRatio="none">
+                                        <defs>
+                                            <linearGradient id="ovGradPaid" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.15" />
+                                                <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                                            </linearGradient>
+                                            <linearGradient id="ovGradRem" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#22c55e" stopOpacity="0.12" />
+                                                <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+                                            </linearGradient>
+                                        </defs>
+
+                                        {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
+                                            <g key={`grid-${i}`}>
+                                                <line x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t} stroke="currentColor" strokeOpacity="0.04" strokeWidth="1" strokeDasharray={i > 0 && i < 4 ? "4 4" : "0"} />
+                                                <text x={0} y={OV_H * t + 3} fontSize="8" fill="currentColor" fillOpacity="0.3" textAnchor="start">
+                                                    {i === 4 ? 0 : `${Math.round((ovMaxVal * (1 - t)) / 1000)}k`}
+                                                </text>
+                                            </g>
+                                        ))}
+
+                                        {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradPaid)" />}
+                                        {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradRem)" />}
+
+                                        {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                                        {remPath && <path d={remPath} fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+
+                                        {paidCoords.map((c, i) => <circle key={`p-${i}`} cx={c.x} cy={c.y} r="3" fill="#2563eb" />)}
+                                        {remCoords.map((c, i) => <circle key={`r-${i}`} cx={c.x} cy={c.y} r="3" fill="#22c55e" />)}
+                                    </svg>
+                                    <div className="flex justify-between mt-2 pl-4">
+                                        {ovLabels.map((lbl, i) => (
+                                            <span key={i} className="text-[9px] font-semibold text-muted-foreground/60 flex-1 text-center truncate px-1">
+                                                {lbl.replace('MQ', 'M')}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
-                            <div className="bg-muted/50 rounded-xl p-2.5">
-                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Expected</p>
-                                <p className="text-sm font-black text-foreground tabular-nums">{fmtMoney(ovTotals.expected)}</p>
-                            </div>
-                            <div className="bg-muted/50 rounded-xl p-2.5">
-                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Paid</p>
-                                <p className="text-sm font-black text-blue-600 tabular-nums">{fmtMoney(ovTotals.paid)}</p>
-                            </div>
-                            <div className="bg-muted/50 rounded-xl p-2.5">
-                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
-                                <p className="text-sm font-black text-amber-600 tabular-nums">{fmtMoney(ovTotals.remaining)}</p>
+
+                            {/* Summary Right Sidebar */}
+                            <div className="w-full md:w-32 flex flex-row md:flex-col justify-between md:justify-center gap-4 shrink-0 md:border-l md:border-border/40 md:pl-5 mt-4 md:mt-0">
+                                <div>
+                                    <p className="text-xl md:text-2xl font-black text-foreground tabular-nums tracking-tight">{fmtMoney(ovTotals.paid)}</p>
+                                    <p className="text-[11px] font-semibold text-blue-500 mt-0.5">Collected</p>
+                                </div>
+                                <div className="h-px bg-border/40 hidden md:block w-full"></div>
+                                <div>
+                                    <p className="text-xl md:text-2xl font-black text-foreground tabular-nums tracking-tight">{fmtMoney(ovTotals.remaining)}</p>
+                                    <p className="text-[11px] font-semibold text-emerald-500 mt-0.5">Outstanding</p>
+                                </div>
                             </div>
                         </div>
-
-                        {/* Overall Progress */}
-                        {ovTotals.expected > 0 && (
-                            <div className="mb-5 border-b border-border/50 pb-4">
-                                <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-[10px] font-bold text-muted-foreground">Overall Progress</span>
-                                    <span className="text-[11px] font-black text-foreground">{ovTotals.paymentProgress}%</span>
-                                </div>
-                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                        className="h-1.5 rounded-full bg-blue-500 transition-all duration-500"
-                                        style={{ width: `${ovTotals.paymentProgress}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
 
                         {/* 2. Analytics Tabs */}
                         <div className="flex flex-wrap gap-1.5 mb-4">
