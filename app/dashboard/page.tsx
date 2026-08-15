@@ -13,12 +13,14 @@ import {
     ArrowRight,
     Settings,
     Bell,
+    LogOut,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { GlobalSearch } from '@/components/global-search';
 import { AnimatedBackground } from '@/components/animated-background';
 import { SecurityBell } from '@/components/security-bell';
+import { logout } from '@/lib/session';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
@@ -59,7 +61,8 @@ export default function DashboardPage() {
     const [avatarUrl, setAvatarUrl] = useState('');
     const [avatarInitial, setAvatarInitial] = useState('D');
     const [greetingWords, setGreetingWords] = useState<string[]>([]);
-    const [reducedMotion, setReducedMotion] = useState(false);
+    const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
         revalidateOnFocus: false,
@@ -69,9 +72,8 @@ export default function DashboardPage() {
     });
 
     useEffect(() => {
-        // Detect reduced motion preference
         const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-        setReducedMotion(mq.matches);
+        void mq.matches; // access so it's not flagged unused
 
         const todayDate = new Date();
         const standardDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(todayDate);
@@ -112,6 +114,14 @@ export default function DashboardPage() {
             : [...timeGreeting.split(' '), '👋'];
         setGreetingWords(words);
 
+        // Close profile menu on outside click
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setShowProfileMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+
         // Cross-page invalidation
         const handleStorage = (e: StorageEvent) => {
             if (e.key === 'dadwork_customers_stale' && document.visibilityState === 'visible') {
@@ -130,10 +140,17 @@ export default function DashboardPage() {
         window.addEventListener('focus', handleFocus);
         handleFocus();
         return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
             window.removeEventListener('storage', handleStorage);
             window.removeEventListener('focus', handleFocus);
         };
     }, [mutateDashboard]);
+
+    const handleLogout = async () => {
+        setShowProfileMenu(false);
+        await logout();
+        window.location.href = '/login';
+    };
 
     if (isLoading && !data) {
         return (
@@ -148,7 +165,6 @@ export default function DashboardPage() {
 
     const totalCombinedDebt = (data?.totalDebt || 0) + (data?.totalReesto || 0);
     const isSuperAdmin = userRole === 'SUPER_ADMIN';
-    const isAdmin = userRole === 'ADMIN' || isSuperAdmin;
 
     const roleBadgeLabel =
         userRole === 'SUPER_ADMIN' ? 'Super Admin'
@@ -180,30 +196,61 @@ export default function DashboardPage() {
             {/* ── Hero Header Panel ── */}
             <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
                 <AnimatedBackground />
-                {/* Subtle gradient overlay for readability */}
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-blue-500/8" />
 
                 <div className="relative z-10 px-4 py-4 md:px-5 md:py-5">
-                    {/* Top row: avatar+greeting on left, icons+date on right */}
                     <div className="flex items-start justify-between gap-3">
 
-                        {/* LEFT: Avatar + Greeting + Role */}
+                        {/* LEFT: Avatar (clickable) + Greeting + Role */}
                         <div className="flex items-start gap-3 min-w-0 flex-1">
-                            {/* Compact Avatar */}
-                            <div className="shrink-0 w-11 h-11 md:w-12 md:h-12 rounded-xl border-2 border-primary/20 shadow-md overflow-hidden bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center">
-                                {avatarUrl ? (
-                                    <img src={avatarUrl} alt={username} className="w-full h-full object-cover" />
-                                ) : (
-                                    <span className="text-primary-foreground font-black text-base md:text-lg">
-                                        {avatarInitial}
-                                    </span>
+                            {/* Clickable Avatar → profile dropdown */}
+                            <div className="relative shrink-0" ref={menuRef}>
+                                <button
+                                    onClick={() => setShowProfileMenu(v => !v)}
+                                    className="w-11 h-11 md:w-12 md:h-12 rounded-xl border-2 border-primary/20 shadow-md overflow-hidden bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center active:scale-95 transition-transform"
+                                    aria-label="Profile menu"
+                                >
+                                    {avatarUrl ? (
+                                        <img src={avatarUrl} alt={username} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <span className="text-primary-foreground font-black text-base md:text-lg">
+                                            {avatarInitial}
+                                        </span>
+                                    )}
+                                </button>
+
+                                {/* Profile dropdown */}
+                                {showProfileMenu && (
+                                    <div className="absolute top-14 left-0 z-[200] bg-card border border-border rounded-2xl shadow-2xl p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-200">
+                                        {/* User info */}
+                                        <div className="px-2 pb-2 mb-2 border-b border-border/50">
+                                            <p className="text-xs font-black uppercase tracking-widest text-foreground">{username || 'DadWork'}</p>
+                                            <p className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground mt-0.5">
+                                                {roleBadgeLabel || 'Admin'}
+                                            </p>
+                                        </div>
+                                        <Link
+                                            href="/settings"
+                                            onClick={() => setShowProfileMenu(false)}
+                                            className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-foreground hover:bg-muted transition-colors"
+                                        >
+                                            <Settings className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                            <span className="text-sm font-semibold">Settings</span>
+                                        </Link>
+                                        <button
+                                            onClick={handleLogout}
+                                            className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors active:scale-[0.98] mt-1"
+                                        >
+                                            <LogOut className="h-4 w-4 shrink-0" />
+                                            <span className="text-sm font-bold">Logout</span>
+                                        </button>
+                                    </div>
                                 )}
                             </div>
 
                             {/* Greeting + Role badge */}
                             <div className="min-w-0 flex-1">
                                 <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Welcome back</p>
-                                {/* Word-by-word animated greeting */}
                                 <h1 className="text-lg md:text-xl font-bold text-foreground tracking-tight leading-snug flex flex-wrap gap-x-1.5 mb-1.5">
                                     {greetingWords.map((word, i) => (
                                         <span
@@ -215,7 +262,6 @@ export default function DashboardPage() {
                                         </span>
                                     ))}
                                 </h1>
-                                {/* Role badge */}
                                 {roleBadgeLabel && (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-primary/10 text-primary border border-primary/20">
                                         <span className="w-1 h-1 rounded-full bg-primary inline-block animate-pulse" />
@@ -229,7 +275,6 @@ export default function DashboardPage() {
                         <div className="flex flex-col items-end gap-2 shrink-0">
                             {/* Icon row */}
                             <div className="flex items-center gap-1.5">
-                                {/* Notification bell — SecurityBell for admins, plain bell for others */}
                                 {isSuperAdmin ? (
                                     <div className="[&>button]:!h-9 [&>button]:!w-9 [&>button]:!rounded-xl [&>button]:!border [&>button]:!border-border/60 [&>button]:!bg-card/50">
                                         <SecurityBell />
@@ -375,7 +420,7 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* ── Top Outstanding Debtors (if data exists) ── */}
+            {/* ── Top Outstanding Debtors ── */}
             {topDebtors.length > 0 && (
                 <div className="rounded-xl md:rounded-2xl border border-border bg-card overflow-hidden">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
@@ -437,7 +482,7 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* Admin Egress Monitor link */}
+            {/* Admin Egress Monitor */}
             <div className="flex justify-center pb-2">
                 <Link
                     href="/api/egress-stats"
