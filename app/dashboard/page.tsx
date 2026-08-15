@@ -7,6 +7,7 @@ import {
     Loader2,
     Activity,
     ArrowRight,
+    Settings,
     Bell,
     LogOut,
     AlertTriangle,
