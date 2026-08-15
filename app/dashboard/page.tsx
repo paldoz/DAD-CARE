@@ -469,25 +469,24 @@ export default function DashboardPage() {
             {/* ══════════════════════════════════════
                 RECENT ACTIVITY + TOP OUTSTANDING  (side by side)
             ══════════════════════════════════════ */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2 md:gap-3">
 
                 {/* Recent Activity */}
-                <div className="rounded-2xl border border-border bg-card p-4">
+                <div className="rounded-2xl border border-border bg-card p-3 md:p-4 min-w-0">
                     <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-bold text-foreground">Recent Activity</h3>
-                        <Link href="/daily-book" className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <h3 className="text-xs md:text-sm font-bold text-foreground truncate mr-2">Recent Activity</h3>
+                        <Link href="/daily-book" className="text-[10px] md:text-xs font-semibold text-primary hover:text-primary/80 transition-colors shrink-0">View all</Link>
                     </div>
                     {recentTx.length > 0 ? (
                         <div className="space-y-3">
                             {recentTx.map((tx: any, i: number) => {
                                 const isPayment = tx.type === 'payment' || tx.amount != null;
                                 const isKg = tx.kg != null;
-                                const isNew = tx.type === 'new_customer';
                                 const icon = isPayment
-                                    ? <DollarSign className="h-3.5 w-3.5 text-white" />
+                                    ? <DollarSign className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
                                     : isKg
-                                        ? <BookOpen className="h-3.5 w-3.5 text-white" />
-                                        : <UserPlus className="h-3.5 w-3.5 text-white" />;
+                                        ? <BookOpen className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
+                                        : <UserPlus className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />;
                                 const iconBg = isPayment ? 'bg-emerald-600' : isKg ? 'bg-amber-700' : 'bg-blue-700';
                                 const label = isPayment
                                     ? `${tx.customer_name || tx.name || 'Customer'} paid $${(tx.amount || 0).toFixed(0)}`
@@ -498,13 +497,13 @@ export default function DashboardPage() {
                                     ? new Date(tx.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                                     : '';
                                 return (
-                                    <div key={i} className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
+                                    <div key={i} className="flex items-center gap-2 md:gap-3 min-w-0">
+                                        <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
                                             {icon}
                                         </div>
                                         <div className="min-w-0">
-                                            <p className="text-sm font-semibold text-foreground truncate">{label}</p>
-                                            {time && <p className="text-[10px] text-muted-foreground">{time}</p>}
+                                            <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{label}</p>
+                                            {time && <p className="text-[9px] md:text-[10px] text-muted-foreground">{time}</p>}
                                         </div>
                                     </div>
                                 );
@@ -512,22 +511,22 @@ export default function DashboardPage() {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
-                                    <Zap className="h-3.5 w-3.5 text-white" />
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
+                                    <Zap className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
                                 </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-foreground">{data?.todayCustomerCount || 0} customers active</p>
-                                    <p className="text-[10px] text-muted-foreground">Today</p>
+                                <div className="min-w-0">
+                                    <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{data?.todayCustomerCount || 0} customers active</p>
+                                    <p className="text-[9px] md:text-[10px] text-muted-foreground">Today</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-xl bg-amber-700 flex items-center justify-center shrink-0">
-                                    <TrendingUp className="h-3.5 w-3.5 text-white" />
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-amber-700 flex items-center justify-center shrink-0">
+                                    <TrendingUp className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
                                 </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-foreground">{Math.round(data?.todayKg || 0)} KG processed</p>
-                                    <p className="text-[10px] text-muted-foreground">Today</p>
+                                <div className="min-w-0">
+                                    <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{Math.round(data?.todayKg || 0)} KG processed</p>
+                                    <p className="text-[9px] md:text-[10px] text-muted-foreground">Today</p>
                                 </div>
                             </div>
                         </div>
@@ -535,28 +534,28 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Top Outstanding */}
-                <div className="rounded-2xl border border-border bg-card p-4">
+                <div className="rounded-2xl border border-border bg-card p-3 md:p-4 min-w-0">
                     <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-bold text-foreground">Top Outstanding</h3>
-                        <Link href="/reports?tab=debtors" className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors">View all</Link>
+                        <h3 className="text-xs md:text-sm font-bold text-foreground truncate mr-2">Top Outstanding</h3>
+                        <Link href="/reports?tab=debtors" className="text-[10px] md:text-xs font-semibold text-primary hover:text-primary/80 transition-colors shrink-0">View all</Link>
                     </div>
                     {topDebtors.length > 0 ? (
-                        <div className="space-y-2.5">
+                        <div className="space-y-2 md:space-y-2.5">
                             {topDebtors.map((debtor) => (
-                                <div key={debtor.id} className="flex items-center justify-between">
-                                    <p className="text-sm font-semibold text-foreground truncate mr-2">{debtor.name}</p>
-                                    <span className="text-sm font-bold text-red-500 tabular-nums shrink-0">
+                                <div key={debtor.id} className="flex items-center justify-between min-w-0">
+                                    <p className="text-[11px] md:text-sm font-semibold text-foreground truncate mr-2">{debtor.name}</p>
+                                    <span className="text-[11px] md:text-sm font-bold text-red-500 tabular-nums shrink-0">
                                         ${debtor.debt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </span>
                                 </div>
                             ))}
                             <Link href="/customers"
-                                className="flex items-center justify-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors mt-3 pt-3 border-t border-border/50">
-                                View All Customers <ArrowRight className="w-3.5 h-3.5" />
+                                className="flex items-center justify-center gap-1 md:gap-1.5 text-[10px] md:text-xs font-bold text-primary hover:text-primary/80 transition-colors mt-2 md:mt-3 pt-2 md:pt-3 border-t border-border/50">
+                                View All Customers <ArrowRight className="w-3 h-3 md:w-3.5 md:h-3.5" />
                             </Link>
                         </div>
                     ) : (
-                        <p className="text-sm text-muted-foreground">No outstanding debt 🎉</p>
+                        <p className="text-[11px] md:text-sm text-muted-foreground">No outstanding debt 🎉</p>
                     )}
                 </div>
             </div>
