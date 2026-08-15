@@ -243,9 +243,6 @@ export default function DashboardPage() {
     const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
-    const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
-
     return (
         <div className="w-full max-w-3xl mx-auto space-y-3 md:space-y-4">
 
