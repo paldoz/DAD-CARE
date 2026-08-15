@@ -94,7 +94,7 @@ export default function DashboardPage() {
                 name = parsed.username || parsed.name || '';
                 role = parsed.role || '';
                 avatar = parsed.avatar_url || '';
-            } catch (e) {}
+            } catch (e) { }
         }
         setUsername(name);
         setUserRole(role);
@@ -168,8 +168,8 @@ export default function DashboardPage() {
 
     const roleBadgeLabel =
         userRole === 'SUPER_ADMIN' ? 'Super Admin'
-        : userRole === 'ADMIN' ? 'Admin'
-        : userRole ? userRole.replace(/_/g, ' ') : null;
+            : userRole === 'ADMIN' ? 'Admin'
+                : userRole ? userRole.replace(/_/g, ' ') : null;
 
     const topDebtors = (data?.topDebtors || []).slice(0, 3);
 
