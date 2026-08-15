@@ -51,12 +51,27 @@ interface DashboardData {
     totalKg: number;
     todayKg: number;
     todayCustomerCount: number;
-    topDebtors: { id: string; name: string; code: string; debt: number; is_reesto: boolean; total_payments: number; total_maqal: number; percentage_paid: number; }[];
+    topDebtors: { id: string; name: string; code: string; debt: number; }[];
     recentTransactions: any[];
-    weeklyData: { day_name: string; dow: number; date: string; collected: number; debt_added: number; }[];
 }
 
-/* ── Decorative sparkline SVGs ─────────────────────────── */
+interface OverviewData {
+    period: string;
+    labels: string[];
+    expected: number[];
+    paid: number[];
+    kg: number[];
+    remaining: number[];
+    totals: {
+        expected: number;
+        paid: number;
+        remaining: number;
+        kg: number;
+        paymentProgress: number;
+    };
+}
+
+/* ── Compact sparkline (card decoration only) ─────────── */
 function BlueSparkline() {
     return (
         <svg viewBox="0 0 120 28" className="w-full h-7 mt-2" preserveAspectRatio="none">
@@ -89,6 +104,7 @@ export default function DashboardPage() {
     const [avatarInitial, setAvatarInitial] = useState('D');
     const [greetingWords, setGreetingWords] = useState<string[]>([]);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year'>('week');
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -97,6 +113,12 @@ export default function DashboardPage() {
         revalidateOnReconnect: false,
         revalidateIfStale: false
     });
+
+    const { data: overviewData, isLoading: overviewLoading } = useSWR<OverviewData>(
+        `/api/dashboard/overview?period=${overviewPeriod}`,
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 30000 }
+    );
 
     useEffect(() => {
         const todayDate = new Date();
@@ -185,7 +207,7 @@ export default function DashboardPage() {
     const isSuperAdmin = userRole === 'SUPER_ADMIN';
     const topDebtors = (data?.topDebtors || []).slice(0, 5);
     const recentTx = (data?.recentTransactions || []).slice(0, 5);
-    const hasAttention = topDebtors.some(d => d.debt > 0);
+    const hasAttention = topDebtors.some((d: any) => d.debt > 0);
 
     const roleBadgeLabel =
         userRole === 'SUPER_ADMIN' ? 'Super Admin'
@@ -196,54 +218,48 @@ export default function DashboardPage() {
     const greetingLine1 = greetingWords.slice(0, 2).join(' ') + ',';
     const greetingLine2Parts = greetingWords.slice(2); // ["Name", "👋"]
 
-    /* Calculate Weekly Chart Data */
-    const weeklyData = data?.weeklyData || [];
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    
-    // Map data to the 7 days of the week
-    const chartData = days.map(dayStr => {
-        const found = weeklyData.find(d => d.day_name === dayStr);
-        return {
-            day: dayStr,
-            collected: found ? Number(found.collected || 0) : 0,
-            debt: found ? Number(found.debt_added || 0) : 0
-        };
-    });
+    /* ── Business Overview Chart Calculation ─────────────────────── */
+    const ovLabels = overviewData?.labels || [];
+    const ovExpected = overviewData?.expected || [];
+    const ovPaid = overviewData?.paid || [];
+    const ovRemaining = overviewData?.remaining || [];
+    const ovTotals = overviewData?.totals || { expected: 0, paid: 0, remaining: 0, kg: 0, paymentProgress: 0 };
+    const hasOverviewData = ovExpected.some(v => v > 0) || ovPaid.some(v => v > 0);
 
-    const weeklyCollected = chartData.reduce((acc, curr) => acc + curr.collected, 0);
-    const weeklyDebt = chartData.reduce((acc, curr) => acc + curr.debt, 0);
+    const OV_H = 110;
+    const OV_W = 320;
+    const OV_PAD_X = 8;
+    const ovMaxVal = Math.max(1, ...ovExpected, ...ovPaid, ...ovRemaining);
+    const n = ovLabels.length || 1;
 
-    // SVG Chart Scaling
-    const maxVal = Math.max(1, ...chartData.map(d => Math.max(d.collected, d.debt)));
-    const chartHeight = 100;
-    const chartWidth = 300;
-    const paddingX = 10;
-    
-    const getCoordinates = (values: number[]) => {
-        return values.map((val, i) => {
-            const x = paddingX + (i * ((chartWidth - paddingX * 2) / 6));
-            const y = chartHeight - (val / maxVal) * chartHeight;
-            return { x, y: isNaN(y) ? chartHeight : y };
-        });
+    const ovCoords = (values: number[]) =>
+        values.map((v, i) => ({
+            x: OV_PAD_X + i * ((OV_W - OV_PAD_X * 2) / Math.max(n - 1, 1)),
+            y: OV_H - (v / ovMaxVal) * OV_H,
+        }));
+
+    const ovPath = (coords: { x: number; y: number }[]) => {
+        if (coords.length === 0) return '';
+        if (coords.length === 1) return `M ${coords[0].x} ${coords[0].y}`;
+        let d = `M ${coords[0].x} ${coords[0].y}`;
+        for (let i = 1; i < coords.length; i++) {
+            const prev = coords[i - 1];
+            const curr = coords[i];
+            const cpx = prev.x + (curr.x - prev.x) / 2;
+            d += ` C ${cpx} ${prev.y}, ${cpx} ${curr.y}, ${curr.x} ${curr.y}`;
+        }
+        return d;
     };
 
-    const collectedCoords = getCoordinates(chartData.map(d => d.collected));
-    const debtCoords = getCoordinates(chartData.map(d => d.debt));
+    const expCoords = ovCoords(ovExpected);
+    const paidCoords = ovCoords(ovPaid);
+    const remCoords = ovCoords(ovRemaining);
+    const expPath = ovPath(expCoords);
+    const paidPath = ovPath(paidCoords);
+    const remPath = ovPath(remCoords);
 
-    const createPath = (coords: {x: number, y: number}[]) => {
-        if(coords.length === 0) return '';
-        const start = `M ${coords[0].x} ${coords[0].y}`;
-        const lines = coords.slice(1).map((c, i) => {
-            const prev = coords[i];
-            const cp1x = prev.x + (c.x - prev.x) / 2;
-            const cp2x = cp1x;
-            return `C ${cp1x} ${prev.y}, ${cp2x} ${c.y}, ${c.x} ${c.y}`;
-        }).join(' ');
-        return `${start} ${lines}`;
-    };
-
-    const collectedPath = createPath(collectedCoords);
-    const debtPath = createPath(debtCoords);
+    const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
     return (
         <div className="w-full max-w-3xl mx-auto space-y-3 md:space-y-4">
@@ -546,86 +562,150 @@ export default function DashboardPage() {
             </div>
 
             {/* ══════════════════════════════════════
-                BUSINESS OVERVIEW — THIS WEEK
+                BUSINESS OVERVIEW — REAL DATA
             ══════════════════════════════════════ */}
-            <div className="rounded-2xl border border-border bg-card p-4 md:p-5 flex flex-col md:flex-row gap-6 md:gap-4">
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-foreground">Business Overview <span className="text-muted-foreground font-medium">(This Week)</span></h3>
-                        <span className="text-xs font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-md">This Week ▾</span>
-                    </div>
-
-                    <div className="flex items-center gap-4 mb-4">
-                        <div className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                            <span className="text-[11px] font-bold text-foreground">Collected</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                            <span className="text-[11px] font-bold text-foreground">Debt</span>
-                        </div>
-                    </div>
-
-                    <div className="relative h-[120px] w-full">
-                        <svg viewBox={`0 -10 ${chartWidth} ${chartHeight + 20}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                            {/* Gradient Fills */}
-                            <defs>
-                                <linearGradient id="fillBlue" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
-                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-                                </linearGradient>
-                                <linearGradient id="fillGreen" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
-                                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                                </linearGradient>
-                            </defs>
-
-                            {/* Grid lines (horizontal) */}
-                            <line x1="0" y1="0" x2={chartWidth} y2="0" stroke="currentColor" strokeOpacity="0.05" strokeWidth="1" />
-                            <line x1="0" y1={chartHeight / 2} x2={chartWidth} y2={chartHeight / 2} stroke="currentColor" strokeOpacity="0.05" strokeWidth="1" />
-                            <line x1="0" y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="currentColor" strokeOpacity="0.1" strokeWidth="1" />
-
-                            {/* Area fills */}
-                            <path d={`${collectedPath} L ${chartWidth - paddingX} ${chartHeight} L ${paddingX} ${chartHeight} Z`} fill="url(#fillBlue)" />
-                            <path d={`${debtPath} L ${chartWidth - paddingX} ${chartHeight} L ${paddingX} ${chartHeight} Z`} fill="url(#fillGreen)" />
-
-                            {/* Lines */}
-                            <path d={collectedPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d={debtPath} fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-
-                            {/* Data points */}
-                            {collectedCoords.map((c, i) => (
-                                <circle key={`c-${i}`} cx={c.x} cy={c.y} r="3" fill="#3b82f6" className="drop-shadow-sm" />
-                            ))}
-                            {debtCoords.map((c, i) => (
-                                <circle key={`d-${i}`} cx={c.x} cy={c.y} r="3" fill="#22c55e" className="drop-shadow-sm" />
-                            ))}
-                        </svg>
-
-                        {/* X-axis labels */}
-                        <div className="absolute -bottom-6 left-0 right-0 flex justify-between px-1">
-                            {chartData.map((d, i) => (
-                                <span key={i} className="text-[9px] font-semibold text-muted-foreground w-6 text-center">{d.day}</span>
-                            ))}
-                        </div>
+            <div className="rounded-2xl border border-border bg-card p-4 md:p-5">
+                {/* Header + Period Selector */}
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-foreground">Business Overview</h3>
+                    <div className="flex gap-1 bg-muted rounded-lg p-0.5">
+                        {(['week', 'month', 'year'] as const).map(p => (
+                            <button
+                                key={p}
+                                onClick={() => setOverviewPeriod(p)}
+                                className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${
+                                    overviewPeriod === p
+                                        ? 'bg-card text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                {/* Right side summary */}
-                <div className="md:w-32 shrink-0 flex flex-col justify-center gap-4 md:border-l md:border-border/50 md:pl-4 mt-6 md:mt-0 pt-4 md:pt-0 border-t border-border/50 md:border-t-0">
-                    <div>
-                        <p className="text-xl font-black text-foreground tabular-nums leading-none">
-                            ${weeklyCollected.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                        </p>
-                        <p className="text-[10px] font-bold text-blue-500 mt-1">Collected</p>
+                {overviewLoading ? (
+                    <div className="flex items-center justify-center h-32">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
-                    <div>
-                        <p className="text-xl font-black text-foreground tabular-nums leading-none">
-                            ${totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                        </p>
-                        <p className="text-[10px] font-bold text-emerald-500 mt-1">Outstanding</p>
+                ) : !hasOverviewData ? (
+                    <div className="flex flex-col items-center justify-center h-32 gap-2">
+                        <TrendingUp className="h-7 w-7 text-muted-foreground/30" />
+                        <p className="text-sm text-muted-foreground">No business activity for this period</p>
+                        <Link href="/daily-book" className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors">View Daily Book →</Link>
                     </div>
-                </div>
+                ) : (
+                    <>
+                        {/* Legend */}
+                        <div className="flex flex-wrap items-center gap-3 mb-3">
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{background:'#94a3b8'}} />
+                                <span className="text-[10px] font-semibold text-muted-foreground">Expected</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{background:'#2563eb'}} />
+                                <span className="text-[10px] font-semibold text-muted-foreground">Paid</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{background:'#d97706'}} />
+                                <span className="text-[10px] font-semibold text-muted-foreground">Remaining</span>
+                            </div>
+                        </div>
+
+                        {/* SVG Chart */}
+                        <div className="relative mb-6">
+                            <svg
+                                viewBox={`0 -8 ${OV_W} ${OV_H + 10}`}
+                                className="w-full overflow-visible"
+                                style={{ height: 130 }}
+                                preserveAspectRatio="none"
+                            >
+                                <defs>
+                                    <linearGradient id="ovGradExp" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.15" />
+                                        <stop offset="100%" stopColor="#94a3b8" stopOpacity="0" />
+                                    </linearGradient>
+                                    <linearGradient id="ovGradPaid" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#2563eb" stopOpacity="0.15" />
+                                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                                    </linearGradient>
+                                    <linearGradient id="ovGradRem" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#d97706" stopOpacity="0.12" />
+                                        <stop offset="100%" stopColor="#d97706" stopOpacity="0" />
+                                    </linearGradient>
+                                </defs>
+
+                                {/* Subtle horizontal gridlines */}
+                                {[0, 0.5, 1].map((t, i) => (
+                                    <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
+                                        stroke="currentColor" strokeOpacity="0.06" strokeWidth="1" strokeDasharray={i === 1 ? "4 4" : "0"} />
+                                ))}
+
+                                {/* Area fills */}
+                                {expPath && <path d={`${expPath} L ${expCoords[expCoords.length-1]?.x} ${OV_H} L ${expCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradExp)" />}
+                                {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradPaid)" />}
+                                {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGradRem)" />}
+
+                                {/* Lines */}
+                                {expPath && <path d={expPath} fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+                                {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                                {remPath && <path d={remPath} fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+
+                                {/* Dots for paid (most important line) */}
+                                {paidCoords.map((c, i) => (
+                                    <circle key={i} cx={c.x} cy={c.y} r="2.5" fill="#2563eb" />
+                                ))}
+                            </svg>
+
+                            {/* X-axis labels */}
+                            <div className="flex justify-between mt-1 px-0.5">
+                                {ovLabels.map((lbl, i) => (
+                                    <span key={i} className="text-[9px] font-medium text-muted-foreground/70 flex-1 text-center">{lbl}</span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Summary cards — 4 compact metrics */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                            <div className="bg-muted/50 rounded-xl p-2.5">
+                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">KG Processed</p>
+                                <p className="text-sm font-black text-foreground tabular-nums">{fmtKg(ovTotals.kg)}</p>
+                            </div>
+                            <div className="bg-muted/50 rounded-xl p-2.5">
+                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Expected</p>
+                                <p className="text-sm font-black text-foreground tabular-nums">{fmtMoney(ovTotals.expected)}</p>
+                            </div>
+                            <div className="bg-muted/50 rounded-xl p-2.5">
+                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Paid</p>
+                                <p className="text-sm font-black text-blue-600 tabular-nums">{fmtMoney(ovTotals.paid)}</p>
+                            </div>
+                            <div className="bg-muted/50 rounded-xl p-2.5">
+                                <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
+                                <p className="text-sm font-black text-amber-600 tabular-nums">{fmtMoney(ovTotals.remaining)}</p>
+                            </div>
+                        </div>
+
+                        {/* Payment Progress */}
+                        {ovTotals.expected > 0 && (
+                            <div className="border-t border-border/50 pt-3">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold text-muted-foreground">Payment Progress</span>
+                                    <span className="text-[11px] font-black text-foreground">{ovTotals.paymentProgress}%</span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                        className="h-1.5 rounded-full bg-blue-500 transition-all duration-500"
+                                        style={{ width: `${ovTotals.paymentProgress}%` }}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                    {fmtMoney(ovTotals.paid)} paid of {fmtMoney(ovTotals.expected)} expected
+                                </p>
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
 
             {/* Admin Egress Monitor */}
