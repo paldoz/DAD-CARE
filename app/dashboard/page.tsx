@@ -53,6 +53,7 @@ interface DashboardData {
     todayCustomerCount: number;
     topDebtors: { id: string; name: string; code: string; debt: number; is_reesto: boolean; total_payments: number; total_maqal: number; percentage_paid: number; }[];
     recentTransactions: any[];
+    weeklyData: { day_name: string; dow: number; date: string; collected: number; debt_added: number; }[];
 }
 
 /* ── Decorative sparkline SVGs ─────────────────────────── */
@@ -182,9 +183,9 @@ export default function DashboardPage() {
 
     const totalCombinedDebt = (data?.totalDebt || 0) + (data?.totalReesto || 0);
     const isSuperAdmin = userRole === 'SUPER_ADMIN';
-    const topDebtors = (data?.topDebtors || []).slice(0, 3);
-    const recentTx = (data?.recentTransactions || []).slice(0, 3);
-    const hasAttention = topDebtors.length > 0;
+    const topDebtors = (data?.topDebtors || []).slice(0, 5);
+    const recentTx = (data?.recentTransactions || []).slice(0, 5);
+    const hasAttention = topDebtors.some(d => d.debt > 0);
 
     const roleBadgeLabel =
         userRole === 'SUPER_ADMIN' ? 'Super Admin'
@@ -194,6 +195,55 @@ export default function DashboardPage() {
     /* greeting line: "Good morning," on line 1, "Name 👋" on line 2 */
     const greetingLine1 = greetingWords.slice(0, 2).join(' ') + ',';
     const greetingLine2Parts = greetingWords.slice(2); // ["Name", "👋"]
+
+    /* Calculate Weekly Chart Data */
+    const weeklyData = data?.weeklyData || [];
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    
+    // Map data to the 7 days of the week
+    const chartData = days.map(dayStr => {
+        const found = weeklyData.find(d => d.day_name === dayStr);
+        return {
+            day: dayStr,
+            collected: found ? Number(found.collected || 0) : 0,
+            debt: found ? Number(found.debt_added || 0) : 0
+        };
+    });
+
+    const weeklyCollected = chartData.reduce((acc, curr) => acc + curr.collected, 0);
+    const weeklyDebt = chartData.reduce((acc, curr) => acc + curr.debt, 0);
+
+    // SVG Chart Scaling
+    const maxVal = Math.max(1, ...chartData.map(d => Math.max(d.collected, d.debt)));
+    const chartHeight = 100;
+    const chartWidth = 300;
+    const paddingX = 10;
+    
+    const getCoordinates = (values: number[]) => {
+        return values.map((val, i) => {
+            const x = paddingX + (i * ((chartWidth - paddingX * 2) / 6));
+            const y = chartHeight - (val / maxVal) * chartHeight;
+            return { x, y: isNaN(y) ? chartHeight : y };
+        });
+    };
+
+    const collectedCoords = getCoordinates(chartData.map(d => d.collected));
+    const debtCoords = getCoordinates(chartData.map(d => d.debt));
+
+    const createPath = (coords: {x: number, y: number}[]) => {
+        if(coords.length === 0) return '';
+        const start = `M ${coords[0].x} ${coords[0].y}`;
+        const lines = coords.slice(1).map((c, i) => {
+            const prev = coords[i];
+            const cp1x = prev.x + (c.x - prev.x) / 2;
+            const cp2x = cp1x;
+            return `C ${cp1x} ${prev.y}, ${cp2x} ${c.y}, ${c.x} ${c.y}`;
+        }).join(' ');
+        return `${start} ${lines}`;
+    };
+
+    const collectedPath = createPath(collectedCoords);
+    const debtPath = createPath(debtCoords);
 
     return (
         <div className="w-full max-w-3xl mx-auto space-y-3 md:space-y-4">
@@ -495,8 +545,91 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            {/* ══════════════════════════════════════
+                BUSINESS OVERVIEW — THIS WEEK
+            ══════════════════════════════════════ */}
+            <div className="rounded-2xl border border-border bg-card p-4 md:p-5 flex flex-col md:flex-row gap-6 md:gap-4">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-bold text-foreground">Business Overview <span className="text-muted-foreground font-medium">(This Week)</span></h3>
+                        <span className="text-xs font-semibold text-muted-foreground bg-muted px-2 py-1 rounded-md">This Week ▾</span>
+                    </div>
+
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                            <span className="text-[11px] font-bold text-foreground">Collected</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                            <span className="text-[11px] font-bold text-foreground">Debt</span>
+                        </div>
+                    </div>
+
+                    <div className="relative h-[120px] w-full">
+                        <svg viewBox={`0 -10 ${chartWidth} ${chartHeight + 20}`} className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                            {/* Gradient Fills */}
+                            <defs>
+                                <linearGradient id="fillBlue" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
+                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                                </linearGradient>
+                                <linearGradient id="fillGreen" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#22c55e" stopOpacity="0.2" />
+                                    <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+                                </linearGradient>
+                            </defs>
+
+                            {/* Grid lines (horizontal) */}
+                            <line x1="0" y1="0" x2={chartWidth} y2="0" stroke="currentColor" strokeOpacity="0.05" strokeWidth="1" />
+                            <line x1="0" y1={chartHeight / 2} x2={chartWidth} y2={chartHeight / 2} stroke="currentColor" strokeOpacity="0.05" strokeWidth="1" />
+                            <line x1="0" y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="currentColor" strokeOpacity="0.1" strokeWidth="1" />
+
+                            {/* Area fills */}
+                            <path d={`${collectedPath} L ${chartWidth - paddingX} ${chartHeight} L ${paddingX} ${chartHeight} Z`} fill="url(#fillBlue)" />
+                            <path d={`${debtPath} L ${chartWidth - paddingX} ${chartHeight} L ${paddingX} ${chartHeight} Z`} fill="url(#fillGreen)" />
+
+                            {/* Lines */}
+                            <path d={collectedPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d={debtPath} fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+                            {/* Data points */}
+                            {collectedCoords.map((c, i) => (
+                                <circle key={`c-${i}`} cx={c.x} cy={c.y} r="3" fill="#3b82f6" className="drop-shadow-sm" />
+                            ))}
+                            {debtCoords.map((c, i) => (
+                                <circle key={`d-${i}`} cx={c.x} cy={c.y} r="3" fill="#22c55e" className="drop-shadow-sm" />
+                            ))}
+                        </svg>
+
+                        {/* X-axis labels */}
+                        <div className="absolute -bottom-6 left-0 right-0 flex justify-between px-1">
+                            {chartData.map((d, i) => (
+                                <span key={i} className="text-[9px] font-semibold text-muted-foreground w-6 text-center">{d.day}</span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right side summary */}
+                <div className="md:w-32 shrink-0 flex flex-col justify-center gap-4 md:border-l md:border-border/50 md:pl-4 mt-6 md:mt-0 pt-4 md:pt-0 border-t border-border/50 md:border-t-0">
+                    <div>
+                        <p className="text-xl font-black text-foreground tabular-nums leading-none">
+                            ${weeklyCollected.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-[10px] font-bold text-blue-500 mt-1">Collected</p>
+                    </div>
+                    <div>
+                        <p className="text-xl font-black text-foreground tabular-nums leading-none">
+                            ${totalCombinedDebt.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </p>
+                        <p className="text-[10px] font-bold text-emerald-500 mt-1">Outstanding</p>
+                    </div>
+                </div>
+            </div>
+
             {/* Admin Egress Monitor */}
-            <div className="flex justify-center pb-2">
+            <div className="flex justify-center pb-2 pt-2">
                 <Link href="/api/egress-stats" target="_blank"
                     className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground transition-colors">
                     <Activity className="h-3 w-3" />

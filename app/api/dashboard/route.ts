@@ -8,10 +8,16 @@ import { unstable_cache } from 'next/cache';
 export const dynamic = 'force-dynamic';
 
 const getDashboardData = async (today: string) => {
-    const [statsResult, todayStatsResult] = await Promise.all([
+    const [
+        statsResult, 
+        todayStatsResult,
+        topDebtorsResult,
+        recentTransactionsResult,
+        weeklyDataResult
+    ] = await Promise.all([
         pool.query(`
             WITH latest_ledger AS (
-                SELECT DISTINCT ON (customer_id) new_debt
+                SELECT DISTINCT ON (customer_id) customer_id, new_debt
                 FROM "Ledger"
                 WHERE deleted_at IS NULL
                 ORDER BY customer_id, created_at DESC, id DESC
@@ -37,7 +43,48 @@ const getDashboardData = async (today: string) => {
             FROM "DailyBookItem" dbi
             JOIN today_book db ON dbi.daily_book_id = db.id
             WHERE dbi.deleted_at IS NULL AND dbi.present IS NOT FALSE
-        `, [today])
+        `, [today]),
+        pool.query(`
+            WITH latest_ledger AS (
+                SELECT DISTINCT ON (customer_id) customer_id, new_debt
+                FROM "Ledger"
+                WHERE deleted_at IS NULL
+                ORDER BY customer_id, created_at DESC, id DESC
+            )
+            SELECT c.id, c.name, c.customer_code as code, ll.new_debt as debt
+            FROM latest_ledger ll
+            JOIN "Customer" c ON c.id = ll.customer_id
+            WHERE ll.new_debt > 0 AND c.deleted_at IS NULL
+            ORDER BY ll.new_debt DESC
+            LIMIT 5
+        `),
+        pool.query(`
+            SELECT
+                l.type,
+                l.amount,
+                l.kg,
+                l.created_at,
+                c.name as customer_name
+            FROM "Ledger" l
+            JOIN "Customer" c ON c.id = l.customer_id
+            WHERE l.deleted_at IS NULL
+            ORDER BY l.created_at DESC
+            LIMIT 5
+        `),
+        pool.query(`
+            SELECT 
+                TO_CHAR(created_at, 'Dy') as day_name,
+                EXTRACT(DOW FROM created_at) as dow,
+                DATE(created_at) as date,
+                SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END) as collected,
+                SUM(CASE WHEN type IN ('PRODUCT', 'ADJUSTMENT') THEN amount ELSE 0 END) as debt_added
+            FROM "Ledger"
+            WHERE created_at >= date_trunc('week', CURRENT_DATE) 
+              AND created_at < date_trunc('week', CURRENT_DATE) + INTERVAL '7 days'
+              AND deleted_at IS NULL
+            GROUP BY DATE(created_at), EXTRACT(DOW FROM created_at), TO_CHAR(created_at, 'Dy')
+            ORDER BY DATE(created_at)
+        `)
     ]);
 
     const stats = statsResult.rows[0];
@@ -49,8 +96,10 @@ const getDashboardData = async (today: string) => {
 
     const todayKg = todayStatsResult.rows[0]?.today_kg || 0;
     const todayCustomerCount = todayStatsResult.rows[0]?.today_customer_count || 0;
-    const topDebtors: any[] = [];
-    const recentTransactions: any[] = [];
+    
+    const topDebtors = topDebtorsResult.rows;
+    const recentTransactions = recentTransactionsResult.rows;
+    const weeklyData = weeklyDataResult.rows;
 
     return {
         totalCustomers,
@@ -61,7 +110,8 @@ const getDashboardData = async (today: string) => {
         todayKg,
         todayCustomerCount,
         topDebtors,
-        recentTransactions
+        recentTransactions,
+        weeklyData
     };
 };
 

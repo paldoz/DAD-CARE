@@ -640,31 +640,32 @@ function DailyBookPageInner() {
                 description={`⚠️ Move "${customers.find(c => c.id === pendingDeleteCustomerId)?.name || 'this customer'}" to Inactive? Their history is preserved and they can be recovered anytime from the Customers page.`}
             />
             {/* Header */}
-            <div className="relative px-4 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex items-center justify-between gap-4">
+            <div className="relative px-3 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4">
                 <AnimatedBackground />
                 <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-blue-500/5 pointer-events-none" />
-                <div className="relative z-10 flex-1 min-w-0">
+                <div className="relative z-10 flex-1 min-w-0 w-full">
                     <h1 className="text-xl md:text-2xl font-bold text-foreground tracking-tight flex items-center gap-2">
                         <BookOpen className="w-5 h-5 text-primary shrink-0" />
                         Buuga Maalinlaha
                     </h1>
                 </div>
 
-                <div className="relative z-10 flex gap-2 shrink-0">
+                <div className="relative z-10 flex flex-wrap gap-2 shrink-0 w-full sm:w-auto">
                     {isSuperAdmin && (
                         <Button
                             variant={viewMode === 'edit' ? 'default' : 'outline'}
                             onClick={() => setViewMode('edit')}
-                            className={`h-9 rounded-xl px-4 font-bold text-xs transition-all ${viewMode === 'edit' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
+                            className={`flex-1 sm:flex-none h-9 rounded-xl px-3 sm:px-4 font-bold text-xs transition-all ${viewMode === 'edit' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
                         >
                             <Plus className="w-3.5 h-3.5 mr-1.5 text-current opacity-80" />
-                            New Entry
+                            <span className="hidden sm:inline">New Entry</span>
+                            <span className="inline sm:hidden">Entry</span>
                         </Button>
                     )}
                     <Button
                         variant={viewMode === 'details' ? 'default' : 'outline'}
                         onClick={() => setViewMode('details')}
-                        className={`h-9 rounded-xl px-4 font-bold text-xs transition-all ${viewMode === 'details' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
+                        className={`flex-1 sm:flex-none h-9 rounded-xl px-3 sm:px-4 font-bold text-xs transition-all ${viewMode === 'details' ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:bg-primary/90' : 'border-border/60 bg-background/50 backdrop-blur-sm text-foreground hover:bg-accent'}`}
                     >
                         <FileText className="w-3.5 h-3.5 mr-1.5 text-current opacity-80" />
                         History <span className="ml-1 opacity-70">({savedEntries.length || initData?.historyCount || 0})</span>
