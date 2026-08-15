@@ -132,7 +132,7 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
         
         const getCachedDashboardData = unstable_cache(
             async (date: string) => getDashboardData(date),
-            ['dashboard-data', today],
+            ['dashboard-data-v2', today],
             { tags: ['dashboard'], revalidate: 3600 }
         );
 
