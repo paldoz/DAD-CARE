@@ -11,23 +11,35 @@ const getDashboardData = async (today: string) => {
     const [
         statsResult, 
         todayStatsResult,
-        topDebtorsResult,
         recentTransactionsResult,
         weeklyDataResult
     ] = await Promise.all([
         pool.query(`
-            WITH latest_ledger AS (
-                SELECT DISTINCT ON (customer_id) customer_id, new_debt
-                FROM "Ledger"
-                WHERE deleted_at IS NULL
-                ORDER BY customer_id, created_at DESC, id DESC
+            WITH valid_ledger AS (
+                SELECT DISTINCT ON (l.customer_id) 
+                    l.customer_id, 
+                    l.new_debt,
+                    c.name,
+                    c.customer_code as code
+                FROM "Ledger" l
+                JOIN "Customer" c ON c.id = l.customer_id
+                WHERE l.deleted_at IS NULL AND c.deleted_at IS NULL AND c.is_kabarka = false
+                ORDER BY l.customer_id, l.created_at DESC, l.id DESC
+            ),
+            top_debtors AS (
+                SELECT customer_id as id, name, code, new_debt as debt
+                FROM valid_ledger
+                WHERE new_debt > 0
+                ORDER BY new_debt DESC
+                LIMIT 5
             )
             SELECT 
                 (SELECT count(*)::int FROM "Customer" WHERE deleted_at IS NULL AND is_kabarka = false) as total_customers,
-                (SELECT COALESCE(SUM(CASE WHEN new_debt > 0 THEN new_debt ELSE 0 END), 0)::float FROM latest_ledger) as total_debt,
-                (SELECT ABS(COALESCE(SUM(CASE WHEN new_debt < 0 THEN new_debt ELSE 0 END), 0))::float FROM latest_ledger) as total_reesto,
+                (SELECT COALESCE(SUM(CASE WHEN new_debt > 0 THEN new_debt ELSE 0 END), 0)::float FROM valid_ledger) as total_debt,
+                (SELECT ABS(COALESCE(SUM(CASE WHEN new_debt < 0 THEN new_debt ELSE 0 END), 0))::float FROM valid_ledger) as total_reesto,
                 (SELECT COALESCE(SUM(amount), 0)::float FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL) as total_paid,
-                (SELECT COALESCE(SUM(kg), 0)::float FROM "Ledger" WHERE type = 'PRODUCT' AND deleted_at IS NULL) as total_kg
+                (SELECT COALESCE(SUM(kg), 0)::float FROM "Ledger" WHERE type = 'PRODUCT' AND deleted_at IS NULL) as total_kg,
+                (SELECT COALESCE(json_agg(td.*), '[]'::json) FROM top_debtors td) as top_debtors_json
         `),
         pool.query(`
             WITH today_book AS (
@@ -44,20 +56,6 @@ const getDashboardData = async (today: string) => {
             JOIN today_book db ON dbi.daily_book_id = db.id
             WHERE dbi.deleted_at IS NULL AND dbi.present IS NOT FALSE
         `, [today]),
-        pool.query(`
-            WITH latest_ledger AS (
-                SELECT DISTINCT ON (customer_id) customer_id, new_debt
-                FROM "Ledger"
-                WHERE deleted_at IS NULL
-                ORDER BY customer_id, created_at DESC, id DESC
-            )
-            SELECT c.id, c.name, c.customer_code as code, ll.new_debt as debt
-            FROM latest_ledger ll
-            JOIN "Customer" c ON c.id = ll.customer_id
-            WHERE ll.new_debt > 0 AND c.deleted_at IS NULL
-            ORDER BY ll.new_debt DESC
-            LIMIT 5
-        `),
         pool.query(`
             SELECT
                 l.type,
@@ -97,7 +95,7 @@ const getDashboardData = async (today: string) => {
     const todayKg = todayStatsResult.rows[0]?.today_kg || 0;
     const todayCustomerCount = todayStatsResult.rows[0]?.today_customer_count || 0;
     
-    const topDebtors = topDebtorsResult.rows;
+    const topDebtors = stats?.top_debtors_json || [];
     const recentTransactions = recentTransactionsResult.rows;
     const weeklyData = weeklyDataResult.rows;
 
