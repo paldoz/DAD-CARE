@@ -338,12 +338,18 @@ export default function DashboardPage() {
 
                             {/* Greeting text */}
                             <div className="min-w-0 flex-1 pt-0.5">
-                                {/* Line 1: "Good morning," — static, no animation needed */}
-                                <p className="text-sm font-medium text-muted-foreground leading-tight">{greetingLine1}</p>
+                                {/* Line 1: "Good morning," — word-by-word animated */}
+                                <p className="text-sm font-medium text-muted-foreground leading-tight flex flex-wrap items-center gap-x-1">
+                                    {greetingLine1.split(' ').map((word, i) => (
+                                        <span key={`l1-${i}`} className="gword" style={{ animationDelay: `${i * 0.15}s` }}>
+                                            {word}
+                                        </span>
+                                    ))}
+                                </p>
                                 {/* Line 2: "Name 👋" — word-by-word animated */}
                                 <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight leading-tight flex flex-wrap items-center gap-x-1">
                                     {greetingLine2Parts.map((word, i) => (
-                                        <span key={i} className="gword" style={{ animationDelay: `${i * 0.15}s` }}>
+                                        <span key={`l2-${i}`} className="gword" style={{ animationDelay: `${(greetingLine1.split(' ').length + i) * 0.15}s` }}>
                                             {word}
                                         </span>
                                     ))}
