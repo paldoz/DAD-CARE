@@ -308,20 +308,20 @@ export default function DashboardPage() {
 
                                 {/* Profile dropdown */}
                                 {showProfileMenu && (
-                                    <div className="absolute top-14 left-0 z-[200] bg-card border border-border rounded-2xl shadow-2xl p-3 min-w-[200px] animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="absolute top-14 left-0 z-[999] bg-card border border-border rounded-2xl shadow-2xl p-2.5 min-w-[180px] animate-in fade-in slide-in-from-top-2 duration-200">
                                         <div className="px-2 pb-2 mb-2 border-b border-border/50">
                                             <p className="text-xs font-black uppercase tracking-widest text-foreground">{username || 'DadWork'}</p>
                                             <p className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground mt-0.5">{roleBadgeLabel || 'Admin'}</p>
                                         </div>
                                         <Link href="/settings" onClick={() => setShowProfileMenu(false)}
-                                            className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-foreground hover:bg-muted transition-colors">
-                                            <Settings className="h-4 w-4 text-muted-foreground" />
-                                            <span className="text-sm font-semibold">Settings</span>
+                                            className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl text-foreground hover:bg-muted transition-colors">
+                                            <Settings className="h-3.5 w-3.5 text-muted-foreground" />
+                                            <span className="text-xs font-semibold">Settings</span>
                                         </Link>
                                         <button onClick={handleLogout}
-                                            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors mt-1">
-                                            <LogOut className="h-4 w-4 shrink-0" />
-                                            <span className="text-sm font-bold">Logout</span>
+                                            className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-xl text-red-500 hover:bg-red-500/10 transition-colors mt-1">
+                                            <LogOut className="h-3.5 w-3.5 shrink-0" />
+                                            <span className="text-xs font-bold">Logout</span>
                                         </button>
                                     </div>
                                 )}
@@ -370,11 +370,11 @@ export default function DashboardPage() {
                                     <Settings className="h-4 w-4" />
                                 </Link>
                             </div>
-                            {/* Date — desktop only */}
+                            {/* Date — visible on all sizes */}
                             {dates.standard && (
-                                <div className="hidden md:flex flex-col items-end gap-0.5">
-                                    <p className="text-[11px] font-semibold text-foreground/80 flex items-center gap-1">📅 {dates.standard}</p>
-                                    {dates.hijri && <p className="text-[10px] text-muted-foreground flex items-center gap-1">🌙 {dates.hijri}</p>}
+                                <div className="flex flex-col items-end gap-0.5 pt-1 md:pt-0">
+                                    <p className="text-[9px] md:text-[11px] font-semibold text-foreground/80 flex items-center gap-1">📅 {dates.standard}</p>
+                                    {dates.hijri && <p className="text-[8px] md:text-[10px] text-muted-foreground flex items-center gap-1">🌙 {dates.hijri}</p>}
                                 </div>
                             )}
                         </div>
