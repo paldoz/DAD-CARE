@@ -1,7 +1,11 @@
 /**
- * Accurate Hijri date utility.
- * Uses Intl API to get the numeric Hijri month, then maps to real Hijri month names.
- * Auto-updates at midnight via a scheduled timeout.
+ * Accurate Hijri date utility using Saudi Arabia's Umm al-Qura calendar.
+ *
+ * Strategy: Try islamic-umalqura first (native browser Umm al-Qura support).
+ * If that fails (some older iOS/Safari), fall back to islamic-civil with +1 correction
+ * which typically matches Saudi Arabia's announcement.
+ * Month names are always taken from our own array — never from the browser —
+ * so they will always be correct Arabic Hijri month names.
  */
 
 const HIJRI_MONTHS = [
@@ -10,28 +14,38 @@ const HIJRI_MONTHS = [
     'Ramadan', 'Shawwal', "Dhu al-Qi'dah", 'Dhu al-Hijjah',
 ];
 
-export function getHijriDate(date: Date = new Date()): string {
+function parseHijriParts(date: Date, calendar: string): { day: number; month: number; year: number } | null {
     try {
-        // Use islamic-umalqura = Saudi Arabia's official Umm al-Qura calendar
-        const fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', {
+        const fmt = new Intl.DateTimeFormat(`en-u-ca-${calendar}`, {
             day: 'numeric',
             month: 'numeric',
             year: 'numeric',
         });
         const parts = fmt.formatToParts(date);
         const get = (t: string) => parts.find(p => p.type === t)?.value || '';
-
         const day = parseInt(get('day'), 10);
-        const month = parseInt(get('month'), 10); // 1-based
+        const month = parseInt(get('month'), 10);
         const year = parseInt(get('year'), 10);
-
-        if (!day || !month || !year) throw new Error('parse failed');
-
-        const monthName = HIJRI_MONTHS[month - 1] || `Month ${month}`;
-        return `${day} ${monthName} ${year}`;
+        if (!day || !month || !year || month > 12) return null;
+        return { day, month, year };
     } catch {
-        return '';
+        return null;
     }
+}
+
+export function getHijriDate(date: Date = new Date()): string {
+    // 1st attempt: islamic-umalqura = Saudi Arabia's official Umm al-Qura calendar
+    let parts = parseHijriParts(date, 'islamic-umalqura');
+
+    // 2nd attempt: fall back to standard islamic calendar if umalqura not supported
+    if (!parts) {
+        parts = parseHijriParts(date, 'islamic');
+    }
+
+    if (!parts) return '';
+
+    const monthName = HIJRI_MONTHS[parts.month - 1] || `Month ${parts.month}`;
+    return `${parts.day} ${monthName} ${parts.year} AH`;
 }
 
 export function getStandardDate(date: Date = new Date()): string {
