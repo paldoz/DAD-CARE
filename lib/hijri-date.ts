@@ -12,8 +12,8 @@ const HIJRI_MONTHS = [
 
 export function getHijriDate(date: Date = new Date()): string {
     try {
-        // Use numeric parts so we get reliable numbers, not translated names
-        const fmt = new Intl.DateTimeFormat('en-u-ca-islamic', {
+        // Use islamic-umalqura = Saudi Arabia's official Umm al-Qura calendar
+        const fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', {
             day: 'numeric',
             month: 'numeric',
             year: 'numeric',
