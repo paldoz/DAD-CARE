@@ -23,6 +23,7 @@ import { GlobalSearch } from '@/components/global-search';
 import { AnimatedBackground } from '@/components/animated-background';
 import { SecurityBell } from '@/components/security-bell';
 import { logout } from '@/lib/session';
+import { subscribeToDailyDates } from '@/lib/hijri-date';
 import useSWR from 'swr';
 
 const fetcher = async (url: string) => {
@@ -140,11 +141,10 @@ export default function DashboardPage() {
 
     useEffect(() => {
         const todayDate = new Date();
-        const standardDate = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(todayDate);
-        const hijriDateFull = new Intl.DateTimeFormat('en-GB-u-ca-islamic', { day: 'numeric', month: 'long', year: 'numeric' }).format(todayDate);
-        setDates({
-            standard: standardDate,
-            hijri: hijriDateFull.replace(/ AH$/, '').replace(/,/, '')
+        // Use the shared hijri-date utility — same as sidebar & customers page
+        // This correctly maps numeric months to Arabic Hijri month names (Saudi Arabia Umm al-Qura)
+        const unsub = subscribeToDailyDates((standard, hijri) => {
+            setDates({ standard, hijri });
         });
 
         const storedUser = localStorage.getItem('currentUser');
@@ -198,6 +198,7 @@ export default function DashboardPage() {
         window.addEventListener('focus', handleFocus);
         handleFocus();
         return () => {
+            unsub();
             document.removeEventListener('mousedown', handleClickOutside);
             window.removeEventListener('storage', handleStorage);
             window.removeEventListener('focus', handleFocus);
