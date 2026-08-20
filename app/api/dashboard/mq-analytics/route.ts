@@ -147,13 +147,17 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
     }
 
     // Fetch pre-MQ debt per customer to drain untagged payments correctly
-    const preMqDebtResult = await pool.query(`
-        SELECT customer_id, SUM(amount) AS pre_debt
-        FROM "Ledger"
-        WHERE type = 'PRODUCT' AND deleted_at IS NULL 
-          AND COALESCE(reference_date::date, created_at::date) < (SELECT MIN(date1) FROM filtered_pairs)
-        GROUP BY customer_id
-    `);
+    let preMqDebtResult = { rows: [] as any[] };
+    if (result.rows.length > 0) {
+        const earliestDate = result.rows[0].date1;
+        preMqDebtResult = await pool.query(`
+            SELECT customer_id, SUM(amount) AS pre_debt
+            FROM "Ledger"
+            WHERE type = 'PRODUCT' AND deleted_at IS NULL 
+              AND COALESCE(reference_date::date, created_at::date) < $1
+            GROUP BY customer_id
+        `, [earliestDate]);
+    }
     for (const row of preMqDebtResult.rows) {
         const cId = row.customer_id;
         const preDebt = Number(row.pre_debt || 0);
