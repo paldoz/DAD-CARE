@@ -17,7 +17,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
            AND COALESCE(l.reference_date::date, l.created_at::date) < date_trunc('${period}', '${today}'::date) + INTERVAL '1 ${period}'`;
 
     const query = `
-        WITH period_ledger AS (
+        WITH full_ledger AS (
             SELECT 
                 l.id,
                 l.customer_id,
@@ -33,22 +33,14 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             WHERE l.deleted_at IS NULL
               AND c.deleted_at IS NULL
               AND l.maqal_id IS NOT NULL
-              ${period !== 'all' ? `
-              AND COALESCE(l.reference_date::date, l.created_at::date) >= date_trunc($1, $2::date)
-              AND COALESCE(l.reference_date::date, l.created_at::date) < date_trunc($1, $2::date) + (
-                  CASE 
-                      WHEN $1 = 'week' THEN INTERVAL '1 week'
-                      WHEN $1 = 'month' THEN INTERVAL '1 month'
-                      ELSE INTERVAL '1 year'
-                  END
-              )` : ''}
         ),
         mq_groups AS (
             SELECT
                 maqal_id::text as mq_key,
                 maqal_id,
-                MIN(ref_day) as start_date,
-                MAX(ref_day) as end_date,
+                MIN(CASE WHEN type = 'PRODUCT' THEN ref_day ELSE NULL END) as start_date,
+                MAX(CASE WHEN type = 'PRODUCT' THEN ref_day ELSE NULL END) as end_date,
+                MIN(ref_day) as fallback_start,
                 SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as expected,
                 SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END) as paid,
                 SUM(CASE WHEN type = 'PRODUCT' THEN COALESCE(kg, 0) ELSE 0 END) as kg,
@@ -64,11 +56,22 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                         'ref_day', ref_day
                     )
                 ) as entries
-            FROM period_ledger
+            FROM full_ledger
             GROUP BY maqal_id
         )
         SELECT * FROM mq_groups
-        ORDER BY maqal_id ASC NULLS LAST, start_date ASC
+        WHERE 1=1
+        ${period !== 'all' ? `
+          AND COALESCE(start_date, fallback_start) >= date_trunc($1, $2::date)
+          AND COALESCE(start_date, fallback_start) < date_trunc($1, $2::date) + (
+              CASE 
+                  WHEN $1 = 'week' THEN INTERVAL '1 week'
+                  WHEN $1 = 'month' THEN INTERVAL '1 month'
+                  ELSE INTERVAL '1 year'
+              END
+          )
+        ` : ''}
+        ORDER BY maqal_id ASC NULLS LAST, COALESCE(start_date, fallback_start) ASC
     `;
 
     const params = period !== 'all' ? [period, today] : [];
@@ -82,8 +85,10 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
         const paymentPercentage = expected > 0 ? Math.min(100, Math.round((paid / expected) * 100)) : (paid > 0 ? 100 : 0);
         
         // Start and end dates of this MQ
-        const startDate = row.start_date ? new Date(row.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
-        const endDate = row.end_date ? new Date(row.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        const actualStart = row.start_date || row.fallback_start;
+        const actualEnd = row.end_date || row.fallback_start;
+        const startDate = actualStart ? new Date(actualStart).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        const endDate = actualEnd ? new Date(actualEnd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
         const dateRange = startDate === endDate ? startDate : `${startDate} – ${endDate}`;
 
         // Aggregate per-customer stats
