@@ -60,7 +60,11 @@ interface MqAnalyticsData {
     period: string;
     mqs: {
         id: string;
+        mqNumber: number | null;
         label: string;
+        dateRange?: string;
+        startDate?: string;
+        endDate?: string;
         kg: number;
         expected: number;
         paid: number;
@@ -75,6 +79,7 @@ interface MqAnalyticsData {
             paid: number;
             kg: number;
             remaining: number;
+            paymentPct?: number;
         }[];
     }[];
     totals: {
