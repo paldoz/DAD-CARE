@@ -146,6 +146,24 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
         untaggedPool.set(row.customer_id, Number(row.total_untagged || 0));
     }
 
+    // Fetch pre-MQ debt per customer to drain untagged payments correctly
+    const preMqDebtResult = await pool.query(`
+        SELECT customer_id, SUM(amount) AS pre_debt
+        FROM "Ledger"
+        WHERE type = 'PRODUCT' AND deleted_at IS NULL 
+          AND COALESCE(reference_date::date, created_at::date) < (SELECT MIN(date1) FROM filtered_pairs)
+        GROUP BY customer_id
+    `);
+    for (const row of preMqDebtResult.rows) {
+        const cId = row.customer_id;
+        const preDebt = Number(row.pre_debt || 0);
+        if (preDebt > 0 && untaggedPool.has(cId)) {
+            const available = untaggedPool.get(cId)!;
+            const drained = Math.min(available, preDebt);
+            untaggedPool.set(cId, available - drained);
+        }
+    }
+
     const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
     // Build raw MQ list sorted oldest first (mq_num ascending = oldest first)
