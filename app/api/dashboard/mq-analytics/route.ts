@@ -88,19 +88,26 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                             AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
             GROUP BY fp.mq_num, l.customer_id
         ),
-        -- Step 7: For each MQ pair, calculate total payments and debt before for PURE waterfall logic
-        -- This mirrors maqal-pairs/route.ts EXACTLY, ignoring maqal_id to perfectly match the History page
+        -- Step 7: For each MQ pair, allocate payments using waterfall logic (for older payments) + specific maqal_id
         mq_payments AS (
             SELECT
                 mp.mq_num,
                 mp.customer_id,
-                -- 1. Total payments made EVER
+                -- 1. Specific payments made explicitly for this MQ (handles "1", "MQ#1", etc)
                 COALESCE((
                     SELECT SUM(amount) FROM "Ledger" 
-                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL
-                ), 0) AS total_payments,
+                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL 
+                    AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\D', '', 'g'), '')::int = mp.mq_num
+                ), 0) AS specific_paid,
                 
-                -- 2. Debt accumulated BEFORE this MQ
+                -- 2. Waterfall pool: total payments without any maqal_id
+                COALESCE((
+                    SELECT SUM(amount) FROM "Ledger" 
+                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL 
+                    AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\D', '', 'g'), '') IS NULL
+                ), 0) AS waterfall_pool,
+                
+                -- 3. Debt accumulated BEFORE this MQ
                 COALESCE((
                     SELECT SUM(amount) FROM "Ledger" 
                     WHERE customer_id = mp.customer_id AND type = 'PRODUCT' AND deleted_at IS NULL AND COALESCE(reference_date::date, created_at::date) < fp.date1
@@ -116,11 +123,12 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             COUNT(DISTINCT dbi.customer_id)          AS total_customers,
             COALESCE(SUM(mp.expected), 0)            AS expected,
             
-            -- Pure Waterfall calculation: how much of the total payments is left for this MQ?
+            -- Waterfall calculation: specific_paid + whatever waterfall money is left for this specific MQ's debt
             COALESCE(SUM(
+                py.specific_paid + 
                 LEAST(
-                    mp.expected, -- Debt for this MQ
-                    GREATEST(0, py.total_payments - py.debt_before) -- Waterfall money available
+                    GREATEST(0, mp.expected - py.specific_paid), -- Remaining debt for this MQ
+                    GREATEST(0, py.waterfall_pool - py.debt_before) -- Remaining waterfall money available
                 )
             ), 0) AS paid,
             
@@ -133,9 +141,10 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                     'code',          dbi.customer_code,
                     'expected',      COALESCE(mp.expected, 0),
                     'paid',          COALESCE(
+                                        py.specific_paid + 
                                         LEAST(
-                                            mp.expected,
-                                            GREATEST(0, py.total_payments - py.debt_before)
+                                            GREATEST(0, mp.expected - py.specific_paid),
+                                            GREATEST(0, py.waterfall_pool - py.debt_before)
                                         )
                                      , 0),
                     'kg',            COALESCE(dbi.db_kg, 0)
