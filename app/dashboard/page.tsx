@@ -120,9 +120,8 @@ export default function DashboardPage() {
     const [avatarInitial, setAvatarInitial] = useState('D');
     const [greetingWords, setGreetingWords] = useState<string[]>([]);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
-    const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year'>('week');
-    const [overviewTab, setOverviewTab] = useState<'money' | 'kg' | 'payment'>('money');
-    const [expandedMq, setExpandedMq] = useState<string | null>(null);
+    const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year' | 'all'>('all');
+    const [expandedMqDetail, setExpandedMqDetail] = useState<boolean>(false);
     const [selectedDot, setSelectedDot] = useState<number | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -584,17 +583,17 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-bold text-foreground">Business Overview</h3>
                     <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-                        {(['week', 'month', 'year'] as const).map(p => (
+                        {(['all', 'year', 'month', 'week'] as const).map(p => (
                             <button
                                 key={p}
-                                onClick={() => setOverviewPeriod(p)}
+                                onClick={() => { setOverviewPeriod(p); setSelectedDot(null); setExpandedMqDetail(false); }}
                                 className={`text-[10px] font-bold px-2.5 py-1 rounded-md transition-all ${
                                     overviewPeriod === p
                                         ? 'bg-card text-foreground shadow-sm'
                                         : 'text-muted-foreground hover:text-foreground'
                                 }`}
                             >
-                                {p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
+                                {p === 'all' ? 'All' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
                             </button>
                         ))}
                     </div>
@@ -612,188 +611,209 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <>
-                        {/* ── Line Chart — totals overview ─────────────────── */}
-                        <div className="mb-5">
-                            {/* Legend + Totals */}
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                        <span className="text-[10px] font-semibold text-muted-foreground">Collected</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                                        <span className="text-[10px] font-semibold text-muted-foreground">Debt</span>
-                                    </div>
+                        {/* ── Totals summary row ── */}
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                    <span className="text-[10px] font-semibold text-muted-foreground">Collected</span>
                                 </div>
-                                <div className="flex items-center gap-4 text-right">
-                                    <div>
-                                        <p className="text-sm font-black text-blue-500 tabular-nums">{fmtMoney(ovTotals.paid)}</p>
-                                        <p className="text-[9px] font-semibold text-muted-foreground">Collected</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-black text-emerald-500 tabular-nums">{fmtMoney(ovTotals.remaining)}</p>
-                                        <p className="text-[9px] font-semibold text-muted-foreground">Outstanding</p>
-                                    </div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-red-400" />
+                                    <span className="text-[10px] font-semibold text-muted-foreground">Debt</span>
                                 </div>
                             </div>
-
-                            {/* SVG chart — MQ label + % inside */}
-                            <div className="relative w-full">
-                                <svg viewBox={`0 -8 ${OV_W} 160`} className="w-full overflow-visible" style={{ height: 160 }} preserveAspectRatio="none">
-                                    <defs>
-                                        <linearGradient id="ovGP3" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.18" />
-                                            <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-                                        </linearGradient>
-                                        <linearGradient id="ovGR3" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#10b981" stopOpacity="0.15" />
-                                            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                                        </linearGradient>
-                                    </defs>
-                                    {[0, 0.33, 0.66, 1].map((t, i) => (
-                                        <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
-                                            stroke="currentColor" strokeOpacity="0.05" strokeWidth="1"
-                                            strokeDasharray={i > 0 && i < 3 ? "3 3" : "0"} />
-                                    ))}
-                                    {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP3)" />}
-                                    {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR3)" />}
-                                    {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
-                                    {remPath && <path d={remPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-                                    {paidCoords.map((c, i) => {
-                                        const mq = mqs[i];
-                                        if (!mq) return null;
-                                        const isSelected = selectedDot === i;
-                                        const pct = mq.paymentPercentage;
-                                        const pctColor = pct >= 90 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
-                                        return (
-                                            <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
-                                                onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMq(isSelected ? null : mq.id); }}>
-                                                <line x1={c.x} y1={OV_H + 4} x2={c.x} y2={OV_H + 8} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
-                                                <text x={c.x} y={OV_H + 18} fontSize="7.5" fill="currentColor" fillOpacity="0.55" textAnchor="middle" fontWeight="700">
-                                                    {mq.label.length > 8 ? mq.label.slice(0, 8) : mq.label}
-                                                </text>
-                                                <text x={c.x} y={OV_H + 30} fontSize="8" fill={pctColor} textAnchor="middle" fontWeight="900">
-                                                    {pct}%
-                                                </text>
-                                                <circle cx={c.x} cy={c.y} r={isSelected ? 6 : 4}
-                                                    fill="#2563eb"
-                                                    stroke={isSelected ? '#fff' : '#2563eb'}
-                                                    strokeWidth={isSelected ? 2 : 0} />
-                                            </g>
-                                        );
-                                    })}
-                                </svg>
+                            <div className="flex items-center gap-4 text-right">
+                                <div>
+                                    <p className="text-sm font-black text-blue-500 tabular-nums">{fmtMoney(ovTotals.paid)}</p>
+                                    <p className="text-[9px] font-semibold text-muted-foreground">Total Collected</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-black text-red-400 tabular-nums">{fmtMoney(ovTotals.remaining)}</p>
+                                    <p className="text-[9px] font-semibold text-muted-foreground">Outstanding</p>
+                                </div>
                             </div>
                         </div>
 
-                        {/* ── MQ Cards — expandable, debt-only customers ──── */}
-                        <div className="space-y-2">
-                            {mqs.map((mq, idx) => {
-                                const isOpen = expandedMq === mq.id;
-                                const debtCustomers = mq.customers.filter(c => c.remaining > 0);
-                                const pct = mq.paymentPercentage;
-                                const pctColor = pct >= 90 ? 'text-emerald-500' : pct >= 50 ? 'text-amber-500' : 'text-red-500';
-                                const barColor = pct >= 90 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
-                                const isFullyPaid = debtCustomers.length === 0;
+                        {/* ── SVG Line Chart — tap a dot to see MQ details ── */}
+                        <div className="relative w-full mb-2">
+                            <p className="text-[9px] text-muted-foreground text-center mb-1">Tap any dot to see MQ details</p>
+                            <svg viewBox={`0 -8 ${OV_W} 160`} className="w-full overflow-visible" style={{ height: 160 }} preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="ovGP4" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
+                                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                                    </linearGradient>
+                                    <linearGradient id="ovGR4" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#f87171" stopOpacity="0.15" />
+                                        <stop offset="100%" stopColor="#f87171" stopOpacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                {/* Gridlines */}
+                                {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
+                                    <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
+                                        stroke="currentColor" strokeOpacity="0.04" strokeWidth="1"
+                                        strokeDasharray={i > 0 ? "2 4" : "0"} />
+                                ))}
+                                {/* Area fills */}
+                                {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP4)" />}
+                                {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR4)" />}
+                                {/* Lines */}
+                                {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+                                {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
 
-                                return (
-                                    <div key={mq.id}
-                                        className={`rounded-xl border transition-all duration-200 overflow-hidden ${
-                                            isOpen ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card'
-                                        } ${selectedDot === idx ? 'ring-2 ring-primary/30' : ''}`}>
+                                {/* Dots + MQ label + % */}
+                                {paidCoords.map((c, i) => {
+                                    const mq = mqs[i];
+                                    if (!mq) return null;
+                                    const isSelected = selectedDot === i;
+                                    const pct = mq.paymentPercentage;
+                                    const pctColor = pct >= 90 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
+                                    return (
+                                        <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
+                                            onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
+                                            {/* Tick */}
+                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 7} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
+                                            {/* MQ label */}
+                                            <text x={c.x} y={OV_H + 16} fontSize="7" fill="currentColor" fillOpacity={isSelected ? 1 : 0.5}
+                                                textAnchor="middle" fontWeight={isSelected ? "900" : "700"}>
+                                                {mq.label.length > 5 ? mq.label.slice(0, 5) : mq.label}
+                                            </text>
+                                            {/* % */}
+                                            <text x={c.x} y={OV_H + 27} fontSize="7.5" fill={pctColor}
+                                                textAnchor="middle" fontWeight="900">
+                                                {pct}%
+                                            </text>
+                                            {/* Selected ring */}
+                                            {isSelected && <circle cx={c.x} cy={c.y} r={10} fill="#2563eb" fillOpacity="0.15" />}
+                                            {/* Dot */}
+                                            <circle cx={c.x} cy={c.y} r={isSelected ? 5.5 : 3.5}
+                                                fill={isSelected ? '#fff' : '#2563eb'}
+                                                stroke="#2563eb" strokeWidth={isSelected ? 2.5 : 1.5} />
+                                        </g>
+                                    );
+                                })}
+                            </svg>
+                        </div>
 
-                                        {/* Card Header — always visible */}
+                        {/* ── Detail panel — appears when a dot is tapped ── */}
+                        {selectedDot !== null && mqs[selectedDot] && (() => {
+                            const mq = mqs[selectedDot];
+                            const pct = mq.paymentPercentage;
+                            const pctColor = pct >= 90 ? 'text-emerald-500' : pct >= 60 ? 'text-amber-500' : 'text-red-500';
+                            const barColor = pct >= 90 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                            const debtCustomers = mq.customers.filter((c: any) => c.remaining > 0);
+                            return (
+                                <div className="mt-1 rounded-2xl border border-primary/30 bg-gradient-to-b from-primary/5 to-transparent overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                                    {/* Panel header */}
+                                    <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-base font-black text-foreground">{mq.label}</span>
+                                                {mq.dateRange && (
+                                                    <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                                                        📅 {mq.dateRange}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <span className="text-[10px] font-semibold text-muted-foreground">⚖️ {fmtKg(mq.kg)}</span>
+                                                <span className="text-[10px] font-semibold text-muted-foreground">•</span>
+                                                <span className="text-[10px] font-semibold text-muted-foreground">{mq.customerCount} customers</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => { setSelectedDot(null); setExpandedMqDetail(false); }}
+                                            className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors text-xs font-black">✕</button>
+                                    </div>
+
+                                    {/* Progress bar */}
+                                    <div className="px-4 mb-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] font-semibold text-muted-foreground">Payment Progress</span>
+                                            <span className={`text-sm font-black ${pctColor}`}>{pct}%</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Money stats grid */}
+                                    <div className="grid grid-cols-3 gap-2 px-4 mb-3">
+                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
+                                            <p className="text-xs font-black text-foreground tabular-nums">{fmtMoney(mq.expected)}</p>
+                                        </div>
+                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Collected</p>
+                                            <p className="text-xs font-black text-blue-500 tabular-nums">{fmtMoney(mq.paid)}</p>
+                                        </div>
+                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
+                                            <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{fmtMoney(mq.remaining)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Customer section */}
+                                    <div className="border-t border-border/40 px-4 py-3">
                                         <button
-                                            onClick={() => { setExpandedMq(isOpen ? null : mq.id); setSelectedDot(isOpen ? null : idx); }}
-                                            className="w-full px-3 py-2.5 text-left"
+                                            onClick={() => setExpandedMqDetail(!expandedMqDetail)}
+                                            className="w-full flex items-center justify-between"
                                         >
-                                            {/* Row 1: Label + % + chevron */}
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-black text-foreground bg-muted px-2.5 py-0.5 rounded-md">{mq.label}</span>
-                                                    {isFullyPaid
-                                                        ? <span className="text-[10px] font-bold text-emerald-500">✅ Fully Paid</span>
-                                                        : <span className="text-[10px] font-bold text-amber-500">{debtCustomers.length} with debt</span>
-                                                    }
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`text-xs font-black tabular-nums ${pctColor}`}>{pct}%</span>
-                                                    <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
-                                                </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-bold text-foreground">
+                                                    {debtCustomers.length > 0
+                                                        ? `${debtCustomers.length} customers with debt`
+                                                        : '✅ All customers paid in full'}
+                                                </span>
+                                                {debtCustomers.length > 0 && (
+                                                    <span className="text-[10px] font-bold text-amber-500">{fmtMoney(mq.remaining)} total owed</span>
+                                                )}
                                             </div>
-
-                                            {/* Progress bar */}
-                                            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mb-2">
-                                                <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
-                                            </div>
-
-                                            {/* Row 2: KG + money stats */}
-                                            <div className="flex items-center gap-3 text-[10px]">
-                                                <span className="text-muted-foreground font-semibold">⚖️ {fmtKg(mq.kg)}</span>
-                                                <span className="text-muted-foreground">Exp: <span className="font-bold text-foreground">{fmtMoney(mq.expected)}</span></span>
-                                                <span className="text-blue-500 font-bold">{fmtMoney(mq.paid)} paid</span>
-                                                {mq.remaining > 0 && <span className="text-amber-500 font-bold">{fmtMoney(mq.remaining)} rem</span>}
-                                            </div>
+                                            {debtCustomers.length > 0 && (
+                                                <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${expandedMqDetail ? 'rotate-90' : ''}`} />
+                                            )}
                                         </button>
 
-                                        {/* Expandable customer debt list */}
-                                        {isOpen && (
-                                            <div className="border-t border-border/40 px-3 py-2">
-                                                {isFullyPaid ? (
-                                                    <div className="flex items-center justify-center py-3 gap-2">
-                                                        <span className="text-2xl">🎉</span>
-                                                        <p className="text-xs font-bold text-emerald-500">All {mq.customerCount} customers paid in full!</p>
-                                                    </div>
-                                                ) : (
-                                                    <>
-                                                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">
-                                                            Customers with outstanding debt
-                                                        </p>
-                                                        <div className="space-y-1.5">
-                                                            {debtCustomers.map(c => {
-                                                                const cPct = c.expected > 0 ? Math.min(100, Math.round((c.paid / c.expected) * 100)) : 0;
-                                                                const cColor = cPct >= 90 ? 'text-emerald-500' : cPct >= 50 ? 'text-amber-500' : 'text-red-500';
-                                                                const cBar = cPct >= 90 ? 'bg-emerald-500' : cPct >= 50 ? 'bg-amber-500' : 'bg-red-500';
-                                                                return (
-                                                                    <Link key={c.id} href={`/customers/${c.id}`}
-                                                                        className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border/40 hover:border-primary/40 transition-colors group">
-                                                                        {/* Avatar initial */}
-                                                                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
-                                                                            <span className="text-[10px] font-black text-muted-foreground">{c.name.charAt(0).toUpperCase()}</span>
-                                                                        </div>
-                                                                        {/* Name + mini bar */}
-                                                                        <div className="flex-1 min-w-0">
-                                                                            <p className="text-[11px] font-bold text-foreground truncate leading-none mb-1">{c.name}</p>
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                                                                                    <div className={`h-full rounded-full ${cBar}`} style={{ width: `${cPct}%` }} />
-                                                                                </div>
-                                                                                <span className={`text-[9px] font-black shrink-0 ${cColor}`}>{cPct}%</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        {/* Amounts */}
-                                                                        <div className="text-right shrink-0">
-                                                                            <p className="text-[10px] font-bold text-blue-500 tabular-nums">{fmtMoney(c.paid)}</p>
-                                                                            <p className="text-[9px] font-bold text-amber-500 tabular-nums">{fmtMoney(c.remaining)} owed</p>
-                                                                        </div>
-                                                                        <ChevronRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary transition-colors shrink-0" />
-                                                                    </Link>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </>
-                                                )}
+                                        {expandedMqDetail && debtCustomers.length > 0 && (
+                                            <div className="mt-2 space-y-1.5">
+                                                {debtCustomers.map((c: any) => {
+                                                    const cPct = c.expected > 0 ? Math.min(100, Math.round((c.paid / c.expected) * 100)) : (c.paid > 0 ? 100 : 0);
+                                                    const cBarColor = cPct >= 90 ? 'bg-emerald-500' : cPct >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                                                    const cTextColor = cPct >= 90 ? 'text-emerald-500' : cPct >= 60 ? 'text-amber-500' : 'text-red-500';
+                                                    return (
+                                                        <Link key={c.id} href={`/customers/${c.id}`}
+                                                            className="flex items-center gap-2.5 p-2.5 rounded-xl bg-card border border-border/40 hover:border-primary/40 transition-colors group">
+                                                            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0 text-[10px] font-black text-muted-foreground">
+                                                                {c.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-[11px] font-bold text-foreground truncate">{c.name}</p>
+                                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                                    <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                                                                        <div className={`h-full ${cBarColor} rounded-full`} style={{ width: `${cPct}%` }} />
+                                                                    </div>
+                                                                    <span className={`text-[9px] font-black shrink-0 ${cTextColor}`}>{cPct}%</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right shrink-0">
+                                                                <p className="text-[10px] font-bold text-blue-500">{fmtMoney(c.paid)}</p>
+                                                                <p className="text-[9px] font-bold text-amber-500">{fmtMoney(c.remaining)} owed</p>
+                                                            </div>
+                                                            <ChevronRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary shrink-0" />
+                                                        </Link>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
-                                );
-                            })}
-                        </div>
+                                </div>
+                            );
+                        })()}
                     </>
-
                 )}
             </div>
+
+
 
             {/* Admin Egress Monitor */}
             <div className="flex justify-center pb-2 pt-2">
@@ -803,6 +823,7 @@ export default function DashboardPage() {
                     <span>Egress Monitor</span>
                 </Link>
             </div>
+
 
         </div>
     );

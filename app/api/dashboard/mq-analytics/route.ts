@@ -6,11 +6,15 @@ import { unstable_cache } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
 
-type Period = 'week' | 'month' | 'year';
+type Period = 'week' | 'month' | 'year' | 'all';
 
 const getMqAnalyticsData = async (period: Period, today: string) => {
-    // We group by maqal_id. If maqal_id is missing, we fallback to the reference_date.
-    // The query safely filters by the selected period boundary using local database dates.
+    // For 'all' period: no date filter — return every MQ ever recorded
+    const dateFilter = period === 'all'
+        ? `-- no date filter`
+        : `AND COALESCE(l.reference_date::date, l.created_at::date) >= date_trunc('${period}', '${today}'::date)
+           AND COALESCE(l.reference_date::date, l.created_at::date) < date_trunc('${period}', '${today}'::date) + INTERVAL '1 ${period}'`;
+
     const query = `
         WITH period_ledger AS (
             SELECT 
@@ -27,6 +31,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             JOIN "Customer" c ON c.id = l.customer_id
             WHERE l.deleted_at IS NULL
               AND c.deleted_at IS NULL
+              ${period !== 'all' ? `
               AND COALESCE(l.reference_date::date, l.created_at::date) >= date_trunc($1, $2::date)
               AND COALESCE(l.reference_date::date, l.created_at::date) < date_trunc($1, $2::date) + (
                   CASE 
@@ -34,16 +39,17 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                       WHEN $1 = 'month' THEN INTERVAL '1 month'
                       ELSE INTERVAL '1 year'
                   END
-              )
+              )` : ''}
         ),
         mq_groups AS (
             SELECT
                 COALESCE(maqal_id::text, TO_CHAR(ref_day, 'YYYY-MM-DD')) as mq_key,
                 maqal_id,
-                MIN(ref_day) as min_date,
+                MIN(ref_day) as start_date,
+                MAX(ref_day) as end_date,
                 SUM(CASE WHEN type = 'PRODUCT' THEN amount ELSE 0 END) as expected,
                 SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END) as paid,
-                SUM(CASE WHEN type = 'PRODUCT' THEN kg ELSE 0 END) as kg,
+                SUM(CASE WHEN type = 'PRODUCT' THEN COALESCE(kg, 0) ELSE 0 END) as kg,
                 COUNT(DISTINCT customer_id) as total_customers,
                 JSON_AGG(
                     JSON_BUILD_OBJECT(
@@ -60,20 +66,25 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             GROUP BY COALESCE(maqal_id::text, TO_CHAR(ref_day, 'YYYY-MM-DD')), maqal_id
         )
         SELECT * FROM mq_groups
-        ORDER BY min_date ASC, maqal_id ASC NULLS FIRST
+        ORDER BY maqal_id ASC NULLS LAST, start_date ASC
     `;
 
-    const result = await pool.query(query, [period, today]);
+    const params = period !== 'all' ? [period, today] : [];
+    const result = await pool.query(query, params);
     
-    // Process the raw rows into structured MQ records and aggregate per-customer stats
     const mqs = result.rows.map(row => {
         const expected = Number(row.expected || 0);
         const paid = Number(row.paid || 0);
         const kg = Number(row.kg || 0);
         const remaining = Math.max(0, expected - paid);
-        const paymentPercentage = expected > 0 ? Math.min(100, Math.round((paid / expected) * 100)) : 0;
+        const paymentPercentage = expected > 0 ? Math.min(100, Math.round((paid / expected) * 100)) : (paid > 0 ? 100 : 0);
         
-        // Aggregate the individual ledger entries into clean customer-level stats
+        // Start and end dates of this MQ
+        const startDate = row.start_date ? new Date(row.start_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        const endDate = row.end_date ? new Date(row.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+        const dateRange = startDate === endDate ? startDate : `${startDate} – ${endDate}`;
+
+        // Aggregate per-customer stats
         const customerMap = new Map();
         for (const entry of row.entries) {
             if (!customerMap.has(entry.customer_id)) {
@@ -97,12 +108,17 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
         
         const customers = Array.from(customerMap.values()).map(c => ({
             ...c,
-            remaining: Math.max(0, c.expected - c.paid)
-        })).sort((a, b) => b.expected - a.expected); // Sort by highest expected first
+            remaining: Math.max(0, c.expected - c.paid),
+            paymentPct: c.expected > 0 ? Math.min(100, Math.round((c.paid / c.expected) * 100)) : (c.paid > 0 ? 100 : 0)
+        })).sort((a, b) => b.remaining - a.remaining); // Biggest debt first
 
         return {
             id: row.mq_key,
-            label: row.maqal_id ? `MQ${row.maqal_id}` : `MQ ${new Date(row.min_date).toLocaleDateString('en-GB', {day:'numeric', month:'short'})}`,
+            mqNumber: row.maqal_id ? Number(row.maqal_id) : null,
+            label: row.maqal_id ? `MQ${row.maqal_id}` : `MQ ${startDate}`,
+            dateRange,
+            startDate,
+            endDate,
             kg,
             expected,
             paid,
@@ -142,14 +158,13 @@ export const GET = trackApiRoute('/api/dashboard/mq-analytics', async (request: 
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { searchParams } = new URL(request.url);
-    const rawPeriod = searchParams.get('period') || 'week';
-    const period: Period = ['week', 'month', 'year'].includes(rawPeriod) ? rawPeriod as Period : 'week';
+    const rawPeriod = searchParams.get('period') || 'all';
+    const period: Period = ['week', 'month', 'year', 'all'].includes(rawPeriod) ? rawPeriod as Period : 'all';
 
     try {
         const now = new Date();
         const today = now.toISOString().split('T')[0];
 
-        // Unique cache key per period/date, invalidated by the global "dashboard" tag
         const cacheKey = `mq-analytics-${period}-${today}`;
         const getCached = unstable_cache(
             async () => getMqAnalyticsData(period, today),
