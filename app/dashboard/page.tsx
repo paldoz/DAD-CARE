@@ -138,7 +138,7 @@ export default function DashboardPage() {
     });
 
     const { data: overviewResponse, isLoading: overviewLoading } = useSWR<MqAnalyticsData>(
-        `/api/dashboard/mq-analytics?period=${overviewPeriod}`,
+        `/api/dashboard/mq-analytics?period=${overviewPeriod}&t=${Date.now()}`,
         fetcher,
         { revalidateOnFocus: false, dedupingInterval: 30000 }
     );

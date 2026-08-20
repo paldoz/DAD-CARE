@@ -5,6 +5,7 @@ import { trackApiRoute } from '@/lib/egress-tracker';
 import { unstable_cache } from 'next/cache';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 type Period = 'week' | 'month' | 'year' | 'all';
 
