@@ -93,16 +93,18 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             SELECT
                 mp.mq_num,
                 mp.customer_id,
-                -- 1. Specific payments made explicitly for this MQ
+                -- 1. Specific payments made explicitly for this MQ (handles "1", "MQ#1", etc)
                 COALESCE((
                     SELECT SUM(amount) FROM "Ledger" 
-                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id = mp.mq_num
+                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL 
+                    AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\D', '', 'g'), '')::int = mp.mq_num
                 ), 0) AS specific_paid,
                 
-                -- 2. Waterfall pool: total payments without maqal_id
+                -- 2. Waterfall pool: total payments without any maqal_id
                 COALESCE((
                     SELECT SUM(amount) FROM "Ledger" 
-                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NULL
+                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL 
+                    AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\D', '', 'g'), '') IS NULL
                 ), 0) AS waterfall_pool,
                 
                 -- 3. Debt accumulated BEFORE this MQ
