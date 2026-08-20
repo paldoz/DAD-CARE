@@ -128,6 +128,7 @@ export default function DashboardPage() {
     const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year' | 'all'>('all');
     const [expandedMqDetail, setExpandedMqDetail] = useState<boolean>(false);
     const [selectedDot, setSelectedDot] = useState<number | null>(null);
+    const [breakdownMode, setBreakdownMode] = useState<'expected' | 'collected' | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -681,7 +682,7 @@ export default function DashboardPage() {
                                     const pctColor = pct >= 90 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
                                     return (
                                         <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
-                                            onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
+                                            onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); setBreakdownMode(null); }}>
                                             {/* Tick */}
                                             <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 8} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1.5" />
                                             {/* MQ label */}
@@ -732,7 +733,7 @@ export default function DashboardPage() {
                                                 <span className="text-[10px] font-semibold text-muted-foreground">{mq.customerCount} customers</span>
                                             </div>
                                         </div>
-                                        <button onClick={() => { setSelectedDot(null); setExpandedMqDetail(false); }}
+                                        <button onClick={() => { setSelectedDot(null); setExpandedMqDetail(false); setBreakdownMode(null); }}
                                             className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors text-xs font-black">✕</button>
                                     </div>
 
@@ -749,19 +750,95 @@ export default function DashboardPage() {
 
                                     {/* Money stats grid */}
                                     <div className="grid grid-cols-3 gap-2 px-4 mb-3">
-                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                        <button
+                                            onClick={() => setBreakdownMode(breakdownMode === 'expected' ? null : 'expected')}
+                                            className={`rounded-xl p-2.5 border text-center transition-all ${breakdownMode === 'expected' ? 'bg-primary/10 border-primary/40' : 'bg-card border-border/40 hover:border-primary/30'}`}>
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
                                             <p className="text-xs font-black text-foreground tabular-nums">{fmtMoney(mq.expected)}</p>
-                                        </div>
-                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[8px] text-primary/60 mt-0.5">{breakdownMode === 'expected' ? '▲ hide' : 'tap to see how'}</p>
+                                        </button>
+                                        <button
+                                            onClick={() => setBreakdownMode(breakdownMode === 'collected' ? null : 'collected')}
+                                            className={`rounded-xl p-2.5 border text-center transition-all ${breakdownMode === 'collected' ? 'bg-blue-500/10 border-blue-500/40' : 'bg-card border-border/40 hover:border-blue-500/30'}`}>
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Collected</p>
                                             <p className="text-xs font-black text-blue-500 tabular-nums">{fmtMoney(mq.paid)}</p>
-                                        </div>
+                                            <p className="text-[8px] text-blue-500/60 mt-0.5">{breakdownMode === 'collected' ? '▲ hide' : 'tap to see who'}</p>
+                                        </button>
                                         <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
                                             <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{fmtMoney(mq.remaining)}</p>
                                         </div>
                                     </div>
+
+                                    {/* ── Breakdown Dialog ── */}
+                                    {breakdownMode === 'expected' && (
+                                        <div className="mx-4 mb-3 rounded-xl border border-primary/20 bg-primary/5 overflow-hidden animate-in slide-in-from-top-1 duration-200">
+                                            <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b border-primary/10">
+                                                <p className="text-[10px] font-black text-foreground">📦 Expected Breakdown — {mq.label}</p>
+                                                <p className="text-[9px] text-muted-foreground">{mq.dateRange}</p>
+                                            </div>
+                                            <div className="max-h-64 overflow-y-auto">
+                                                {(mq.customers || []).filter((c: any) => c.expected > 0).map((c: any, idx: number) => (
+                                                    <div key={idx} className="flex items-center gap-2 px-3 py-2 border-b border-primary/5 last:border-0">
+                                                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-black text-primary shrink-0">
+                                                            {c.name?.charAt(0)?.toUpperCase()}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-[10px] font-bold text-foreground truncate">{c.name}</p>
+                                                            {c.pricePerKg > 0 ? (
+                                                                <p className="text-[9px] text-muted-foreground">
+                                                                    {c.kgDay1 > 0 && `${mq.startDate}: ${c.kgDay1}kg`}
+                                                                    {c.kgDay1 > 0 && c.kgDay2 > 0 && ' + '}
+                                                                    {c.kgDay2 > 0 && `${mq.endDate}: ${c.kgDay2}kg`}
+                                                                    {' × '}<span className="font-bold text-primary">${c.pricePerKg}/kg</span>
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-[9px] text-muted-foreground">{c.kg}kg total</p>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[10px] font-black text-foreground shrink-0">{fmtMoney(c.expected)}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex items-center justify-between px-3 py-2 bg-primary/10">
+                                                <p className="text-[10px] font-black text-foreground">Total</p>
+                                                <p className="text-[10px] font-black text-foreground">{fmtMoney(mq.expected)}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {breakdownMode === 'collected' && (
+                                        <div className="mx-4 mb-3 rounded-xl border border-blue-500/20 bg-blue-500/5 overflow-hidden animate-in slide-in-from-top-1 duration-200">
+                                            <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b border-blue-500/10">
+                                                <p className="text-[10px] font-black text-foreground">💳 Payments Collected — {mq.label}</p>
+                                                <p className="text-[9px] text-muted-foreground">{mq.dateRange}</p>
+                                            </div>
+                                            <div className="max-h-64 overflow-y-auto">
+                                                {(mq.customers || []).filter((c: any) => c.paid > 0).length === 0 ? (
+                                                    <p className="text-[10px] text-muted-foreground text-center py-4">No payments collected for this MQ yet</p>
+                                                ) : (
+                                                    (mq.customers || []).filter((c: any) => c.paid > 0).map((c: any, idx: number) => (
+                                                        <div key={idx} className="flex items-center gap-2 px-3 py-2 border-b border-blue-500/5 last:border-0">
+                                                            <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-[9px] font-black text-blue-500 shrink-0">
+                                                                {c.name?.charAt(0)?.toUpperCase()}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-[10px] font-bold text-foreground truncate">{c.name}</p>
+                                                                <p className="text-[9px] text-muted-foreground">
+                                                                    Paid {c.paymentPct}% of {fmtMoney(c.expected)}
+                                                                </p>
+                                                            </div>
+                                                            <p className="text-[10px] font-black text-blue-500 shrink-0">{fmtMoney(c.paid)}</p>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                            <div className="flex items-center justify-between px-3 py-2 bg-blue-500/10">
+                                                <p className="text-[10px] font-black text-foreground">Total Collected</p>
+                                                <p className="text-[10px] font-black text-blue-500">{fmtMoney(mq.paid)}</p>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Customer section */}
                                     <div className="border-t border-border/40 px-4 py-3">

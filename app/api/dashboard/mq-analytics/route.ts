@@ -75,58 +75,28 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             JOIN "Customer" c ON c.id = dbi.customer_id AND c.deleted_at IS NULL
             GROUP BY fp.mq_num, dbi.customer_id, c.name, c.customer_code
         ),
-        mq_products AS (
-            SELECT fp.mq_num, l.customer_id, SUM(l.amount) AS expected
+        -- All PRODUCT ledger rows with price details for breakdown dialog
+        mq_product_details AS (
+            SELECT 
+                fp.mq_num, 
+                l.customer_id, 
+                SUM(l.amount) AS expected,
+                MAX(l.price_per_kg) AS price_per_kg,
+                COALESCE(SUM(CASE WHEN COALESCE(l.reference_date::date, l.created_at::date) = fp.date1 THEN l.kg ELSE 0 END), 0) AS kg_day1,
+                COALESCE(SUM(CASE WHEN COALESCE(l.reference_date::date, l.created_at::date) = fp.date2 THEN l.kg ELSE 0 END), 0) AS kg_day2
             FROM filtered_pairs fp
             JOIN "Ledger" l ON l.type = 'PRODUCT'
                             AND l.deleted_at IS NULL
                             AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
             GROUP BY fp.mq_num, l.customer_id
         ),
-        
+
+        -- Payments tagged to a specific MQ (maqal_id = integer)
         specific_payments AS (
-            SELECT customer_id, maqal_id as mq_num, SUM(amount) as amount
-            FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NOT NULL
+            SELECT customer_id, maqal_id AS mq_num, SUM(amount) AS amount
+            FROM "Ledger" 
+            WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NOT NULL
             GROUP BY customer_id, maqal_id
-        ),
-        
-        waterfall_payments AS (
-            SELECT customer_id, SUM(amount) as total_waterfall
-            FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NULL
-            GROUP BY customer_id
-        ),
-        
-        daily_debt AS (
-            SELECT 
-                customer_id, 
-                COALESCE(reference_date::date, created_at::date) AS db_date,
-                SUM(amount) AS daily_amount
-            FROM "Ledger"
-            WHERE type = 'PRODUCT' AND deleted_at IS NULL
-            GROUP BY customer_id, COALESCE(reference_date::date, created_at::date)
-        ),
-        
-        pair_debt AS (
-            SELECT 
-                fp.mq_num,
-                dd.customer_id,
-                SUM(dd.daily_amount) as debt_before
-            FROM filtered_pairs fp
-            JOIN daily_debt dd ON dd.db_date < fp.date1
-            GROUP BY fp.mq_num, dd.customer_id
-        ),
-        
-        mq_payments AS (
-            SELECT
-                mp.mq_num,
-                mp.customer_id,
-                COALESCE(sp.amount, 0) AS specific_paid,
-                COALESCE(wp.total_waterfall, 0) AS waterfall_pool,
-                COALESCE(pd.debt_before, 0) AS debt_before
-            FROM mq_products mp
-            LEFT JOIN specific_payments sp ON sp.customer_id = mp.customer_id AND sp.mq_num = mp.mq_num
-            LEFT JOIN waterfall_payments wp ON wp.customer_id = mp.customer_id
-            LEFT JOIN pair_debt pd ON pd.customer_id = mp.customer_id AND pd.mq_num = mp.mq_num
         )
         -- Step 8: Join and aggregate per MQ
         SELECT
@@ -134,41 +104,30 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             fp.date1::text,
             fp.date2::text,
             COUNT(DISTINCT dbi.customer_id)          AS total_customers,
-            COALESCE(SUM(mp.expected), 0)            AS expected,
-            
-            -- Waterfall calculation: specific_paid + whatever waterfall money is left for this specific MQ's debt
-            COALESCE(SUM(
-                COALESCE(py.specific_paid, 0) + 
-                LEAST(
-                    GREATEST(0, COALESCE(mp.expected, 0) - COALESCE(py.specific_paid, 0)), -- Remaining debt for this MQ
-                    GREATEST(0, COALESCE(py.waterfall_pool, 0) - COALESCE(py.debt_before, 0)) -- Remaining waterfall money available
-                )
-            ), 0) AS paid,
-            
+            COALESCE(SUM(mpd.expected), 0)           AS expected,
+            -- ACCURATE: Only count payments explicitly tagged to this MQ via maqal_id
+            COALESCE(SUM(COALESCE(sp.amount, 0)), 0) AS paid,
             COALESCE(SUM(dbi.db_kg), 0)              AS kg,
-            -- Customer-level JSON for breakdown
+            -- Customer-level JSON for breakdown dialog
             JSON_AGG(
                 JSON_BUILD_OBJECT(
                     'customer_id',   dbi.customer_id,
                     'name',          dbi.customer_name,
                     'code',          dbi.customer_code,
-                    'expected',      COALESCE(mp.expected, 0),
-                    'paid',          COALESCE(
-                                        COALESCE(py.specific_paid, 0) + 
-                                        LEAST(
-                                            GREATEST(0, COALESCE(mp.expected, 0) - COALESCE(py.specific_paid, 0)),
-                                            GREATEST(0, COALESCE(py.waterfall_pool, 0) - COALESCE(py.debt_before, 0))
-                                        )
-                                     , 0),
-                    'kg',            COALESCE(dbi.db_kg, 0)
+                    'expected',      COALESCE(mpd.expected, 0),
+                    'paid',          COALESCE(sp.amount, 0),
+                    'kg',            COALESCE(dbi.db_kg, 0),
+                    'price_per_kg',  COALESCE(mpd.price_per_kg, 0),
+                    'kg_day1',       COALESCE(mpd.kg_day1, 0),
+                    'kg_day2',       COALESCE(mpd.kg_day2, 0)
                 )
             ) FILTER (WHERE dbi.customer_id IS NOT NULL) AS customer_data
         FROM filtered_pairs fp
         LEFT JOIN mq_dailybook_items dbi ON dbi.mq_num = fp.mq_num
-        LEFT JOIN mq_products mp  ON mp.mq_num = fp.mq_num AND mp.customer_id = dbi.customer_id
-        LEFT JOIN mq_payments py  ON py.mq_num = fp.mq_num AND py.customer_id = dbi.customer_id
+        LEFT JOIN mq_product_details mpd ON mpd.mq_num = fp.mq_num AND mpd.customer_id = dbi.customer_id
+        LEFT JOIN specific_payments sp ON sp.customer_id = dbi.customer_id AND sp.mq_num = fp.mq_num
         GROUP BY fp.mq_num, fp.date1, fp.date2
-        HAVING COALESCE(SUM(mp.expected), 0) > 0 OR COALESCE(SUM(dbi.db_kg), 0) > 0
+        HAVING COALESCE(SUM(mpd.expected), 0) > 0 OR COALESCE(SUM(dbi.db_kg), 0) > 0
         ORDER BY fp.mq_num ASC
     `;
 
@@ -195,14 +154,17 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
 
         const customers = rawCustomers
             .map(c => ({
-                id:         c.customer_id,
-                name:       c.name,
-                code:       c.code,
-                expected:   Number(c.expected || 0),
-                paid:       Number(c.paid     || 0),
-                kg:         Number(c.kg       || 0),
-                remaining:  Math.max(0, Number(c.expected || 0) - Number(c.paid || 0)),
-                paymentPct: Number(c.expected || 0) > 0
+                id:          c.customer_id,
+                name:        c.name,
+                code:        c.code,
+                expected:    Number(c.expected    || 0),
+                paid:        Number(c.paid        || 0),
+                kg:          Number(c.kg          || 0),
+                pricePerKg:  Number(c.price_per_kg || 0),
+                kgDay1:      Number(c.kg_day1     || 0),
+                kgDay2:      Number(c.kg_day2     || 0),
+                remaining:   Math.max(0, Number(c.expected || 0) - Number(c.paid || 0)),
+                paymentPct:  Number(c.expected || 0) > 0
                     ? Math.min(100, Math.round((Number(c.paid || 0) / Number(c.expected || 0)) * 100))
                     : (Number(c.paid || 0) > 0 ? 100 : 0),
             }))
