@@ -31,6 +31,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             JOIN "Customer" c ON c.id = l.customer_id
             WHERE l.deleted_at IS NULL
               AND c.deleted_at IS NULL
+              AND l.maqal_id IS NOT NULL
               ${period !== 'all' ? `
               AND COALESCE(l.reference_date::date, l.created_at::date) >= date_trunc($1, $2::date)
               AND COALESCE(l.reference_date::date, l.created_at::date) < date_trunc($1, $2::date) + (
@@ -43,7 +44,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
         ),
         mq_groups AS (
             SELECT
-                COALESCE(maqal_id::text, TO_CHAR(ref_day, 'YYYY-MM-DD')) as mq_key,
+                maqal_id::text as mq_key,
                 maqal_id,
                 MIN(ref_day) as start_date,
                 MAX(ref_day) as end_date,
@@ -63,7 +64,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                     )
                 ) as entries
             FROM period_ledger
-            GROUP BY COALESCE(maqal_id::text, TO_CHAR(ref_day, 'YYYY-MM-DD')), maqal_id
+            GROUP BY maqal_id
         )
         SELECT * FROM mq_groups
         ORDER BY maqal_id ASC NULLS LAST, start_date ASC
@@ -115,7 +116,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
         return {
             id: row.mq_key,
             mqNumber: row.maqal_id ? Number(row.maqal_id) : null,
-            label: row.maqal_id ? `MQ${row.maqal_id}` : `MQ ${startDate}`,
+            label: row.maqal_id ? `MQ#${row.maqal_id}` : `MQ ${startDate}`,
             dateRange,
             startDate,
             endDate,
