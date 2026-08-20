@@ -93,7 +93,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
 
         -- Payments tagged to a specific MQ (maqal_id = integer)
         specific_payments AS (
-            SELECT customer_id, maqal_id AS mq_num, SUM(amount) AS amount
+            SELECT customer_id, maqal_id AS mq_num, SUM(ABS(amount)) AS amount
             FROM "Ledger" 
             WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NOT NULL
             GROUP BY customer_id, maqal_id
@@ -135,7 +135,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
 
     // Fetch untagged payments per customer (no maqal_id set) for waterfall
     const untaggedResult = await pool.query(`
-        SELECT customer_id, SUM(amount) AS total_untagged
+        SELECT customer_id, SUM(ABS(amount)) AS total_untagged
         FROM "Ledger"
         WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NULL
         GROUP BY customer_id
