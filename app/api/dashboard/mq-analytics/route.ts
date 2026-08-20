@@ -3,91 +3,132 @@ import { NextResponse } from 'next/server';
 import { validateSession } from '@/lib/sessions-store';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
-// Always fetch fresh data — no caching at all
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-export const fetchCache = 'force-no-store';
 
 type Period = 'week' | 'month' | 'year' | 'all';
 
 const getMqAnalyticsData = async (period: Period, today: string) => {
     /*
-     * Strategy:
-     * 1. Pull the ENTIRE lifetime history of every official MQ (maqal_id IS NOT NULL).
-     *    This guarantees Expected, KG, and Paid are ALWAYS 100% accurate — even if
-     *    a customer delivered in July but paid in August.
-     * 2. Group by maqal_id to calculate totals.
-     * 3. THEN filter by period on the MQ's own start_date so the period selector
-     *    (week/month/year) still works correctly.
+     * MQ date-pair approach (matches the History page exactly):
+     * 1. Derive MQ date pairs from DailyBook (sequential pairs of dates).
+     * 2. For each MQ, calculate:
+     *    - Expected = SUM of PRODUCT amounts on those two dates
+     *    - KG       = SUM of KG on those two dates (PRODUCT rows)
+     *    - Paid     = SUM of PAYMENT amounts with maqal_id matching this pair's number,
+     *                 OR payments on those dates if maqal_id is unset
+     *    - Remaining = Expected - Paid
+     * 3. Per-customer breakdown using the same date-pair logic.
      */
 
     const periodFilter = period !== 'all'
-        ? `AND COALESCE(mg.start_date, mg.fallback_start) >= date_trunc($1, $2::date)
-           AND COALESCE(mg.start_date, mg.fallback_start) < date_trunc($1, $2::date) + (
-               CASE
-                   WHEN $1 = 'week'  THEN INTERVAL '1 week'
-                   WHEN $1 = 'month' THEN INTERVAL '1 month'
-                   ELSE INTERVAL '1 year'
-               END
-           )`
+        ? `AND (p.date2 >= date_trunc('${period}', '${today}'::date)
+           AND p.date2 < date_trunc('${period}', '${today}'::date) + INTERVAL '1 ${period}')`
         : '';
 
     const query = `
-        WITH full_ledger AS (
-            SELECT
-                l.customer_id,
-                l.type,
-                l.amount,
-                l.kg,
-                l.maqal_id,
-                COALESCE(l.reference_date::date, l.created_at::date) AS ref_day,
-                c.name  AS customer_name,
-                c.id    AS cid,
-                c.customer_code
-            FROM "Ledger" l
-            JOIN "Customer" c ON c.id = l.customer_id
-            WHERE l.deleted_at  IS NULL
-              AND c.deleted_at  IS NULL
-              AND l.maqal_id    IS NOT NULL
+        WITH
+        -- Step 1: All distinct DailyBook dates
+        past_dates AS (
+            SELECT DISTINCT date::date AS db_date
+            FROM "DailyBook"
+            WHERE deleted_at IS NULL
         ),
-        mq_groups AS (
-            SELECT
-                maqal_id::text AS mq_key,
-                maqal_id,
-                -- Use PRODUCT rows for the real date pair
-                MIN(CASE WHEN type = 'PRODUCT' THEN ref_day END) AS start_date,
-                MAX(CASE WHEN type = 'PRODUCT' THEN ref_day END) AS end_date,
-                MIN(ref_day) AS fallback_start,
-                -- Totals
-                SUM(CASE WHEN type = 'PRODUCT' THEN amount    ELSE 0 END) AS expected,
-                SUM(CASE WHEN type = 'PAYMENT' THEN amount    ELSE 0 END) AS paid,
-                SUM(CASE WHEN type = 'PRODUCT' THEN COALESCE(kg, 0) ELSE 0 END) AS kg,
-                COUNT(DISTINCT customer_id) AS total_customers,
-                -- Per-row detail for customer breakdown
-                JSON_AGG(
-                    JSON_BUILD_OBJECT(
-                        'customer_id', customer_id,
-                        'name',        customer_name,
-                        'code',        customer_code,
-                        'type',        type,
-                        'amount',      amount,
-                        'kg',          kg
-                    )
-                ) AS entries
-            FROM full_ledger
-            GROUP BY maqal_id
+        -- Step 2: Number the dates chronologically
+        numbered_dates AS (
+            SELECT db_date,
+                   ROW_NUMBER() OVER (ORDER BY db_date ASC) AS rn
+            FROM past_dates
         ),
-        filtered AS (
-            SELECT * FROM mq_groups mg
+        -- Step 3: Pair consecutive dates into MQs (odd+even = one pair)
+        pairs AS (
+            SELECT n1.db_date AS date1, n2.db_date AS date2
+            FROM numbered_dates n1
+            JOIN numbered_dates n2 ON n2.rn = n1.rn + 1
+            WHERE n1.rn % 2 = 1
+        ),
+        -- Step 4: Assign sequential MQ numbers (MQ#1, MQ#2...)
+        numbered_pairs AS (
+            SELECT
+                ROW_NUMBER() OVER (ORDER BY date1 ASC) AS mq_num,
+                date1,
+                date2
+            FROM pairs
+        ),
+        -- Step 5: Filter by period if needed
+        filtered_pairs AS (
+            SELECT * FROM numbered_pairs p
             WHERE 1=1
             ${periodFilter}
+        ),
+        -- Step 6: For each MQ pair, aggregate PRODUCT entries (Expected + KG)
+        mq_products AS (
+            SELECT
+                fp.mq_num,
+                fp.date1,
+                fp.date2,
+                l.customer_id,
+                c.name    AS customer_name,
+                c.customer_code,
+                SUM(l.amount)            AS expected,
+                SUM(COALESCE(l.kg, 0))   AS kg
+            FROM filtered_pairs fp
+            JOIN "Ledger" l ON l.type = 'PRODUCT'
+                            AND l.deleted_at IS NULL
+                            AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
+            JOIN "Customer" c ON c.id = l.customer_id AND c.deleted_at IS NULL
+            GROUP BY fp.mq_num, fp.date1, fp.date2, l.customer_id, c.name, c.customer_code
+        ),
+        -- Step 7: For each MQ pair, aggregate PAYMENT entries
+        -- Payments are matched by maqal_id (if set) or by date
+        mq_payments AS (
+            SELECT
+                fp.mq_num,
+                l.customer_id,
+                SUM(l.amount) AS paid
+            FROM filtered_pairs fp
+            JOIN "Ledger" l ON l.type = 'PAYMENT'
+                            AND l.deleted_at IS NULL
+                            AND (
+                                -- Match by explicit maqal_id (newer entries)
+                                l.maqal_id = fp.mq_num
+                                OR
+                                -- Match by payment date on those days (older entries)
+                                (l.maqal_id IS NULL AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2))
+                            )
+            GROUP BY fp.mq_num, l.customer_id
         )
-        SELECT * FROM filtered
-        ORDER BY maqal_id ASC NULLS LAST
+        -- Step 8: Join and aggregate per MQ
+        SELECT
+            fp.mq_num,
+            fp.date1::text,
+            fp.date2::text,
+            COUNT(DISTINCT mp.customer_id)          AS total_customers,
+            COALESCE(SUM(mp.expected), 0)            AS expected,
+            COALESCE(SUM(py.paid), 0)                AS paid,
+            COALESCE(SUM(mp.kg), 0)                  AS kg,
+            -- Customer-level JSON for breakdown
+            JSON_AGG(
+                JSON_BUILD_OBJECT(
+                    'customer_id',   mp.customer_id,
+                    'name',          mp.customer_name,
+                    'code',          mp.customer_code,
+                    'expected',      COALESCE(mp.expected, 0),
+                    'paid',          COALESCE(py.paid, 0),
+                    'kg',            COALESCE(mp.kg, 0)
+                )
+            ) FILTER (WHERE mp.customer_id IS NOT NULL) AS customer_data
+        FROM filtered_pairs fp
+        LEFT JOIN mq_products mp  ON mp.mq_num = fp.mq_num
+        LEFT JOIN mq_payments py  ON py.mq_num  = fp.mq_num AND py.customer_id = mp.customer_id
+        GROUP BY fp.mq_num, fp.date1, fp.date2
+        HAVING COALESCE(SUM(mp.expected), 0) > 0 OR COALESCE(SUM(py.paid), 0) > 0
+        ORDER BY fp.mq_num ASC
     `;
 
-    const params = period !== 'all' ? [period, today] : [];
-    const result = await pool.query(query, params);
+    const result = await pool.query(query);
+
+    const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
     const mqs = result.rows.map(row => {
         const expected          = Number(row.expected  || 0);
@@ -98,50 +139,33 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             ? Math.min(100, Math.round((paid / expected) * 100))
             : (paid > 0 ? 100 : 0);
 
-        // Date range from PRODUCT rows (the true delivery dates)
-        const actualStart = row.start_date  || row.fallback_start;
-        const actualEnd   = row.end_date    || row.fallback_start;
-        const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-        const startDate   = actualStart ? fmt(actualStart) : '';
-        const endDate     = actualEnd   ? fmt(actualEnd)   : '';
-        const dateRange   = startDate === endDate ? startDate : `${startDate} – ${endDate}`;
+        const startDate = row.date1 ? fmt(row.date1) : '';
+        const endDate   = row.date2 ? fmt(row.date2) : '';
+        const dateRange = `${startDate} – ${endDate}`;
 
-        // Per-customer breakdown
-        const customerMap = new Map<string, any>();
-        for (const entry of row.entries) {
-            if (!customerMap.has(entry.customer_id)) {
-                customerMap.set(entry.customer_id, {
-                    id:       entry.customer_id,
-                    name:     entry.name,
-                    code:     entry.code,
-                    expected: 0,
-                    paid:     0,
-                    kg:       0,
-                });
-            }
-            const c = customerMap.get(entry.customer_id);
-            if (entry.type === 'PRODUCT') {
-                c.expected += Number(entry.amount || 0);
-                c.kg       += Number(entry.kg     || 0);
-            } else if (entry.type === 'PAYMENT') {
-                c.paid += Number(entry.amount || 0);
-            }
-        }
+        const rawCustomers: any[] = typeof row.customer_data === 'string'
+            ? JSON.parse(row.customer_data)
+            : (row.customer_data || []);
 
-        const customers = Array.from(customerMap.values())
+        const customers = rawCustomers
             .map(c => ({
-                ...c,
-                remaining:  Math.max(0, c.expected - c.paid),
-                paymentPct: c.expected > 0
-                    ? Math.min(100, Math.round((c.paid / c.expected) * 100))
-                    : (c.paid > 0 ? 100 : 0),
+                id:         c.customer_id,
+                name:       c.name,
+                code:       c.code,
+                expected:   Number(c.expected || 0),
+                paid:       Number(c.paid     || 0),
+                kg:         Number(c.kg       || 0),
+                remaining:  Math.max(0, Number(c.expected || 0) - Number(c.paid || 0)),
+                paymentPct: Number(c.expected || 0) > 0
+                    ? Math.min(100, Math.round((Number(c.paid || 0) / Number(c.expected || 0)) * 100))
+                    : (Number(c.paid || 0) > 0 ? 100 : 0),
             }))
             .sort((a, b) => b.remaining - a.remaining);
 
         return {
-            id:                row.mq_key,
-            mqNumber:          row.maqal_id ? Number(row.maqal_id) : null,
-            label:             `MQ#${row.maqal_id}`,
+            id:                String(row.mq_num),
+            mqNumber:          Number(row.mq_num),
+            label:             `MQ#${row.mq_num}`,
             dateRange,
             startDate,
             endDate,
@@ -150,7 +174,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             paid,
             remaining,
             paymentPercentage,
-            customerCount:     Number(row.total_customers),
+            customerCount:     Number(row.total_customers || 0),
             customers,
         };
     });
@@ -197,7 +221,6 @@ export const GET = trackApiRoute('/api/dashboard/mq-analytics', async (request: 
         const data  = await getMqAnalyticsData(period, today);
 
         const response = NextResponse.json(data);
-        // Kill every possible cache layer
         response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         response.headers.set('Pragma', 'no-cache');
         return response;
