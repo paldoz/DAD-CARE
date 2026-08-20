@@ -138,9 +138,9 @@ export default function DashboardPage() {
     });
 
     const { data: overviewResponse, isLoading: overviewLoading } = useSWR<MqAnalyticsData>(
-        `/api/dashboard/mq-analytics?period=${overviewPeriod}&t=${Date.now()}`,
+        `/api/dashboard/mq-analytics?period=${overviewPeriod}`,
         fetcher,
-        { revalidateOnFocus: false, dedupingInterval: 30000 }
+        { revalidateOnFocus: false, dedupingInterval: 5000, revalidateOnMount: true }
     );
 
     useEffect(() => {
