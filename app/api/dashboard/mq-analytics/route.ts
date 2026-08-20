@@ -75,20 +75,27 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             JOIN "Customer" c ON c.id = dbi.customer_id AND c.deleted_at IS NULL
             GROUP BY fp.mq_num, dbi.customer_id, c.name, c.customer_code
         ),
-        -- Step 6b: For each MQ pair, aggregate PRODUCT entries for Expected Money
         mq_products AS (
-            SELECT
-                fp.mq_num,
-                l.customer_id,
-                SUM(l.amount) AS expected
-
+            SELECT fp.mq_num, l.customer_id, SUM(l.amount) AS expected
             FROM filtered_pairs fp
             JOIN "Ledger" l ON l.type = 'PRODUCT'
                             AND l.deleted_at IS NULL
                             AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
+            GROUP BY fp.mq_num, l.customer_id
         ),
         
-        -- OPTIMIZATION: Pre-aggregate product amounts by date to prevent O(N^2) Nested Loop timeouts
+        specific_payments AS (
+            SELECT customer_id, maqal_id as mq_num, SUM(amount) as amount
+            FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NOT NULL
+            GROUP BY customer_id, maqal_id
+        ),
+        
+        waterfall_payments AS (
+            SELECT customer_id, SUM(amount) as total_waterfall
+            FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NULL
+            GROUP BY customer_id
+        ),
+        
         daily_debt AS (
             SELECT 
                 customer_id, 
@@ -99,43 +106,27 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             GROUP BY customer_id, COALESCE(reference_date::date, created_at::date)
         ),
         
-        -- Step 7: For each MQ pair, allocate payments using waterfall logic (for older payments) + specific maqal_id
-        -- OPTIMIZED: Pre-aggregates Ledger via LEFT JOIN and CTEs to prevent Vercel 10-second timeout (N+1 issue)
+        pair_debt AS (
+            SELECT 
+                fp.mq_num,
+                dd.customer_id,
+                SUM(dd.daily_amount) as debt_before
+            FROM filtered_pairs fp
+            JOIN daily_debt dd ON dd.db_date < fp.date1
+            GROUP BY fp.mq_num, dd.customer_id
+        ),
+        
         mq_payments AS (
             SELECT
                 mp.mq_num,
                 mp.customer_id,
-                COALESCE(specific_payments.amount, 0) AS specific_paid,
-                COALESCE(waterfall.total_waterfall, 0) AS waterfall_pool,
-                COALESCE(debt.debt_before, 0) AS debt_before
+                COALESCE(sp.amount, 0) AS specific_paid,
+                COALESCE(wp.total_waterfall, 0) AS waterfall_pool,
+                COALESCE(pd.debt_before, 0) AS debt_before
             FROM mq_products mp
-            JOIN filtered_pairs fp ON fp.mq_num = mp.mq_num
-            
-            -- 1. Specific payments made explicitly for this MQ (handles "1", "MQ#1", etc)
-            LEFT JOIN (
-                SELECT customer_id, NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '')::numeric as mq_num, SUM(amount) as amount
-                FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL
-                GROUP BY customer_id, 2
-            ) specific_payments ON specific_payments.customer_id = mp.customer_id AND specific_payments.mq_num = mp.mq_num
-            
-            -- 2. Waterfall pool: total payments without any maqal_id
-            LEFT JOIN (
-                SELECT customer_id, SUM(amount) as total_waterfall
-                FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '') IS NULL
-                GROUP BY customer_id
-            ) waterfall ON waterfall.customer_id = mp.customer_id
-            
-            -- 3. Debt accumulated BEFORE this MQ (instant scalar subquery against pre-aggregated daily_debt)
-            LEFT JOIN (
-                SELECT 
-                    mp_inner.mq_num, 
-                    mp_inner.customer_id, 
-                    SUM(dd.daily_amount) as debt_before
-                FROM mq_products mp_inner
-                JOIN filtered_pairs fp_inner ON fp_inner.mq_num = mp_inner.mq_num
-                JOIN daily_debt dd ON dd.customer_id = mp_inner.customer_id AND dd.db_date < fp_inner.date1
-                GROUP BY mp_inner.mq_num, mp_inner.customer_id
-            ) debt ON debt.customer_id = mp.customer_id AND debt.mq_num = mp.mq_num
+            LEFT JOIN specific_payments sp ON sp.customer_id = mp.customer_id AND sp.mq_num = mp.mq_num
+            LEFT JOIN waterfall_payments wp ON wp.customer_id = mp.customer_id
+            LEFT JOIN pair_debt pd ON pd.customer_id = mp.customer_id AND pd.mq_num = mp.mq_num
         )
         -- Step 8: Join and aggregate per MQ
         SELECT
@@ -147,10 +138,10 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             
             -- Waterfall calculation: specific_paid + whatever waterfall money is left for this specific MQ's debt
             COALESCE(SUM(
-                py.specific_paid + 
+                COALESCE(py.specific_paid, 0) + 
                 LEAST(
-                    GREATEST(0, mp.expected - py.specific_paid), -- Remaining debt for this MQ
-                    GREATEST(0, py.waterfall_pool - py.debt_before) -- Remaining waterfall money available
+                    GREATEST(0, COALESCE(mp.expected, 0) - COALESCE(py.specific_paid, 0)), -- Remaining debt for this MQ
+                    GREATEST(0, COALESCE(py.waterfall_pool, 0) - COALESCE(py.debt_before, 0)) -- Remaining waterfall money available
                 )
             ), 0) AS paid,
             
@@ -163,10 +154,10 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                     'code',          dbi.customer_code,
                     'expected',      COALESCE(mp.expected, 0),
                     'paid',          COALESCE(
-                                        py.specific_paid + 
+                                        COALESCE(py.specific_paid, 0) + 
                                         LEAST(
-                                            GREATEST(0, mp.expected - py.specific_paid),
-                                            GREATEST(0, py.waterfall_pool - py.debt_before)
+                                            GREATEST(0, COALESCE(mp.expected, 0) - COALESCE(py.specific_paid, 0)),
+                                            GREATEST(0, COALESCE(py.waterfall_pool, 0) - COALESCE(py.debt_before, 0))
                                         )
                                      , 0),
                     'kg',            COALESCE(dbi.db_kg, 0)
