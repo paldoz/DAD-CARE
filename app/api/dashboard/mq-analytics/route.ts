@@ -89,31 +89,43 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             GROUP BY fp.mq_num, l.customer_id
         ),
         -- Step 7: For each MQ pair, allocate payments using waterfall logic (for older payments) + specific maqal_id
+        -- OPTIMIZED: Pre-aggregates Ledger via LEFT JOIN to prevent Vercel 10-second timeout (N+1 issue)
         mq_payments AS (
             SELECT
                 mp.mq_num,
                 mp.customer_id,
-                -- 1. Specific payments made explicitly for this MQ (handles "1", "MQ#1", etc)
-                COALESCE((
-                    SELECT SUM(amount) FROM "Ledger" 
-                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL 
-                    AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '')::int = mp.mq_num
-                ), 0) AS specific_paid,
-                
-                -- 2. Waterfall pool: total payments without any maqal_id
-                COALESCE((
-                    SELECT SUM(amount) FROM "Ledger" 
-                    WHERE customer_id = mp.customer_id AND type = 'PAYMENT' AND deleted_at IS NULL 
-                    AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '') IS NULL
-                ), 0) AS waterfall_pool,
-                
-                -- 3. Debt accumulated BEFORE this MQ
-                COALESCE((
-                    SELECT SUM(amount) FROM "Ledger" 
-                    WHERE customer_id = mp.customer_id AND type = 'PRODUCT' AND deleted_at IS NULL AND COALESCE(reference_date::date, created_at::date) < fp.date1
-                ), 0) AS debt_before
+                COALESCE(specific_payments.amount, 0) AS specific_paid,
+                COALESCE(waterfall.total_waterfall, 0) AS waterfall_pool,
+                COALESCE(debt.debt_before, 0) AS debt_before
             FROM mq_products mp
             JOIN filtered_pairs fp ON fp.mq_num = mp.mq_num
+            
+            -- 1. Specific payments made explicitly for this MQ (handles "1", "MQ#1", etc)
+            LEFT JOIN (
+                SELECT customer_id, NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '')::int as mq_num, SUM(amount) as amount
+                FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL
+                GROUP BY customer_id, 2
+            ) specific_payments ON specific_payments.customer_id = mp.customer_id AND specific_payments.mq_num = mp.mq_num
+            
+            -- 2. Waterfall pool: total payments without any maqal_id
+            LEFT JOIN (
+                SELECT customer_id, SUM(amount) as total_waterfall
+                FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL AND NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '') IS NULL
+                GROUP BY customer_id
+            ) waterfall ON waterfall.customer_id = mp.customer_id
+            
+            -- 3. Debt accumulated BEFORE this MQ
+            LEFT JOIN (
+                SELECT 
+                    mp_inner.mq_num, 
+                    mp_inner.customer_id, 
+                    SUM(l.amount) as debt_before
+                FROM mq_products mp_inner
+                JOIN filtered_pairs fp_inner ON fp_inner.mq_num = mp_inner.mq_num
+                JOIN "Ledger" l ON l.customer_id = mp_inner.customer_id AND l.type = 'PRODUCT' AND l.deleted_at IS NULL 
+                               AND COALESCE(l.reference_date::date, l.created_at::date) < fp_inner.date1
+                GROUP BY mp_inner.mq_num, mp_inner.customer_id
+            ) debt ON debt.customer_id = mp.customer_id AND debt.mq_num = mp.mq_num
         )
         -- Step 8: Join and aggregate per MQ
         SELECT
