@@ -612,8 +612,8 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <>
-                        {/* ── Self-contained chart card ─────────────────────────────── */}
-                        <div className="mb-2">
+                        {/* ── Line Chart — totals overview ─────────────────── */}
+                        <div className="mb-5">
                             {/* Legend + Totals */}
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-3">
@@ -638,15 +638,9 @@ export default function DashboardPage() {
                                 </div>
                             </div>
 
-                            {/* SVG — lines + dots + MQ label + % all inside */}
+                            {/* SVG chart — MQ label + % inside */}
                             <div className="relative w-full">
-                                {/* Reserve space for bottom labels: chart H=110, labels below at y=130~150 */}
-                                <svg
-                                    viewBox={`0 -8 ${OV_W} 160`}
-                                    className="w-full overflow-visible"
-                                    style={{ height: 160 }}
-                                    preserveAspectRatio="none"
-                                >
+                                <svg viewBox={`0 -8 ${OV_W} 160`} className="w-full overflow-visible" style={{ height: 160 }} preserveAspectRatio="none">
                                     <defs>
                                         <linearGradient id="ovGP3" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor="#2563eb" stopOpacity="0.18" />
@@ -657,48 +651,31 @@ export default function DashboardPage() {
                                             <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
                                         </linearGradient>
                                     </defs>
-
-                                    {/* Gridlines */}
                                     {[0, 0.33, 0.66, 1].map((t, i) => (
-                                        <line key={i}
-                                            x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
+                                        <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
                                             stroke="currentColor" strokeOpacity="0.05" strokeWidth="1"
                                             strokeDasharray={i > 0 && i < 3 ? "3 3" : "0"} />
                                     ))}
-
-                                    {/* Area fills */}
                                     {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP3)" />}
                                     {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR3)" />}
-
-                                    {/* Lines */}
                                     {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
                                     {remPath && <path d={remPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-
-                                    {/* Dots + inline MQ label + % for each MQ */}
                                     {paidCoords.map((c, i) => {
                                         const mq = mqs[i];
                                         if (!mq) return null;
                                         const isSelected = selectedDot === i;
-                                        const shortLabel = mq.label.replace('MQ ', 'MQ').replace(' Aug', '\nAug');
                                         const pct = mq.paymentPercentage;
                                         const pctColor = pct >= 90 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
                                         return (
                                             <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
-                                                onClick={() => setSelectedDot(isSelected ? null : i)}>
-                                                {/* Vertical tick line */}
-                                                <line x1={c.x} y1={OV_H + 4} x2={c.x} y2={OV_H + 8}
-                                                    stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
-                                                {/* MQ label */}
-                                                <text x={c.x} y={OV_H + 18} fontSize="7.5" fill="currentColor"
-                                                    fillOpacity="0.55" textAnchor="middle" fontWeight="700">
+                                                onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMq(isSelected ? null : mq.id); }}>
+                                                <line x1={c.x} y1={OV_H + 4} x2={c.x} y2={OV_H + 8} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
+                                                <text x={c.x} y={OV_H + 18} fontSize="7.5" fill="currentColor" fillOpacity="0.55" textAnchor="middle" fontWeight="700">
                                                     {mq.label.length > 8 ? mq.label.slice(0, 8) : mq.label}
                                                 </text>
-                                                {/* Payment % badge */}
-                                                <text x={c.x} y={OV_H + 30} fontSize="8" fill={pctColor}
-                                                    textAnchor="middle" fontWeight="900">
+                                                <text x={c.x} y={OV_H + 30} fontSize="8" fill={pctColor} textAnchor="middle" fontWeight="900">
                                                     {pct}%
                                                 </text>
-                                                {/* Dot */}
                                                 <circle cx={c.x} cy={c.y} r={isSelected ? 6 : 4}
                                                     fill="#2563eb"
                                                     stroke={isSelected ? '#fff' : '#2563eb'}
@@ -707,55 +684,111 @@ export default function DashboardPage() {
                                         );
                                     })}
                                 </svg>
+                            </div>
+                        </div>
 
-                                {/* Inline detail panel — opens below chart when dot tapped */}
-                                {selectedDot !== null && mqs[selectedDot] && (
-                                    <div className="mt-2 p-3 rounded-xl border border-primary/30 bg-primary/5 animate-in slide-in-from-top-1 duration-150">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-xs font-black text-foreground">{mqs[selectedDot].label}</span>
-                                            <button onClick={() => setSelectedDot(null)}
-                                                className="text-[10px] text-muted-foreground hover:text-foreground font-bold px-2 py-0.5 rounded-md hover:bg-muted transition-colors">✕</button>
-                                        </div>
-                                        <div className="grid grid-cols-4 gap-2 mb-2">
-                                            <div className="bg-card rounded-lg p-2 border border-border/40 text-center">
-                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">KG</p>
-                                                <p className="text-[11px] font-black text-foreground tabular-nums">{fmtKg(mqs[selectedDot].kg)}</p>
+                        {/* ── MQ Cards — expandable, debt-only customers ──── */}
+                        <div className="space-y-2">
+                            {mqs.map((mq, idx) => {
+                                const isOpen = expandedMq === mq.id;
+                                const debtCustomers = mq.customers.filter(c => c.remaining > 0);
+                                const pct = mq.paymentPercentage;
+                                const pctColor = pct >= 90 ? 'text-emerald-500' : pct >= 50 ? 'text-amber-500' : 'text-red-500';
+                                const barColor = pct >= 90 ? 'bg-emerald-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+                                const isFullyPaid = debtCustomers.length === 0;
+
+                                return (
+                                    <div key={mq.id}
+                                        className={`rounded-xl border transition-all duration-200 overflow-hidden ${
+                                            isOpen ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card'
+                                        } ${selectedDot === idx ? 'ring-2 ring-primary/30' : ''}`}>
+
+                                        {/* Card Header — always visible */}
+                                        <button
+                                            onClick={() => { setExpandedMq(isOpen ? null : mq.id); setSelectedDot(isOpen ? null : idx); }}
+                                            className="w-full px-3 py-2.5 text-left"
+                                        >
+                                            {/* Row 1: Label + % + chevron */}
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-black text-foreground bg-muted px-2.5 py-0.5 rounded-md">{mq.label}</span>
+                                                    {isFullyPaid
+                                                        ? <span className="text-[10px] font-bold text-emerald-500">✅ Fully Paid</span>
+                                                        : <span className="text-[10px] font-bold text-amber-500">{debtCustomers.length} with debt</span>
+                                                    }
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-xs font-black tabular-nums ${pctColor}`}>{pct}%</span>
+                                                    <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`} />
+                                                </div>
                                             </div>
-                                            <div className="bg-card rounded-lg p-2 border border-border/40 text-center">
-                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
-                                                <p className="text-[11px] font-black text-foreground tabular-nums">{fmtMoney(mqs[selectedDot].expected)}</p>
+
+                                            {/* Progress bar */}
+                                            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden mb-2">
+                                                <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
                                             </div>
-                                            <div className="bg-card rounded-lg p-2 border border-border/40 text-center">
-                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Paid</p>
-                                                <p className="text-[11px] font-black text-blue-500 tabular-nums">{fmtMoney(mqs[selectedDot].paid)}</p>
+
+                                            {/* Row 2: KG + money stats */}
+                                            <div className="flex items-center gap-3 text-[10px]">
+                                                <span className="text-muted-foreground font-semibold">⚖️ {fmtKg(mq.kg)}</span>
+                                                <span className="text-muted-foreground">Exp: <span className="font-bold text-foreground">{fmtMoney(mq.expected)}</span></span>
+                                                <span className="text-blue-500 font-bold">{fmtMoney(mq.paid)} paid</span>
+                                                {mq.remaining > 0 && <span className="text-amber-500 font-bold">{fmtMoney(mq.remaining)} rem</span>}
                                             </div>
-                                            <div className="bg-card rounded-lg p-2 border border-border/40 text-center">
-                                                <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Rem</p>
-                                                <p className="text-[11px] font-black text-amber-500 tabular-nums">{fmtMoney(mqs[selectedDot].remaining)}</p>
-                                            </div>
-                                        </div>
-                                        {mqs[selectedDot].customers.length > 0 && (
-                                            <div className="space-y-1">
-                                                {mqs[selectedDot].customers.slice(0, 5).map(c => (
-                                                    <Link key={c.id} href={`/customers/${c.id}`}
-                                                        className="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-card border border-transparent hover:border-border/40 transition-colors">
-                                                        <span className="text-[11px] font-semibold text-foreground truncate max-w-[130px]">{c.name}</span>
-                                                        <div className="flex items-center gap-2 text-[10px] font-bold shrink-0">
-                                                            <span className="text-blue-500">{fmtMoney(c.paid)}</span>
-                                                            {c.remaining > 0 && <span className="text-amber-500">{fmtMoney(c.remaining)} owed</span>}
+                                        </button>
+
+                                        {/* Expandable customer debt list */}
+                                        {isOpen && (
+                                            <div className="border-t border-border/40 px-3 py-2">
+                                                {isFullyPaid ? (
+                                                    <div className="flex items-center justify-center py-3 gap-2">
+                                                        <span className="text-2xl">🎉</span>
+                                                        <p className="text-xs font-bold text-emerald-500">All {mq.customerCount} customers paid in full!</p>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-2 px-1">
+                                                            Customers with outstanding debt
+                                                        </p>
+                                                        <div className="space-y-1.5">
+                                                            {debtCustomers.map(c => {
+                                                                const cPct = c.expected > 0 ? Math.min(100, Math.round((c.paid / c.expected) * 100)) : 0;
+                                                                const cColor = cPct >= 90 ? 'text-emerald-500' : cPct >= 50 ? 'text-amber-500' : 'text-red-500';
+                                                                const cBar = cPct >= 90 ? 'bg-emerald-500' : cPct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+                                                                return (
+                                                                    <Link key={c.id} href={`/customers/${c.id}`}
+                                                                        className="flex items-center gap-2 p-2 rounded-xl bg-card border border-border/40 hover:border-primary/40 transition-colors group">
+                                                                        {/* Avatar initial */}
+                                                                        <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+                                                                            <span className="text-[10px] font-black text-muted-foreground">{c.name.charAt(0).toUpperCase()}</span>
+                                                                        </div>
+                                                                        {/* Name + mini bar */}
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className="text-[11px] font-bold text-foreground truncate leading-none mb-1">{c.name}</p>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                                                                                    <div className={`h-full rounded-full ${cBar}`} style={{ width: `${cPct}%` }} />
+                                                                                </div>
+                                                                                <span className={`text-[9px] font-black shrink-0 ${cColor}`}>{cPct}%</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        {/* Amounts */}
+                                                                        <div className="text-right shrink-0">
+                                                                            <p className="text-[10px] font-bold text-blue-500 tabular-nums">{fmtMoney(c.paid)}</p>
+                                                                            <p className="text-[9px] font-bold text-amber-500 tabular-nums">{fmtMoney(c.remaining)} owed</p>
+                                                                        </div>
+                                                                        <ChevronRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary transition-colors shrink-0" />
+                                                                    </Link>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    </Link>
-                                                ))}
-                                                {mqs[selectedDot].customers.length > 5 && (
-                                                    <p className="text-[10px] text-muted-foreground text-center pt-1">
-                                                        +{mqs[selectedDot].customers.length - 5} more
-                                                    </p>
+                                                    </>
                                                 )}
                                             </div>
                                         )}
                                     </div>
-                                )}
-                            </div>
+                                );
+                            })}
                         </div>
                     </>
 
