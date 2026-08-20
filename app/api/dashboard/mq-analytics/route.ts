@@ -61,23 +61,32 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             WHERE 1=1
             ${periodFilter}
         ),
-        -- Step 6: For each MQ pair, aggregate PRODUCT entries (Expected + KG)
+        -- Step 6a: Fetch EXACT KG from DailyBookItem to guarantee 100% accuracy with History page
+        mq_dailybook_items AS (
+            SELECT
+                fp.mq_num,
+                dbi.customer_id,
+                c.name    AS customer_name,
+                c.customer_code,
+                SUM(COALESCE(dbi.kg, 0)) AS db_kg
+            FROM filtered_pairs fp
+            JOIN "DailyBook" db ON db.deleted_at IS NULL AND db.date::date IN (fp.date1, fp.date2)
+            JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
+            JOIN "Customer" c ON c.id = dbi.customer_id AND c.deleted_at IS NULL
+            GROUP BY fp.mq_num, dbi.customer_id, c.name, c.customer_code
+        ),
+        -- Step 6b: For each MQ pair, aggregate PRODUCT entries for Expected Money
         mq_products AS (
             SELECT
                 fp.mq_num,
-                fp.date1,
-                fp.date2,
                 l.customer_id,
-                c.name    AS customer_name,
-                c.customer_code,
-                SUM(l.amount)            AS expected,
-                SUM(COALESCE(l.kg, 0))   AS kg
+                SUM(l.amount) AS expected
+
             FROM filtered_pairs fp
             JOIN "Ledger" l ON l.type = 'PRODUCT'
                             AND l.deleted_at IS NULL
                             AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
-            JOIN "Customer" c ON c.id = l.customer_id AND c.deleted_at IS NULL
-            GROUP BY fp.mq_num, fp.date1, fp.date2, l.customer_id, c.name, c.customer_code
+            GROUP BY fp.mq_num, l.customer_id
         ),
         -- Step 7: For each MQ pair, aggregate PAYMENT entries
         -- Payments are matched by maqal_id (if set) or by date
@@ -103,26 +112,27 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             fp.mq_num,
             fp.date1::text,
             fp.date2::text,
-            COUNT(DISTINCT mp.customer_id)          AS total_customers,
+            COUNT(DISTINCT dbi.customer_id)          AS total_customers,
             COALESCE(SUM(mp.expected), 0)            AS expected,
             COALESCE(SUM(py.paid), 0)                AS paid,
-            COALESCE(SUM(mp.kg), 0)                  AS kg,
+            COALESCE(SUM(dbi.db_kg), 0)              AS kg,
             -- Customer-level JSON for breakdown
             JSON_AGG(
                 JSON_BUILD_OBJECT(
-                    'customer_id',   mp.customer_id,
-                    'name',          mp.customer_name,
-                    'code',          mp.customer_code,
+                    'customer_id',   dbi.customer_id,
+                    'name',          dbi.customer_name,
+                    'code',          dbi.customer_code,
                     'expected',      COALESCE(mp.expected, 0),
                     'paid',          COALESCE(py.paid, 0),
-                    'kg',            COALESCE(mp.kg, 0)
+                    'kg',            COALESCE(dbi.db_kg, 0)
                 )
-            ) FILTER (WHERE mp.customer_id IS NOT NULL) AS customer_data
+            ) FILTER (WHERE dbi.customer_id IS NOT NULL) AS customer_data
         FROM filtered_pairs fp
-        LEFT JOIN mq_products mp  ON mp.mq_num = fp.mq_num
-        LEFT JOIN mq_payments py  ON py.mq_num  = fp.mq_num AND py.customer_id = mp.customer_id
+        LEFT JOIN mq_dailybook_items dbi ON dbi.mq_num = fp.mq_num
+        LEFT JOIN mq_products mp  ON mp.mq_num = fp.mq_num AND mp.customer_id = dbi.customer_id
+        LEFT JOIN mq_payments py  ON py.mq_num = fp.mq_num AND py.customer_id = dbi.customer_id
         GROUP BY fp.mq_num, fp.date1, fp.date2
-        HAVING COALESCE(SUM(mp.expected), 0) > 0 OR COALESCE(SUM(py.paid), 0) > 0
+        HAVING COALESCE(SUM(mp.expected), 0) > 0 OR COALESCE(SUM(py.paid), 0) > 0 OR COALESCE(SUM(dbi.db_kg), 0) > 0
         ORDER BY fp.mq_num ASC
     `;
 
