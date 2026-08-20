@@ -249,14 +249,11 @@ export default function DashboardPage() {
     const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
-    const OV_H = 110;
-    const OV_W = 320;
-    const OV_PAD_X = 20;
-    const ovLabels = mqs.map(m => m.label);
-    const ovPaid = mqs.map(m => m.paid);
-    const ovRemaining = mqs.map(m => m.remaining);
-    const ovMaxVal = Math.max(10, ...ovPaid, ...ovRemaining);
     const n = ovLabels.length || 1;
+    const OV_H = 110;
+    const OV_PAD_X = 20;
+    // Require at least 50px width per MQ so they don't squish
+    const OV_W = Math.max(320, n * 55 + OV_PAD_X * 2);
 
     const ovCoords = (values: number[]) =>
         values.map((v, i) => ({
@@ -641,9 +638,13 @@ export default function DashboardPage() {
                         </div>
 
                         {/* ── SVG Line Chart — tap a dot to see MQ details ── */}
-                        <div className="relative w-full mb-2">
-                            <p className="text-[9px] text-muted-foreground text-center mb-1">Tap any dot to see MQ details</p>
-                            <svg viewBox={`0 -8 ${OV_W} 160`} className="w-full overflow-visible" style={{ height: 160 }} preserveAspectRatio="none">
+                        <div className="relative w-full mb-2 overflow-x-auto overflow-y-hidden pb-4 scrollbar-hide scroll-smooth">
+                            <div className="sticky left-0 right-0 w-full flex justify-center mb-1 pointer-events-none">
+                                <p className="text-[9px] text-muted-foreground bg-card/80 px-3 py-0.5 rounded-full backdrop-blur-sm shadow-sm pointer-events-auto">
+                                    Swipe left/right to see more • Tap a dot for details
+                                </p>
+                            </div>
+                            <svg viewBox={`0 -8 ${OV_W} 160`} className="overflow-visible" style={{ width: OV_W, minWidth: '100%', height: 160 }} preserveAspectRatio="none">
                                 <defs>
                                     <linearGradient id="ovGP4" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
@@ -664,8 +665,8 @@ export default function DashboardPage() {
                                 {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP4)" />}
                                 {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR4)" />}
                                 {/* Lines */}
-                                {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-                                {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
+                                {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+                                {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
 
                                 {/* Dots + MQ label + % */}
                                 {paidCoords.map((c, i) => {
@@ -678,21 +679,21 @@ export default function DashboardPage() {
                                         <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
                                             onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
                                             {/* Tick */}
-                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 7} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
+                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 8} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1.5" />
                                             {/* MQ label */}
-                                            <text x={c.x} y={OV_H + 16} fontSize="7" fill="currentColor" fillOpacity={isSelected ? 1 : 0.5}
+                                            <text x={c.x} y={OV_H + 20} fontSize="8" fill="currentColor" fillOpacity={isSelected ? 1 : 0.6}
                                                 textAnchor="middle" fontWeight={isSelected ? "900" : "700"}>
-                                                {mq.label.length > 5 ? mq.label.slice(0, 5) : mq.label}
+                                                {mq.label}
                                             </text>
                                             {/* % */}
-                                            <text x={c.x} y={OV_H + 27} fontSize="7.5" fill={pctColor}
+                                            <text x={c.x} y={OV_H + 32} fontSize="8" fill={pctColor}
                                                 textAnchor="middle" fontWeight="900">
                                                 {pct}%
                                             </text>
                                             {/* Selected ring */}
-                                            {isSelected && <circle cx={c.x} cy={c.y} r={10} fill="#2563eb" fillOpacity="0.15" />}
+                                            {isSelected && <circle cx={c.x} cy={c.y} r={12} fill="#2563eb" fillOpacity="0.15" />}
                                             {/* Dot */}
-                                            <circle cx={c.x} cy={c.y} r={isSelected ? 5.5 : 3.5}
+                                            <circle cx={c.x} cy={c.y} r={isSelected ? 6 : 4}
                                                 fill={isSelected ? '#fff' : '#2563eb'}
                                                 stroke="#2563eb" strokeWidth={isSelected ? 2.5 : 1.5} />
                                         </g>
