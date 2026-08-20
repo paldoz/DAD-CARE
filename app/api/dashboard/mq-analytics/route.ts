@@ -34,23 +34,23 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             FROM "DailyBook"
             WHERE deleted_at IS NULL
         ),
-        -- Step 2: Number the dates chronologically
+        -- Step 2: Number the dates chronologically (newest first)
         numbered_dates AS (
             SELECT db_date,
-                   ROW_NUMBER() OVER (ORDER BY db_date ASC) AS rn
+                   ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn
             FROM past_dates
         ),
-        -- Step 3: Pair consecutive dates into MQs (odd+even = one pair)
+        -- Step 3: Pair consecutive dates into MQs (newest pairs first)
         pairs AS (
-            SELECT n1.db_date AS date1, n2.db_date AS date2
+            SELECT n2.db_date AS date1, n1.db_date AS date2
             FROM numbered_dates n1
-            JOIN numbered_dates n2 ON n2.rn = n1.rn + 1
+            JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
             WHERE n1.rn % 2 = 1
         ),
-        -- Step 4: Assign sequential MQ numbers (MQ#1, MQ#2...)
+        -- Step 4: Assign sequential MQ numbers (MQ#1 is the oldest pair)
         numbered_pairs AS (
             SELECT
-                ROW_NUMBER() OVER (ORDER BY date1 ASC) AS mq_num,
+                ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num,
                 date1,
                 date2
             FROM pairs
