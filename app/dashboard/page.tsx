@@ -249,6 +249,10 @@ export default function DashboardPage() {
     const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
+    const ovLabels = mqs.map(m => m.label);
+    const ovPaid = mqs.map(m => m.paid);
+    const ovRemaining = mqs.map(m => m.remaining);
+    const ovMaxVal = Math.max(10, ...ovPaid, ...ovRemaining);
     const n = ovLabels.length || 1;
     const OV_H = 110;
     const OV_PAD_X = 20;
