@@ -133,56 +133,100 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
 
     const result = await pool.query(query);
 
+    // Fetch untagged payments per customer (no maqal_id set) for waterfall
+    const untaggedResult = await pool.query(`
+        SELECT customer_id, SUM(amount) AS total_untagged
+        FROM "Ledger"
+        WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NULL
+        GROUP BY customer_id
+    `);
+    // Map: customer_id -> untagged payment pool remaining
+    const untaggedPool = new Map<string, number>();
+    for (const row of untaggedResult.rows) {
+        untaggedPool.set(row.customer_id, Number(row.total_untagged || 0));
+    }
+
     const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
-    const mqs = result.rows.map(row => {
-        const expected          = Number(row.expected  || 0);
-        const paid              = Number(row.paid      || 0);
-        const kg                = Number(row.kg        || 0);
+    // Build raw MQ list sorted oldest first (mq_num ascending = oldest first)
+    const rawMqs = result.rows.map(row => {
+        const startDate = row.date1 ? fmt(row.date1) : '';
+        const endDate   = row.date2 ? fmt(row.date2) : '';
+        const rawCustomers: any[] = typeof row.customer_data === 'string'
+            ? JSON.parse(row.customer_data)
+            : (row.customer_data || []);
+        return {
+            mq_num:    Number(row.mq_num),
+            date1:     row.date1,
+            date2:     row.date2,
+            startDate,
+            endDate,
+            dateRange: `${startDate} – ${endDate}`,
+            kg:        Number(row.kg        || 0),
+            total_customers: Number(row.total_customers || 0),
+            rawCustomers,
+        };
+    });
+
+    // Apply waterfall per customer across MQs (oldest first = index 0)
+    // For each MQ, for each customer:
+    //   paid = specific_paid (tagged) + waterfall applied from their untagged pool
+    const mqs = rawMqs.map(row => {
+        const customers = row.rawCustomers.map((c: any) => {
+            const cId        = c.customer_id as string;
+            const expected   = Number(c.expected    || 0);
+            const specificPaid = Number(c.paid      || 0); // already tagged maqal_id payments
+            const remaining_after_specific = Math.max(0, expected - specificPaid);
+
+            // Apply waterfall from untagged pool (matches History page behavior)
+            let waterfallApplied = 0;
+            if (remaining_after_specific > 0 && (untaggedPool.get(cId) || 0) > 0) {
+                const available = untaggedPool.get(cId)!;
+                waterfallApplied = Math.min(available, remaining_after_specific);
+                untaggedPool.set(cId, available - waterfallApplied);
+            }
+
+            const totalPaid  = specificPaid + waterfallApplied;
+            const remaining  = Math.max(0, expected - totalPaid);
+            const paymentPct = expected > 0
+                ? Math.min(100, Math.round((totalPaid / expected) * 100))
+                : (totalPaid > 0 ? 100 : 0);
+
+            return {
+                id:         cId,
+                name:       c.name,
+                code:       c.code,
+                expected,
+                paid:       totalPaid,
+                kg:         Number(c.kg          || 0),
+                pricePerKg: Number(c.price_per_kg || 0),
+                kgDay1:     Number(c.kg_day1     || 0),
+                kgDay2:     Number(c.kg_day2     || 0),
+                remaining,
+                paymentPct,
+            };
+        }).sort((a: any, b: any) => b.remaining - a.remaining);
+
+        const expected          = customers.reduce((s: number, c: any) => s + c.expected, 0);
+        const paid              = customers.reduce((s: number, c: any) => s + c.paid,     0);
         const remaining         = Math.max(0, expected - paid);
         const paymentPercentage = expected > 0
             ? Math.min(100, Math.round((paid / expected) * 100))
             : (paid > 0 ? 100 : 0);
 
-        const startDate = row.date1 ? fmt(row.date1) : '';
-        const endDate   = row.date2 ? fmt(row.date2) : '';
-        const dateRange = `${startDate} – ${endDate}`;
-
-        const rawCustomers: any[] = typeof row.customer_data === 'string'
-            ? JSON.parse(row.customer_data)
-            : (row.customer_data || []);
-
-        const customers = rawCustomers
-            .map(c => ({
-                id:          c.customer_id,
-                name:        c.name,
-                code:        c.code,
-                expected:    Number(c.expected    || 0),
-                paid:        Number(c.paid        || 0),
-                kg:          Number(c.kg          || 0),
-                pricePerKg:  Number(c.price_per_kg || 0),
-                kgDay1:      Number(c.kg_day1     || 0),
-                kgDay2:      Number(c.kg_day2     || 0),
-                remaining:   Math.max(0, Number(c.expected || 0) - Number(c.paid || 0)),
-                paymentPct:  Number(c.expected || 0) > 0
-                    ? Math.min(100, Math.round((Number(c.paid || 0) / Number(c.expected || 0)) * 100))
-                    : (Number(c.paid || 0) > 0 ? 100 : 0),
-            }))
-            .sort((a, b) => b.remaining - a.remaining);
-
         return {
             id:                String(row.mq_num),
-            mqNumber:          Number(row.mq_num),
+            mqNumber:          row.mq_num,
             label:             `MQ#${row.mq_num}`,
-            dateRange,
-            startDate,
-            endDate,
-            kg,
+            dateRange:         row.dateRange,
+            startDate:         row.startDate,
+            endDate:           row.endDate,
+            kg:                row.kg,
             expected,
             paid,
             remaining,
             paymentPercentage,
-            customerCount:     Number(row.total_customers || 0),
+            customerCount:     row.total_customers,
             customers,
         };
     });
