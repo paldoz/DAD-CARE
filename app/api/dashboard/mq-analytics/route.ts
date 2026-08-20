@@ -86,10 +86,21 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             JOIN "Ledger" l ON l.type = 'PRODUCT'
                             AND l.deleted_at IS NULL
                             AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
-            GROUP BY fp.mq_num, l.customer_id
         ),
+        
+        -- OPTIMIZATION: Pre-aggregate product amounts by date to prevent O(N^2) Nested Loop timeouts
+        daily_debt AS (
+            SELECT 
+                customer_id, 
+                COALESCE(reference_date::date, created_at::date) AS db_date,
+                SUM(amount) AS daily_amount
+            FROM "Ledger"
+            WHERE type = 'PRODUCT' AND deleted_at IS NULL
+            GROUP BY customer_id, COALESCE(reference_date::date, created_at::date)
+        ),
+        
         -- Step 7: For each MQ pair, allocate payments using waterfall logic (for older payments) + specific maqal_id
-        -- OPTIMIZED: Pre-aggregates Ledger via LEFT JOIN to prevent Vercel 10-second timeout (N+1 issue)
+        -- OPTIMIZED: Pre-aggregates Ledger via LEFT JOIN and CTEs to prevent Vercel 10-second timeout (N+1 issue)
         mq_payments AS (
             SELECT
                 mp.mq_num,
@@ -102,7 +113,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             
             -- 1. Specific payments made explicitly for this MQ (handles "1", "MQ#1", etc)
             LEFT JOIN (
-                SELECT customer_id, NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '')::int as mq_num, SUM(amount) as amount
+                SELECT customer_id, NULLIF(REGEXP_REPLACE(maqal_id::text, '\\D', '', 'g'), '')::numeric as mq_num, SUM(amount) as amount
                 FROM "Ledger" WHERE type = 'PAYMENT' AND deleted_at IS NULL
                 GROUP BY customer_id, 2
             ) specific_payments ON specific_payments.customer_id = mp.customer_id AND specific_payments.mq_num = mp.mq_num
@@ -114,16 +125,15 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                 GROUP BY customer_id
             ) waterfall ON waterfall.customer_id = mp.customer_id
             
-            -- 3. Debt accumulated BEFORE this MQ
+            -- 3. Debt accumulated BEFORE this MQ (instant scalar subquery against pre-aggregated daily_debt)
             LEFT JOIN (
                 SELECT 
                     mp_inner.mq_num, 
                     mp_inner.customer_id, 
-                    SUM(l.amount) as debt_before
+                    SUM(dd.daily_amount) as debt_before
                 FROM mq_products mp_inner
                 JOIN filtered_pairs fp_inner ON fp_inner.mq_num = mp_inner.mq_num
-                JOIN "Ledger" l ON l.customer_id = mp_inner.customer_id AND l.type = 'PRODUCT' AND l.deleted_at IS NULL 
-                               AND COALESCE(l.reference_date::date, l.created_at::date) < fp_inner.date1
+                JOIN daily_debt dd ON dd.customer_id = mp_inner.customer_id AND dd.db_date < fp_inner.date1
                 GROUP BY mp_inner.mq_num, mp_inner.customer_id
             ) debt ON debt.customer_id = mp.customer_id AND debt.mq_num = mp.mq_num
         )
