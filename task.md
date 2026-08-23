@@ -1,0 +1,12 @@
+- `[x]` 1. Backup production database using `pg_dump` (skipped as local, user uses Supabase UI)
+- `[x]` 2. Create `app/api/admin/audit-maqals/route.ts` API route for safe audit generation
+- `[/]` 3. Run migration in Dry-Run mode to generate `maqal_migration_audit.json`
+- `[ ]` 4. Apply migration (execute changes to database for explicit dates only)
+- `[ ]` 5. Create `scripts/verify-maqals.ts` reconciliation script
+- `[ ]` 6. Run reconciliation for MQ#18, MQ#19, MQ#20 and old/new maqals
+- `[ ]` 7. Verify Expected, Collected, Remaining, Payment %, Customer-level totals, and no double-counting
+- `[ ]` 8. Update `app/api/daily-book/route.ts` to assign `maqal_id` on new PRODUCT ledger entries
+- `[ ]` 9. Test a new real payment and verify Maqal updates
+- `[ ]` 10. AFTER all tests pass, remove waterfall logic from `ledgerHelpers.ts` and `mq-analytics/route.ts`
+- `[ ]` 11. Add UI distinction for "Unlinked historical payment" (`maqal_id = NULL`) so it's not silently treated as $0
+- `[ ]` 12. Add database index on `maqal_id`
