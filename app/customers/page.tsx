@@ -15,10 +15,6 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-    DropdownMenuSub,
-    DropdownMenuSubTrigger,
-    DropdownMenuSubContent,
-    DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import useSWR from 'swr';
@@ -67,6 +63,8 @@ export default function CustomersPage() {
     const [showAllTimePct, setShowAllTimePct] = useState<Record<string, boolean>>({});
     const [managingCustomerId, setManagingCustomerId] = useState<string | null>(null);
     const [maqalSearch, setMaqalSearch] = useState('');
+    const [showBestExpanded, setShowBestExpanded] = useState(false);
+    const [showWorstExpanded, setShowWorstExpanded] = useState(false);
 
     const [reorderOpenForId, setReorderOpenForId] = useState<string | null>(null);
     const [reorderTargetId, setReorderTargetId] = useState<string>('');
@@ -377,17 +375,21 @@ export default function CustomersPage() {
                                     </DropdownMenuItem>
                                 )}
 
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl text-emerald-500 focus:text-emerald-600 focus:bg-emerald-500/10">
-                                        ⭐ Macaamilka Ugu Fiican
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuPortal>
-                                        <DropdownMenuSubContent className="w-48 bg-card/95 backdrop-blur-xl border-border/50 rounded-2xl shadow-xl">
-                                            <DropdownMenuItem onClick={() => setFilterType('best_lacag')} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${filterType === 'best_lacag' ? 'bg-emerald-500/10 text-emerald-500' : ''}`}>
+                                <div>
+                                    <button
+                                        onClick={() => { setShowBestExpanded(v => !v); setShowWorstExpanded(false); }}
+                                        className={`w-full flex items-center justify-between px-2 py-1.5 text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl text-emerald-500 hover:bg-emerald-500/10 transition-colors`}
+                                    >
+                                        <span>⭐ Macaamilka Ugu Fiican</span>
+                                        <span className="text-[10px] opacity-60">{showBestExpanded ? '▲' : '▶'}</span>
+                                    </button>
+                                    {showBestExpanded && (
+                                        <div className="ml-2 border-l-2 border-emerald-500/20 pl-2 mt-1 space-y-0.5">
+                                            <DropdownMenuItem onClick={() => { setFilterType('best_lacag'); setShowBestExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${filterType === 'best_lacag' ? 'bg-emerald-500/10 text-emerald-500' : ''}`}>
                                                 Lacagta {filterType === 'best_lacag' && <Check className="w-3 h-3 ml-auto" />}
                                             </DropdownMenuItem>
                                             
-                                            <div className="px-2 pt-2 pb-1">
+                                            <div className="px-1 pt-1 pb-0.5">
                                                 <div className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">Maqalka</div>
                                                 <input 
                                                     type="text" 
@@ -399,18 +401,15 @@ export default function CustomersPage() {
                                                     onKeyDown={(e) => e.stopPropagation()}
                                                 />
                                             </div>
-                                            <div className="max-h-40 overflow-y-auto overflow-x-hidden p-1 space-y-0.5">
+                                            <div className="max-h-36 overflow-y-auto overflow-x-hidden space-y-0.5">
                                                 {(!maqalSearch || "latest maqal".includes(maqalSearch.toLowerCase())) && (
-                                                    <DropdownMenuItem onClick={() => { 
-                                                        setFilterType('best_maqal'); 
-                                                        setSelectedMaqalPair('latest');
-                                                    }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'best_maqal' && selectedMaqalPair === 'latest') ? 'bg-primary/10 text-primary' : ''}`}>
+                                                    <DropdownMenuItem onClick={() => { setFilterType('best_maqal'); setSelectedMaqalPair('latest'); setShowBestExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'best_maqal' && selectedMaqalPair === 'latest') ? 'bg-primary/10 text-primary' : ''}`}>
                                                         ✅ Latest Maqal {latestPair && <span className="ml-1 text-[9px] opacity-70">({formatPairDate(latestPair.date1)} & {formatPairDate(latestPair.date2)})</span>}
                                                         {(filterType === 'best_maqal' && selectedMaqalPair === 'latest') && <Check className="w-3 h-3 ml-auto" />}
                                                     </DropdownMenuItem>
                                                 )}
                                                 {(!maqalSearch || "all time".includes(maqalSearch.toLowerCase())) && (
-                                                    <DropdownMenuItem onClick={() => { setFilterType('best_maqal'); setSelectedMaqalPair('all_time'); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'best_maqal' && selectedMaqalPair === 'all_time') ? 'bg-primary/10 text-primary' : ''}`}>
+                                                    <DropdownMenuItem onClick={() => { setFilterType('best_maqal'); setSelectedMaqalPair('all_time'); setShowBestExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'best_maqal' && selectedMaqalPair === 'all_time') ? 'bg-primary/10 text-primary' : ''}`}>
                                                         All Time {(filterType === 'best_maqal' && selectedMaqalPair === 'all_time') && <Check className="w-3 h-3 ml-auto" />}
                                                     </DropdownMenuItem>
                                                 )}
@@ -420,7 +419,7 @@ export default function CustomersPage() {
                                                     const totalCount = parseInt(pair.total_customers) || 0;
                                                     const isQualified = paidCount >= 20;
                                                     return (
-                                                        <DropdownMenuItem key={val} onClick={() => { setFilterType('best_maqal'); setSelectedMaqalPair(val); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'best_maqal' && selectedMaqalPair === val) ? 'bg-primary/10 text-primary' : ''}`}>
+                                                        <DropdownMenuItem key={val} onClick={() => { setFilterType('best_maqal'); setSelectedMaqalPair(val); setShowBestExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'best_maqal' && selectedMaqalPair === val) ? 'bg-primary/10 text-primary' : ''}`}>
                                                             <span className="flex items-center gap-1 flex-1 min-w-0">
                                                                 {formatPairDate(pair.date1)} & {formatPairDate(pair.date2)}
                                                                 {isQualified ? (
@@ -443,21 +442,25 @@ export default function CustomersPage() {
                                                     </div>
                                                 )}
                                             </div>
-                                        </DropdownMenuSubContent>
-                                    </DropdownMenuPortal>
-                                </DropdownMenuSub>
+                                        </div>
+                                    )}
+                                </div>
 
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl text-destructive focus:text-destructive focus:bg-destructive/10">
-                                        ⚠️ Macaamilka Ugu Liita
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuPortal>
-                                        <DropdownMenuSubContent className="w-48 bg-card/95 backdrop-blur-xl border-border/50 rounded-2xl shadow-xl">
-                                            <DropdownMenuItem onClick={() => setFilterType('worst_lacag')} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${filterType === 'worst_lacag' ? 'bg-destructive/10 text-destructive' : ''}`}>
+                                <div>
+                                    <button
+                                        onClick={() => { setShowWorstExpanded(v => !v); setShowBestExpanded(false); }}
+                                        className={`w-full flex items-center justify-between px-2 py-1.5 text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl text-destructive hover:bg-destructive/10 transition-colors`}
+                                    >
+                                        <span>⚠️ Macaamilka Ugu Liita</span>
+                                        <span className="text-[10px] opacity-60">{showWorstExpanded ? '▲' : '▶'}</span>
+                                    </button>
+                                    {showWorstExpanded && (
+                                        <div className="ml-2 border-l-2 border-destructive/20 pl-2 mt-1 space-y-0.5">
+                                            <DropdownMenuItem onClick={() => { setFilterType('worst_lacag'); setShowWorstExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${filterType === 'worst_lacag' ? 'bg-destructive/10 text-destructive' : ''}`}>
                                                 Lacagta {filterType === 'worst_lacag' && <Check className="w-3 h-3 ml-auto" />}
                                             </DropdownMenuItem>
                                             
-                                            <div className="px-2 pt-2 pb-1">
+                                            <div className="px-1 pt-1 pb-0.5">
                                                 <div className="text-[10px] font-bold text-muted-foreground mb-1 uppercase tracking-wider">Maqalka</div>
                                                 <input 
                                                     type="text" 
@@ -469,18 +472,15 @@ export default function CustomersPage() {
                                                     onKeyDown={(e) => e.stopPropagation()}
                                                 />
                                             </div>
-                                            <div className="max-h-40 overflow-y-auto overflow-x-hidden p-1 space-y-0.5">
+                                            <div className="max-h-36 overflow-y-auto overflow-x-hidden space-y-0.5">
                                                 {(!maqalSearch || "latest maqal".includes(maqalSearch.toLowerCase())) && (
-                                                    <DropdownMenuItem onClick={() => { 
-                                                        setFilterType('worst_maqal'); 
-                                                        setSelectedMaqalPair('latest');
-                                                    }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'worst_maqal' && selectedMaqalPair === 'latest') ? 'bg-primary/10 text-primary' : ''}`}>
+                                                    <DropdownMenuItem onClick={() => { setFilterType('worst_maqal'); setSelectedMaqalPair('latest'); setShowWorstExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'worst_maqal' && selectedMaqalPair === 'latest') ? 'bg-primary/10 text-primary' : ''}`}>
                                                         ✅ Latest Maqal {latestPair && <span className="ml-1 text-[9px] opacity-70">({formatPairDate(latestPair.date1)} & {formatPairDate(latestPair.date2)})</span>}
                                                         {(filterType === 'worst_maqal' && selectedMaqalPair === 'latest') && <Check className="w-3 h-3 ml-auto" />}
                                                     </DropdownMenuItem>
                                                 )}
                                                 {(!maqalSearch || "all time".includes(maqalSearch.toLowerCase())) && (
-                                                    <DropdownMenuItem onClick={() => { setFilterType('worst_maqal'); setSelectedMaqalPair('all_time'); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'worst_maqal' && selectedMaqalPair === 'all_time') ? 'bg-primary/10 text-primary' : ''}`}>
+                                                    <DropdownMenuItem onClick={() => { setFilterType('worst_maqal'); setSelectedMaqalPair('all_time'); setShowWorstExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'worst_maqal' && selectedMaqalPair === 'all_time') ? 'bg-primary/10 text-primary' : ''}`}>
                                                         All Time {(filterType === 'worst_maqal' && selectedMaqalPair === 'all_time') && <Check className="w-3 h-3 ml-auto" />}
                                                     </DropdownMenuItem>
                                                 )}
@@ -490,7 +490,7 @@ export default function CustomersPage() {
                                                     const totalCount = parseInt(pair.total_customers) || 0;
                                                     const isQualified = paidCount >= 20;
                                                     return (
-                                                        <DropdownMenuItem key={val} onClick={() => { setFilterType('worst_maqal'); setSelectedMaqalPair(val); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'worst_maqal' && selectedMaqalPair === val) ? 'bg-primary/10 text-primary' : ''}`}>
+                                                        <DropdownMenuItem key={val} onClick={() => { setFilterType('worst_maqal'); setSelectedMaqalPair(val); setShowWorstExpanded(false); }} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${(filterType === 'worst_maqal' && selectedMaqalPair === val) ? 'bg-primary/10 text-primary' : ''}`}>
                                                             <span className="flex items-center gap-1 flex-1 min-w-0">
                                                                 {formatPairDate(pair.date1)} & {formatPairDate(pair.date2)}
                                                                 {isQualified ? (
@@ -513,9 +513,9 @@ export default function CustomersPage() {
                                                     </div>
                                                 )}
                                             </div>
-                                        </DropdownMenuSubContent>
-                                    </DropdownMenuPortal>
-                                </DropdownMenuSub>
+                                        </div>
+                                    )}
+                                </div>
 
                                 <DropdownMenuItem onClick={() => setFilterType('most_paid')} className={`text-[10px] sm:text-xs font-bold cursor-pointer rounded-xl ${filterType === 'most_paid' ? 'bg-primary/10 text-primary' : ''}`}>
                                     💰 Lacagta Ugu Badan Bixiyay {filterType === 'most_paid' && <Check className="w-3 h-3 ml-auto" />}
