@@ -91,12 +91,35 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             GROUP BY fp.mq_num, l.customer_id
         ),
 
-        -- Payments tagged to a specific MQ (maqal_id = integer)
+        -- Map each receipt to the earliest Maqal it touches
+        receipt_to_mq AS (
+            SELECT 
+                l.receipt_id,
+                MIN(fp.mq_num) as mq_num
+            FROM "Ledger" l
+            JOIN filtered_pairs fp ON COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.receipt_id IS NOT NULL
+            GROUP BY l.receipt_id
+        ),
+        -- Payments tagged to a specific MQ (maqal_id = integer OR via receipt_id)
         specific_payments AS (
-            SELECT customer_id, maqal_id AS mq_num, SUM(ABS(amount)) AS amount
-            FROM "Ledger" 
-            WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NOT NULL
-            GROUP BY customer_id, maqal_id
+            SELECT p.customer_id, COALESCE(p.maqal_id, r.mq_num) AS mq_num, 
+                   SUM(ABS(p.amount)) AS total_paid,
+                   JSON_AGG(
+                       JSON_BUILD_OBJECT(
+                           'id', p.id,
+                           'date', TO_CHAR(COALESCE(p.reference_date::date, p.created_at::date), 'YYYY-MM-DD'),
+                           'amount', ABS(p.amount),
+                           'receipt_id', p.receipt_id,
+                           'note', p.note
+                       ) ORDER BY COALESCE(p.reference_date, p.created_at) ASC
+                   ) AS payment_records
+            FROM "Ledger" p
+            LEFT JOIN receipt_to_mq r ON r.receipt_id = p.receipt_id
+            WHERE p.type = 'PAYMENT' 
+              AND p.deleted_at IS NULL 
+              AND (p.maqal_id IS NOT NULL OR r.mq_num IS NOT NULL)
+            GROUP BY p.customer_id, COALESCE(p.maqal_id, r.mq_num)
         )
         -- Step 8: Join and aggregate per MQ
         SELECT
@@ -106,7 +129,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             COUNT(DISTINCT dbi.customer_id)          AS total_customers,
             COALESCE(SUM(mpd.expected), 0)           AS expected,
             -- ACCURATE: Only count payments explicitly tagged to this MQ via maqal_id
-            COALESCE(SUM(COALESCE(sp.amount, 0)), 0) AS paid,
+            COALESCE(SUM(COALESCE(sp.total_paid, 0)), 0) AS paid,
             COALESCE(SUM(dbi.db_kg), 0)              AS kg,
             -- Customer-level JSON for breakdown dialog
             JSON_AGG(
@@ -115,11 +138,12 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                     'name',          dbi.customer_name,
                     'code',          dbi.customer_code,
                     'expected',      COALESCE(mpd.expected, 0),
-                    'paid',          COALESCE(sp.amount, 0),
+                    'paid',          COALESCE(sp.total_paid, 0),
                     'kg',            COALESCE(dbi.db_kg, 0),
                     'price_per_kg',  COALESCE(mpd.price_per_kg, 0),
                     'kg_day1',       COALESCE(mpd.kg_day1, 0),
-                    'kg_day2',       COALESCE(mpd.kg_day2, 0)
+                    'kg_day2',       COALESCE(mpd.kg_day2, 0),
+                    'payments',      COALESCE(sp.payment_records, '[]'::json)
                 )
             ) FILTER (WHERE dbi.customer_id IS NOT NULL) AS customer_data
         FROM filtered_pairs fp
@@ -133,40 +157,45 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
 
     const result = await pool.query(query);
 
-    // Fetch untagged payments per customer (no maqal_id set) for waterfall
+    // Fetch unassigned historical payments
+    // Fetch unassigned historical payments (excluding those now securely linked via receipt_id)
     const untaggedResult = await pool.query(`
-        SELECT customer_id, SUM(ABS(amount)) AS total_untagged
-        FROM "Ledger"
-        WHERE type = 'PAYMENT' AND deleted_at IS NULL AND maqal_id IS NULL
-        GROUP BY customer_id
+        WITH
+        past_dates AS (SELECT DISTINCT date::date AS db_date FROM "DailyBook" WHERE deleted_at IS NULL),
+        numbered_dates AS (SELECT db_date, ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn FROM past_dates),
+        pairs AS (SELECT n2.db_date AS date1, n1.db_date AS date2 FROM numbered_dates n1 JOIN numbered_dates n2 ON n1.rn = n2.rn - 1 WHERE n1.rn % 2 = 1),
+        numbered_pairs AS (SELECT ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num, date1, date2 FROM pairs),
+        receipt_to_mq AS (
+            SELECT l.receipt_id, MIN(np.mq_num) as mq_num
+            FROM "Ledger" l
+            JOIN numbered_pairs np ON COALESCE(l.reference_date::date, l.created_at::date) IN (np.date1, np.date2)
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.receipt_id IS NOT NULL
+            GROUP BY l.receipt_id
+        )
+        SELECT 
+            l.id,
+            l.customer_id, 
+            c.name as customer_name,
+            TO_CHAR(COALESCE(l.reference_date::date, l.created_at::date), 'YYYY-MM-DD') as date,
+            ABS(l.amount) AS amount,
+            l.receipt_id,
+            l.note
+        FROM "Ledger" l
+        JOIN "Customer" c ON c.id = l.customer_id
+        LEFT JOIN receipt_to_mq r ON r.receipt_id = l.receipt_id
+        WHERE l.type = 'PAYMENT' AND l.deleted_at IS NULL AND l.maqal_id IS NULL AND r.mq_num IS NULL
+        ORDER BY COALESCE(l.reference_date, l.created_at) DESC
     `);
-    // Map: customer_id -> untagged payment pool remaining
-    const untaggedPool = new Map<string, number>();
-    for (const row of untaggedResult.rows) {
-        untaggedPool.set(row.customer_id, Number(row.total_untagged || 0));
-    }
-
-    // Fetch pre-MQ debt per customer to drain untagged payments correctly
-    let preMqDebtResult = { rows: [] as any[] };
-    if (result.rows.length > 0) {
-        const earliestDate = result.rows[0].date1;
-        preMqDebtResult = await pool.query(`
-            SELECT customer_id, SUM(amount) AS pre_debt
-            FROM "Ledger"
-            WHERE type = 'PRODUCT' AND deleted_at IS NULL 
-              AND COALESCE(reference_date::date, created_at::date) < $1
-            GROUP BY customer_id
-        `, [earliestDate]);
-    }
-    for (const row of preMqDebtResult.rows) {
-        const cId = row.customer_id;
-        const preDebt = Number(row.pre_debt || 0);
-        if (preDebt > 0 && untaggedPool.has(cId)) {
-            const available = untaggedPool.get(cId)!;
-            const drained = Math.min(available, preDebt);
-            untaggedPool.set(cId, available - drained);
-        }
-    }
+    const unassignedPayments = untaggedResult.rows.map(r => ({
+        id: r.id,
+        customerId: r.customer_id,
+        customerName: r.customer_name,
+        date: r.date,
+        amount: Number(r.amount || 0),
+        receiptId: r.receipt_id,
+        note: r.note
+    }));
+    const totalUnassigned = unassignedPayments.reduce((s, p) => s + p.amount, 0);
 
     const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
@@ -185,56 +214,53 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             endDate,
             dateRange: `${startDate} – ${endDate}`,
             kg:        Number(row.kg        || 0),
+            expected:  Number(row.expected  || 0),
             total_customers: Number(row.total_customers || 0),
             rawCustomers,
         };
     });
 
-    // Apply waterfall per customer across MQs (oldest first = index 0)
-    // For each MQ, for each customer:
-    //   paid = specific_paid (tagged) + waterfall applied from their untagged pool
+    // Exactly map without any waterfall
     const mqs = rawMqs.map(row => {
+        let mqExpected = 0;
+        let mqPaid = 0;
+
         const customers = row.rawCustomers.map((c: any) => {
-            const cId        = c.customer_id as string;
-            const expected   = Number(c.expected    || 0);
-            const specificPaid = Number(c.paid      || 0); // already tagged maqal_id payments
-            const remaining_after_specific = Math.max(0, expected - specificPaid);
+            const expected   = Number(c.expected || 0);
+            const paid       = Number(c.paid || 0);
+            
+            const remaining  = Math.max(0, expected - paid);
+            const overpaid   = Math.max(0, paid - expected);
+            
+            const paymentPct = expected > 0 ? (paid / expected) * 100 : (paid > 0 ? 100 : 0);
 
-            // Apply waterfall from untagged pool (matches History page behavior)
-            let waterfallApplied = 0;
-            if (remaining_after_specific > 0 && (untaggedPool.get(cId) || 0) > 0) {
-                const available = untaggedPool.get(cId)!;
-                waterfallApplied = Math.min(available, remaining_after_specific);
-                untaggedPool.set(cId, available - waterfallApplied);
-            }
-
-            const totalPaid  = specificPaid + waterfallApplied;
-            const remaining  = Math.max(0, expected - totalPaid);
-            const paymentPct = expected > 0
-                ? Math.min(100, Math.round((totalPaid / expected) * 100))
-                : (totalPaid > 0 ? 100 : 0);
+            mqExpected += expected;
+            mqPaid += paid;
 
             return {
-                id:         cId,
+                id:         c.customer_id,
                 name:       c.name,
                 code:       c.code,
                 expected,
-                paid:       totalPaid,
-                kg:         Number(c.kg          || 0),
+                paid,
+                kg:         Number(c.kg || 0),
                 pricePerKg: Number(c.price_per_kg || 0),
-                kgDay1:     Number(c.kg_day1     || 0),
-                kgDay2:     Number(c.kg_day2     || 0),
+                kgDay1:     Number(c.kg_day1 || 0),
+                kgDay2:     Number(c.kg_day2 || 0),
                 remaining,
+                overpaid,
                 paymentPct,
+                payments:   c.payments || []
             };
         }).sort((a: any, b: any) => b.remaining - a.remaining);
 
-        const expected          = customers.reduce((s: number, c: any) => s + c.expected, 0);
-        const paid              = customers.reduce((s: number, c: any) => s + c.paid,     0);
-        const remaining         = Math.max(0, expected - paid);
-        const paymentPercentage = expected > 0
-            ? Math.min(100, Math.round((paid / expected) * 100))
-            : (paid > 0 ? 100 : 0);
+        const mqRemaining = Math.max(0, mqExpected - mqPaid);
+        const mqOverpaid = Math.max(0, mqPaid - mqExpected);
+        const mqPaymentPct = mqExpected > 0 ? (mqPaid / mqExpected) * 100 : (mqPaid > 0 ? 100 : 0);
+
+        if (Math.abs(mqExpected - row.expected) > 0.01) {
+            console.error(`Reconciliation Error MQ#${row.mq_num}: DB Expected ${row.expected} != Sum ${mqExpected}`);
+        }
 
         return {
             id:                String(row.mq_num),
@@ -244,10 +270,11 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             startDate:         row.startDate,
             endDate:           row.endDate,
             kg:                row.kg,
-            expected,
-            paid,
-            remaining,
-            paymentPercentage,
+            expected:          mqExpected,
+            paid:              mqPaid,
+            remaining:         mqRemaining,
+            overpaid:          mqOverpaid,
+            paymentPercentage: mqPaymentPct,
             customerCount:     row.total_customers,
             customers,
         };
@@ -255,22 +282,24 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
 
     const totalExpected  = mqs.reduce((s, m) => s + m.expected,  0);
     const totalPaid      = mqs.reduce((s, m) => s + m.paid,      0);
+    const totalRemaining = mqs.reduce((s, m) => s + m.remaining, 0);
+    const totalOverpaid  = mqs.reduce((s, m) => s + m.overpaid,  0);
     const totalKg        = mqs.reduce((s, m) => s + m.kg,        0);
-    const totalRemaining = Math.max(0, totalExpected - totalPaid);
-    const overallPct     = totalExpected > 0
-        ? Math.min(100, Math.round((totalPaid / totalExpected) * 100))
-        : 0;
+    const overallPct     = totalExpected > 0 ? (totalPaid / totalExpected) * 100 : (totalPaid > 0 ? 100 : 0);
 
     return {
         period,
         mqs,
+        unassignedPayments,
         totals: {
             expected:        totalExpected,
             paid:            totalPaid,
             remaining:       totalRemaining,
+            overpaid:        totalOverpaid,
             kg:              totalKg,
             paymentProgress: overallPct,
             totalMqs:        mqs.length,
+            totalUnassigned
         },
     };
 };
