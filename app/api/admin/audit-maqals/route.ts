@@ -37,13 +37,13 @@ export async function GET(req: NextRequest) {
             ORDER BY mq_num ASC;
         `);
 
-        const dateToMqNum = new Map();
+        const dateToMqNum = new Map<string, { num: number; pair: any }>();
         for (const pair of pairsResult.rows) {
             const d1 = new Date(pair.date1).toISOString().split('T')[0];
             const d2 = new Date(pair.date2).toISOString().split('T')[0];
             const num = Number(pair.mq_num);
-            dateToMqNum.set(d1, { num, date: d1, other: d2, pair });
-            dateToMqNum.set(d2, { num, date: d2, other: d1, pair });
+            dateToMqNum.set(d1, { num, pair });
+            dateToMqNum.set(d2, { num, pair });
         }
 
         // 2. Fetch all PRODUCT ledger entries
@@ -75,6 +75,8 @@ export async function GET(req: NextRequest) {
                 if (p.maqal_id === match.num) {
                     audit.meta.total_already_correct++;
                 } else {
+                    const d1 = new Date(match.pair.date1).toISOString().split('T')[0];
+                    const d2 = new Date(match.pair.date2).toISOString().split('T')[0];
                     audit.assignments_needed.push({
                         ledger_id: p.id,
                         customer_id: p.customer_id,
@@ -82,7 +84,7 @@ export async function GET(req: NextRequest) {
                         amount: p.amount,
                         old_maqal_id: p.maqal_id,
                         new_maqal_id: match.num,
-                        evidence: \`Matched DailyBook date \${dateStr} belonging to MQ#\${match.num}\`
+                        evidence: 'Matched DailyBook date ' + dateStr + ' belonging to MQ#' + match.num + ' (Pair: ' + d1 + ' - ' + d2 + ')'
                     });
                     audit.meta.total_assigned++;
                 }
@@ -93,7 +95,7 @@ export async function GET(req: NextRequest) {
                     reference_date: dateStr,
                     amount: p.amount,
                     old_maqal_id: p.maqal_id,
-                    reason: \`No matching DailyBook pair found for date \${dateStr}\`
+                    reason: 'No matching DailyBook pair found for date ' + dateStr
                 });
                 audit.meta.unassigned_reasons[dateStr] = (audit.meta.unassigned_reasons[dateStr] || 0) + 1;
             }
@@ -102,29 +104,28 @@ export async function GET(req: NextRequest) {
         if (mode === 'apply') {
             const confirmation = searchParams.get('confirm');
             if (confirmation !== 'yes') {
-                return NextResponse.json({ 
-                    error: 'Safety check: to apply changes, you must pass ?mode=apply&confirm=yes', 
-                    audit_preview: audit 
+                return NextResponse.json({
+                    error: 'Safety check: to apply changes, you must pass ?mode=apply&confirm=yes',
+                    audit_preview: audit
                 });
             }
 
-            // Execute the updates inside a transaction
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
-                
+
                 for (const change of audit.assignments_needed) {
                     await client.query(
-                        \`UPDATE "Ledger" SET maqal_id = $1 WHERE id = $2\`,
+                        'UPDATE "Ledger" SET maqal_id = $1 WHERE id = $2',
                         [change.new_maqal_id, change.ledger_id]
                     );
                 }
 
                 await client.query('COMMIT');
-                return NextResponse.json({ 
-                    success: true, 
-                    message: \`Successfully migrated \${audit.assignments_needed.length} records.\`,
-                    audit 
+                return NextResponse.json({
+                    success: true,
+                    message: 'Successfully migrated ' + audit.assignments_needed.length + ' records.',
+                    audit
                 });
             } catch (e) {
                 await client.query('ROLLBACK');
@@ -134,7 +135,7 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        // Return audit JSON file directly
+        // Return audit JSON
         return new NextResponse(JSON.stringify(audit, null, 2), {
             headers: {
                 'Content-Type': 'application/json',
