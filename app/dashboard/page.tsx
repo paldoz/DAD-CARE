@@ -60,7 +60,6 @@ interface MqAnalyticsData {
     period: string;
     mqs: {
         id: string;
-        mqNumber: number | null;
         label: string;
         dateRange?: string;
         startDate?: string;
@@ -69,7 +68,7 @@ interface MqAnalyticsData {
         expected: number;
         paid: number;
         remaining: number;
-        overpaid: number;
+        overpaid?: number;
         paymentPercentage: number;
         customerCount: number;
         customers: {
@@ -80,29 +79,17 @@ interface MqAnalyticsData {
             paid: number;
             kg: number;
             remaining: number;
-            overpaid: number;
+            overpaid?: number;
             paymentPct?: number;
-            payments?: { id: string, date: string, amount: number, receipt_id: string | null, note: string | null }[];
         }[];
-    }[];
-    unassignedPayments: {
-        id: string;
-        customerId: string;
-        customerName: string;
-        date: string;
-        amount: number;
-        receiptId: string | null;
-        note: string | null;
     }[];
     totals: {
         expected: number;
         paid: number;
         remaining: number;
-        overpaid: number;
         kg: number;
         paymentProgress: number;
         totalMqs: number;
-        totalUnassigned: number;
     };
 }
 
@@ -142,7 +129,6 @@ export default function DashboardPage() {
     const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year' | 'all'>('all');
     const [expandedMqDetail, setExpandedMqDetail] = useState<boolean>(false);
     const [selectedDot, setSelectedDot] = useState<number | null>(null);
-    const [breakdownMode, setBreakdownMode] = useState<'expected' | 'collected' | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -155,7 +141,7 @@ export default function DashboardPage() {
     const { data: overviewResponse, isLoading: overviewLoading } = useSWR<MqAnalyticsData>(
         `/api/dashboard/mq-analytics?period=${overviewPeriod}`,
         fetcher,
-        { revalidateOnFocus: false, dedupingInterval: 5000, revalidateOnMount: true }
+        { revalidateOnFocus: false, dedupingInterval: 30000 }
     );
 
     useEffect(() => {
@@ -264,15 +250,14 @@ export default function DashboardPage() {
     const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
+    const OV_H = 110;
+    const OV_W = 320;
+    const OV_PAD_X = 20;
     const ovLabels = mqs.map(m => m.label);
     const ovPaid = mqs.map(m => m.paid);
     const ovRemaining = mqs.map(m => m.remaining);
     const ovMaxVal = Math.max(10, ...ovPaid, ...ovRemaining);
     const n = ovLabels.length || 1;
-    const OV_H = 110;
-    const OV_PAD_X = 20;
-    // Require at least 50px width per MQ so they don't squish
-    const OV_W = Math.max(320, n * 55 + OV_PAD_X * 2);
 
     const ovCoords = (values: number[]) =>
         values.map((v, i) => ({
@@ -656,148 +641,180 @@ export default function DashboardPage() {
                             </div>
                         </div>
 
-                        {/* ── Exact Maqal Reconciliation Accordion ── */}
-                        <div className="space-y-2 mb-4">
-                            {mqs.map((mq, i) => {
-                                const isSelected = selectedDot === i;
-                                const pct = mq.paymentPercentage;
-                                const pctColor = pct >= 90 ? 'text-emerald-500' : pct >= 60 ? 'text-amber-500' : 'text-red-500';
-                                
-                                // Block string generator: 20 blocks total
-                                const totalBlocks = 20;
-                                const filledBlocks = Math.round((pct / 100) * totalBlocks);
-                                const emptyBlocks = Math.max(0, totalBlocks - filledBlocks);
-                                const blockStr = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+                        {/* ── SVG Line Chart — tap a dot to see MQ details ── */}
+                        <div className="relative w-full mb-2">
+                            <p className="text-[9px] text-muted-foreground text-center mb-1">Tap any dot to see MQ details</p>
+                            <svg viewBox={`0 -8 ${OV_W} 160`} className="w-full overflow-visible" style={{ height: 160 }} preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="ovGP4" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
+                                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                                    </linearGradient>
+                                    <linearGradient id="ovGR4" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#f87171" stopOpacity="0.15" />
+                                        <stop offset="100%" stopColor="#f87171" stopOpacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                {/* Gridlines */}
+                                {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
+                                    <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
+                                        stroke="currentColor" strokeOpacity="0.04" strokeWidth="1"
+                                        strokeDasharray={i > 0 ? "2 4" : "0"} />
+                                ))}
+                                {/* Area fills */}
+                                {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP4)" />}
+                                {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR4)" />}
+                                {/* Lines */}
+                                {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+                                {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
 
-                                return (
-                                    <div key={mq.id} className="flex flex-col">
-                                        <button 
-                                            onClick={() => { setSelectedDot(isSelected ? null : i); setBreakdownMode(null); setExpandedMqDetail(false); }}
-                                            className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isSelected ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-muted/50'}`}
-                                        >
-                                            <span className="text-xs font-bold text-foreground w-14 text-left">{mq.label}</span>
-                                            <div className="flex-1 flex items-center justify-center font-mono text-[10px] tracking-widest text-primary">
-                                                {blockStr}
+                                {/* Dots + MQ label + % */}
+                                {paidCoords.map((c, i) => {
+                                    const mq = mqs[i];
+                                    if (!mq) return null;
+                                    const isSelected = selectedDot === i;
+                                    const pct = mq.paymentPercentage;
+                                    const pctColor = pct >= 90 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
+                                    return (
+                                        <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
+                                            onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
+                                            {/* Tick */}
+                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 7} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
+                                            {/* MQ label */}
+                                            <text x={c.x} y={OV_H + 16} fontSize="7" fill="currentColor" fillOpacity={isSelected ? 1 : 0.5}
+                                                textAnchor="middle" fontWeight={isSelected ? "900" : "700"}>
+                                                {mq.label.length > 5 ? mq.label.slice(0, 5) : mq.label}
+                                            </text>
+                                            {/* % */}
+                                            <text x={c.x} y={OV_H + 27} fontSize="7.5" fill={pctColor}
+                                                textAnchor="middle" fontWeight="900">
+                                                {pct}%
+                                            </text>
+                                            {/* Selected ring */}
+                                            {isSelected && <circle cx={c.x} cy={c.y} r={10} fill="#2563eb" fillOpacity="0.15" />}
+                                            {/* Dot */}
+                                            <circle cx={c.x} cy={c.y} r={isSelected ? 5.5 : 3.5}
+                                                fill={isSelected ? '#fff' : '#2563eb'}
+                                                stroke="#2563eb" strokeWidth={isSelected ? 2.5 : 1.5} />
+                                        </g>
+                                    );
+                                })}
+                            </svg>
+                        </div>
+
+                        {/* ── Detail panel — appears when a dot is tapped ── */}
+                        {selectedDot !== null && mqs[selectedDot] && (() => {
+                            const mq = mqs[selectedDot];
+                            const pct = mq.paymentPercentage;
+                            const pctColor = pct >= 90 ? 'text-emerald-500' : pct >= 60 ? 'text-amber-500' : 'text-red-500';
+                            const barColor = pct >= 90 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                            const debtCustomers = mq.customers.filter((c: any) => c.remaining > 0);
+                            return (
+                                <div className="mt-1 rounded-2xl border border-primary/30 bg-gradient-to-b from-primary/5 to-transparent overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                                    {/* Panel header */}
+                                    <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-base font-black text-foreground">{mq.label}</span>
+                                                {mq.dateRange && (
+                                                    <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                                                        📅 {mq.dateRange}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <span className={`text-xs font-black w-14 text-right ${pctColor}`}>{pct}%</span>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <span className="text-[10px] font-semibold text-muted-foreground">⚖️ {fmtKg(mq.kg)}</span>
+                                                <span className="text-[10px] font-semibold text-muted-foreground">•</span>
+                                                <span className="text-[10px] font-semibold text-muted-foreground">{mq.customerCount} customers</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => { setSelectedDot(null); setExpandedMqDetail(false); }}
+                                            className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors text-xs font-black">✕</button>
+                                    </div>
+
+                                    {/* Progress bar */}
+                                    <div className="px-4 mb-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[10px] font-semibold text-muted-foreground">Payment Progress</span>
+                                            <span className={`text-sm font-black ${pctColor}`}>{pct}%</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Money stats grid */}
+                                    <div className="grid grid-cols-3 gap-2 px-4 mb-3">
+                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
+                                            <p className="text-xs font-black text-foreground tabular-nums">{fmtMoney(mq.expected)}</p>
+                                        </div>
+                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Collected</p>
+                                            <p className="text-xs font-black text-blue-500 tabular-nums">{fmtMoney(mq.paid)}</p>
+                                        </div>
+                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
+                                            <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{fmtMoney(mq.remaining)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Customer section */}
+                                    <div className="border-t border-border/40 px-4 py-3">
+                                        <button
+                                            onClick={() => setExpandedMqDetail(!expandedMqDetail)}
+                                            className="w-full flex items-center justify-between"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-bold text-foreground">
+                                                    {debtCustomers.length > 0
+                                                        ? `${debtCustomers.length} customers with debt`
+                                                        : '✅ All customers paid in full'}
+                                                </span>
+                                                {debtCustomers.length > 0 && (
+                                                    <span className="text-[10px] font-bold text-amber-500">{fmtMoney(mq.remaining)} total owed</span>
+                                                )}
+                                            </div>
+                                            {debtCustomers.length > 0 && (
+                                                <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${expandedMqDetail ? 'rotate-90' : ''}`} />
+                                            )}
                                         </button>
 
-                                        {isSelected && (
-                                            <div className="mt-2 rounded-2xl border border-primary/30 bg-gradient-to-b from-primary/5 to-transparent overflow-hidden animate-in slide-in-from-top-2 duration-200">
-                                                {/* Panel header */}
-                                                <div className="px-4 pt-3 pb-2 border-b border-border/40">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-base font-black text-foreground">{mq.label}</span>
-                                                        {mq.dateRange && (
-                                                            <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                                                                📅 {mq.dateRange}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {/* MQ Summary */}
-                                                <div className="px-4 py-3 bg-card border-b border-border/40">
-                                                    <div className="grid grid-cols-2 gap-y-2 text-[11px]">
-                                                        <div className="flex justify-between font-semibold"><span className="text-muted-foreground">KG</span><span>{fmtKg(mq.kg)}</span></div>
-                                                        <div className="flex justify-between font-semibold pl-4"><span className="text-muted-foreground">Expected</span><span className="text-foreground">{fmtMoney(mq.expected)}</span></div>
-                                                        <div className="flex justify-between font-semibold"><span className="text-muted-foreground">Customers</span><span>{mq.customerCount}</span></div>
-                                                        <div className="flex justify-between font-semibold pl-4"><span className="text-muted-foreground">Collected</span><span className="text-blue-500">{fmtMoney(mq.paid)}</span></div>
-                                                        <div className="flex justify-between font-semibold"><span className="text-muted-foreground">Paid %</span><span className={pctColor}>{pct}%</span></div>
-                                                        <div className="flex justify-between font-semibold pl-4"><span className="text-muted-foreground">Remaining</span><span className={mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}>{fmtMoney(mq.remaining)}</span></div>
-                                                        <div className="flex justify-between font-semibold"><span className="text-muted-foreground">Overpaid/Reesto</span><span className={mq.overpaid > 0 ? 'text-emerald-500 font-bold' : 'text-foreground'}>{fmtMoney(mq.overpaid)}</span></div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Customer Breakdown */}
-                                                <div className="px-4 py-3">
-                                                    <p className="text-[10px] font-black uppercase text-muted-foreground tracking-wider mb-2">Customer Reconciliation</p>
-                                                    <div className="space-y-2">
-                                                        {mq.customers.map((c: any) => (
-                                                            <div key={c.id} className="flex flex-col gap-1 p-2.5 rounded-xl border border-border/40 bg-card">
-                                                                <div className="flex justify-between items-center">
-                                                                    <span className="text-xs font-bold text-foreground">{c.name}</span>
-                                                                    <span className="text-[10px] font-black text-muted-foreground">
-                                                                        {c.kg}kg {c.pricePerKg > 0 ? `× $${c.pricePerKg}` : ''}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="grid grid-cols-5 text-[9px] font-semibold mt-1">
-                                                                    <div className="flex flex-col"><span className="text-muted-foreground">Expected</span><span>{fmtMoney(c.expected)}</span></div>
-                                                                    <div className="flex flex-col"><span className="text-muted-foreground">Paid</span><span className="text-blue-500">{fmtMoney(c.paid)}</span></div>
-                                                                    <div className="flex flex-col"><span className="text-muted-foreground">Remaining</span><span className={c.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}>{fmtMoney(c.remaining)}</span></div>
-                                                                    <div className="flex flex-col"><span className="text-muted-foreground">Reesto</span><span className="text-emerald-500">{fmtMoney(c.overpaid)}</span></div>
-                                                                    <div className="flex flex-col items-end"><span className="text-muted-foreground">%</span><span className={c.paymentPct >= 90 ? 'text-emerald-500' : c.paymentPct >= 60 ? 'text-amber-500' : 'text-red-500'}>{Math.round(c.paymentPct || 0)}%</span></div>
-                                                                </div>
+                                        {expandedMqDetail && debtCustomers.length > 0 && (
+                                            <div className="mt-2 space-y-1.5">
+                                                {debtCustomers.map((c: any) => {
+                                                    const cPct = c.expected > 0 ? Math.min(100, Math.round((c.paid / c.expected) * 100)) : (c.paid > 0 ? 100 : 0);
+                                                    const cBarColor = cPct >= 90 ? 'bg-emerald-500' : cPct >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                                                    const cTextColor = cPct >= 90 ? 'text-emerald-500' : cPct >= 60 ? 'text-amber-500' : 'text-red-500';
+                                                    return (
+                                                        <Link key={c.id} href={`/customers/${c.id}`}
+                                                            className="flex items-center gap-2.5 p-2.5 rounded-xl bg-card border border-border/40 hover:border-primary/40 transition-colors group">
+                                                            <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0 text-[10px] font-black text-muted-foreground">
+                                                                {c.name.charAt(0).toUpperCase()}
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Exact Payment Records */}
-                                                <div className="px-4 py-3 border-t border-border/40 bg-blue-500/5">
-                                                    <p className="text-[10px] font-black uppercase text-blue-500 tracking-wider mb-2">Exact {mq.label} Payment Records</p>
-                                                    {mq.customers.flatMap((c: any) => 
-                                                        (c.payments || []).map((p: any) => ({ ...p, customerName: c.name }))
-                                                    ).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()).length === 0 ? (
-                                                        <p className="text-[10px] text-muted-foreground italic">No explicitly tagged payments found for {mq.label}.</p>
-                                                    ) : (
-                                                        <div className="space-y-1">
-                                                            {mq.customers.flatMap((c: any) => 
-                                                                (c.payments || []).map((p: any) => ({ ...p, customerName: c.name }))
-                                                            ).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                                                             .map((payment: any, pIdx: number) => (
-                                                                <div key={pIdx} className="flex justify-between text-[10px] font-medium py-1 border-b border-blue-500/10 last:border-0">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-muted-foreground">{new Date(payment.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-                                                                        <span className="text-foreground">—</span>
-                                                                        <span className="font-bold text-foreground">{payment.customerName}</span>
-                                                                        {payment.note && <span className="text-muted-foreground/70 text-[9px]">({payment.note})</span>}
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-[11px] font-bold text-foreground truncate">{c.name}</p>
+                                                                <div className="flex items-center gap-1.5 mt-0.5">
+                                                                    <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                                                                        <div className={`h-full ${cBarColor} rounded-full`} style={{ width: `${cPct}%` }} />
                                                                     </div>
-                                                                    <span className="font-black text-blue-500">{fmtMoney(payment.amount)}</span>
+                                                                    <span className={`text-[9px] font-black shrink-0 ${cTextColor}`}>{cPct}%</span>
                                                                 </div>
-                                                            ))}
-                                                            <div className="flex justify-between text-[10px] font-black pt-2 mt-1 border-t border-blue-500/20">
-                                                                <span>Total {mq.label} Collected</span>
-                                                                <span className="text-blue-500">{fmtMoney(mq.paid)}</span>
                                                             </div>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                            <div className="text-right shrink-0">
+                                                                <p className="text-[10px] font-bold text-blue-500">{fmtMoney(c.paid)}</p>
+                                                                <p className="text-[9px] font-bold text-amber-500">{fmtMoney(c.remaining)} owed</p>
+                                                            </div>
+                                                            <ChevronRight className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary shrink-0" />
+                                                        </Link>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
-                                );
-                            })}
-                        </div>
-
-                        {/* ── Unassigned Historical Payments Bucket ── */}
-                        {(overviewResponse?.unassignedPayments || []).length > 0 && (
-                            <div className="mt-6 rounded-2xl border border-border bg-card overflow-hidden">
-                                <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-muted/30">
-                                    <h3 className="text-sm font-black text-foreground">Unassigned Historical Payments</h3>
-                                    <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
-                                        These historical payments exist in the database but cannot be safely attributed to a specific Maqal because they do not contain a Maqal ID. They are <strong className="text-foreground">not included</strong> in any MQ's collected total above.
-                                    </p>
                                 </div>
-                                <div className="p-4 bg-card">
-                                    <div className="max-h-60 overflow-y-auto space-y-1.5 pr-2">
-                                        {(overviewResponse?.unassignedPayments || []).map((p: any) => (
-                                            <div key={p.id} className="flex justify-between items-center py-1 border-b border-border/30 last:border-0 text-[11px]">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-foreground">{p.customerName}</span>
-                                                    <span className="text-[9px] text-muted-foreground">{new Date(p.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                                                </div>
-                                                <span className="font-black text-blue-500">{fmtMoney(p.amount)}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="flex justify-between items-center pt-3 mt-2 border-t border-border/40">
-                                        <span className="text-xs font-black text-foreground">Total Unassigned</span>
-                                        <span className="text-sm font-black text-blue-500">{fmtMoney(overviewResponse?.totals.totalUnassigned || 0)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                            );
+                        })()}
                     </>
                 )}
             </div>
