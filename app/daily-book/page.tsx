@@ -57,6 +57,11 @@ interface SavedEntry {
     items: DailyBookItem[];
 }
 
+const formatKg = (val: number | string): string => {
+    const num = parseFloat(String(val)) || 0;
+    return Number(num.toFixed(2)).toString();
+};
+
 function getVipCount(note: string | undefined, fallbackKg: number = 0): number {
     if (!note) return 0;
     const lower = note.toLowerCase();
@@ -371,7 +376,7 @@ function DailyBookPageInner() {
             setViewMode('details');
             setFocusedEntry(confirmedEntry);
 
-            toast.success(editingDate ? 'Entry updated!' : 'Entry saved!', { description: `${Math.round(confirmedEntry.totalKg)} KG recorded for ${dateStr}` });
+            toast.success(editingDate ? 'Entry updated!' : 'Entry saved!', { description: `${formatKg(confirmedEntry.totalKg)} KG recorded for ${dateStr}` });
 
             // Signal other tabs (like Dashboard) to instantly update without waiting for cache timers
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
@@ -683,7 +688,7 @@ function DailyBookPageInner() {
                                 <div className="flex items-center gap-2 min-w-0">
                                     <BookOpen className="w-4 h-4 text-primary shrink-0" />
                                     <span className="font-black text-sm uppercase tracking-tight truncate text-foreground">{format(date, 'MMM dd, yyyy')}</span>
-                                    {totalKg > 0 && <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full shrink-0">{Math.round(totalKg)} KG</span>}
+                                    {totalKg > 0 && <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full shrink-0">{formatKg(totalKg)} KG</span>}
                                     {totalVip > 0 && <span className="text-[10px] font-black text-amber-600 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full shrink-0">{totalVip} VIP</span>}
                                     {editingDate && (
                                         <Popover>
@@ -1013,7 +1018,7 @@ function DailyBookPageInner() {
                                             <div>
                                                 <p className="text-[8px] font-black uppercase tracking-tighter text-muted-foreground leading-none mb-0.5">Summary</p>
                                                 <div className="flex items-baseline gap-2">
-                                                    <span className="text-xl font-black text-primary tracking-tighter tabular-nums">{Math.round(totalKg)}</span>
+                                                    <span className="text-xl font-black text-primary tracking-tighter tabular-nums">{formatKg(totalKg)}</span>
                                                     <span className="text-[9px] font-black text-primary uppercase opacity-60">Total KG</span>
                                                     {totalVip > 0 && (
                                                         <>
@@ -1075,7 +1080,7 @@ function DailyBookPageInner() {
                                             <div className="flex-1 flex items-center justify-between w-full h-12 bg-muted rounded-xl px-2">
                                                 <div className="text-left px-2">
                                                     <p className="text-[10px] text-muted-foreground leading-none mb-1">Total</p>
-                                                    <p className="text-lg font-black leading-none">{Math.round(totalKg)} KG</p>
+                                                    <p className="text-lg font-black leading-none">{formatKg(totalKg)} KG</p>
                                                 </div>
                                                 {isSuperAdmin && (
                                                     <button
@@ -1162,7 +1167,7 @@ function DailyBookPageInner() {
                                     </div>
                                     <div className="h-3 w-px bg-border" />
                                     <div className="flex items-center gap-1.5">
-                                        <span className="font-black text-primary text-sm">{Math.round(entry.totalKg)}</span>
+                                        <span className="font-black text-primary text-sm">{formatKg(entry.totalKg)}</span>
                                         <span className="text-[10px] font-bold text-muted-foreground uppercase">Total KG</span>
                                     </div>
                                     {(() => {
@@ -1252,7 +1257,7 @@ function DailyBookPageInner() {
                                                     <span className="font-black text-amber-600 text-xl">{entryVipCount} <span className="text-xs opacity-60">VIP</span></span>
                                                 ) : null;
                                             })()}
-                                            <span className="font-black text-primary text-xl">{Math.round(entry.totalKg)} <span className="text-xs opacity-60">KG</span></span>
+                                            <span className="font-black text-primary text-xl">{formatKg(entry.totalKg)} <span className="text-xs opacity-60">KG</span></span>
                                         </div>
                                     </div>
                                 </div>
@@ -1385,7 +1390,7 @@ function DailyBookPageInner() {
                                                                 <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic w-max px-2">
                                                                     {/* 1. KG */}
                                                                     <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[10px] md:text-xs">
-                                                                        ⚡ {Math.round(entry.totalKg)} KG
+                                                                        ⚡ {formatKg(entry.totalKg)} KG
                                                                     </span>
 
                                                                     {/* 2. VIP */}
@@ -1551,7 +1556,7 @@ function DailyBookPageInner() {
                                                                 {/* Summary Footer */}
                                                                 <div className="bg-primary/5 p-4 flex items-center justify-between border-t-2 border-primary/10">
                                                                     <span className="font-bold text-sm text-foreground uppercase tracking-wider">Total Quantity</span>
-                                                                    <span className="font-black text-primary text-xl">{Math.round(entry.totalKg)} <span className="text-xs opacity-60">KG</span></span>
+                                                                    <span className="font-black text-primary text-xl">{formatKg(entry.totalKg)} <span className="text-xs opacity-60">KG</span></span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1867,17 +1872,17 @@ function DailyBookPageInner() {
                                                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">Total KG</p>
                                                 <div className="flex items-center justify-center gap-2 text-[10px] md:text-xs text-muted-foreground bg-muted/30 px-3 py-1 rounded-full mb-1.5">
                                                     <span className="text-[8px] uppercase tracking-widest opacity-60">{format(new Date(d2!), 'dd MMM')}</span>
-                                                    <span className="font-bold text-foreground">{Math.round(entry2.totalKg)}</span>
+                                                    <span className="font-bold text-foreground">{formatKg(entry2.totalKg)}</span>
                                                     <span className="opacity-40">→</span>
-                                                    <span className="font-bold text-foreground">{Math.round(entry1.totalKg)}</span>
+                                                    <span className="font-bold text-foreground">{formatKg(entry1.totalKg)}</span>
                                                     <span className="text-[8px] uppercase tracking-widest opacity-60">{format(new Date(d1!), 'dd MMM')}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 mb-1 opacity-80">
-                                                    <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded" title="Total Gains">+{Math.round(totalGains)}</span>
-                                                    <span className="text-[9px] font-black text-red-600 dark:text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded" title="Total Losses">-{Math.round(totalLosses)}</span>
+                                                    <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded" title="Total Gains">+{formatKg(totalGains)}</span>
+                                                    <span className="text-[9px] font-black text-red-600 dark:text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded" title="Total Losses">-{formatKg(totalLosses)}</span>
                                                 </div>
                                                 <p className={`text-3xl font-black tabular-nums ${kgDiff > 0 ? 'text-emerald-600 dark:text-emerald-500' : kgDiff < 0 ? 'text-red-600 dark:text-red-500' : 'text-foreground'}`}>
-                                                    {kgDiff > 0 ? '+' : ''}{Math.round(kgDiff)}
+                                                    {kgDiff > 0 ? '+' : ''}{formatKg(kgDiff)}
                                                 </p>
                                             </div>
                                         </div>
