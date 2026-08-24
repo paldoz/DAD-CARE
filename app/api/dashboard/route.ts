@@ -2,7 +2,6 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { validateSession } from '@/lib/sessions-store';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { unstable_cache } from 'next/cache';
 
 
 export const dynamic = 'force-dynamic';
@@ -131,19 +130,11 @@ export const GET = trackApiRoute('/api/dashboard', async (request: Request) => {
     }
 
     try {
-
         const today = new Date().toISOString().split('T')[0];
-        
-        const getCachedDashboardData = unstable_cache(
-            async (date: string) => getDashboardData(date),
-            ['dashboard-data-v2', today],
-            { tags: ['dashboard'], revalidate: 3600 }
-        );
-
-        const data = await getCachedDashboardData(today);
+        const data = await getDashboardData(today);
 
         const response = NextResponse.json(data);
-        response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         return response;
 
     } catch (error: any) {
