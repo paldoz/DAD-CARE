@@ -512,30 +512,50 @@ export default function DashboardPage() {
                     {recentTx.length > 0 ? (
                         <div className="space-y-3">
                             {recentTx.map((tx: any, i: number) => {
-                                const isPayment = tx.type === 'payment' || tx.amount != null;
-                                const isKg = tx.kg != null;
+                                const isPayment = tx.type === 'PAYMENT';
+                                const isProduct = tx.type === 'PRODUCT';
                                 const icon = isPayment
                                     ? <DollarSign className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
-                                    : isKg
+                                    : isProduct
                                         ? <BookOpen className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
                                         : <UserPlus className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />;
-                                const iconBg = isPayment ? 'bg-emerald-600' : isKg ? 'bg-amber-700' : 'bg-blue-700';
+                                const iconBg = isPayment ? 'bg-emerald-600' : isProduct ? 'bg-amber-700' : 'bg-blue-700';
                                 const label = isPayment
-                                    ? `${tx.customer_name || tx.name || 'Customer'} paid $${(tx.amount || 0).toFixed(0)}`
-                                    : isKg
-                                        ? `${tx.customer_name || tx.name || 'Customer'} added ${tx.kg} kg`
-                                        : tx.customer_name || tx.name || 'New customer registered';
-                                const time = tx.created_at
+                                    ? `${tx.customer_name || 'Customer'} paid $${(tx.amount || 0).toFixed(0)}`
+                                    : isProduct
+                                        ? `${tx.customer_name || 'Customer'} — ${(tx.kg || 0).toFixed(1)} kg`
+                                        : tx.customer_name || 'New customer';
+
+                                // Business date selected by user when entering the transaction
+                                const businessDate = tx.reference_date
+                                    ? new Date(tx.reference_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                    : null;
+
+                                // Actual entry time
+                                const entryTime = tx.created_at
                                     ? new Date(tx.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                                    : '';
+                                    : null;
+
+                                const mqLabel = tx.maqal_id ? `MQ#${tx.maqal_id}` : null;
+
                                 return (
-                                    <div key={i} className="flex items-center gap-2 md:gap-3 min-w-0">
-                                        <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl ${iconBg} flex items-center justify-center shrink-0`}>
+                                    <div key={tx.id ?? i} className="flex items-start gap-2 md:gap-3 min-w-0">
+                                        <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl ${iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
                                             {icon}
                                         </div>
-                                        <div className="min-w-0">
+                                        <div className="min-w-0 flex-1">
                                             <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{label}</p>
-                                            {time && <p className="text-[9px] md:text-[10px] text-muted-foreground">{time}</p>}
+                                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                {mqLabel && (
+                                                    <span className="text-[9px] font-black text-primary/80 bg-primary/10 rounded px-1 py-0.5">{mqLabel}</span>
+                                                )}
+                                                {businessDate && (
+                                                    <span className="text-[9px] md:text-[10px] font-semibold text-foreground/70">{businessDate}</span>
+                                                )}
+                                                {entryTime && (
+                                                    <span className="text-[9px] md:text-[10px] text-muted-foreground">· entered {entryTime}</span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 );
