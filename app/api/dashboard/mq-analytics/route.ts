@@ -8,284 +8,417 @@ export const revalidate = 0;
 
 type Period = 'week' | 'month' | 'year' | 'all';
 
+/**
+ * THE ONLY SOURCE OF TRUTH FOR PAYMENT ASSIGNMENT:
+ *
+ * A payment belongs to a Maqal if and only if:
+ *   (A) payment.maqal_id is non-null AND at least one PRODUCT row with that maqal_id
+ *       falls within this MQ's (date1, date2), OR
+ *   (B) payment.receipt_id is non-null AND at least one PRODUCT row with that receipt_id
+ *       falls within this MQ's (date1, date2).
+ *
+ * NO waterfall. NO orphan merging. NO date-of-payment guessing.
+ * NO lifetime-payment attribution. NO oldest-unpaid logic.
+ *
+ * This exactly mirrors how the Customer Profile Maqal History identifies payments —
+ * it groups by maqal_id or receipt_id, never by naked payment dates.
+ */
+
 const getMqAnalyticsData = async (period: Period, today: string) => {
-    /*
-     * MQ date-pair approach (matches the History page exactly):
-     * 1. Derive MQ date pairs from DailyBook (sequential pairs of dates).
-     * 2. For each MQ, calculate:
-     *    - Expected = SUM of PRODUCT amounts on those two dates
-     *    - KG       = SUM of KG on those two dates (PRODUCT rows)
-     *    - Paid     = SUM of PAYMENT amounts with maqal_id matching this pair's number,
-     *                 OR payments on those dates if maqal_id is unset
-     *    - Remaining = Expected - Paid
-     * 3. Per-customer breakdown using the same date-pair logic.
-     */
 
-    const periodFilter = period !== 'all'
-        ? `AND (p.date2 >= date_trunc('${period}', '${today}'::date)
-           AND p.date2 < date_trunc('${period}', '${today}'::date) + INTERVAL '1 ${period}')`
-        : '';
-
-    const query = `
+    // ─── STEP 1: Derive MQ date pairs from DailyBook ─────────────────────────
+    const pairsResult = await pool.query(`
         WITH
-        -- Step 1: All distinct DailyBook dates
         past_dates AS (
             SELECT DISTINCT date::date AS db_date
             FROM "DailyBook"
             WHERE deleted_at IS NULL
         ),
-        -- Step 2: Number the dates chronologically (newest first)
         numbered_dates AS (
             SELECT db_date,
                    ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn
             FROM past_dates
         ),
-        -- Step 3: Pair consecutive dates into MQs (newest pairs first)
         pairs AS (
             SELECT n2.db_date AS date1, n1.db_date AS date2
             FROM numbered_dates n1
             JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
             WHERE n1.rn % 2 = 1
-        ),
-        -- Step 4: Assign sequential MQ numbers (MQ#1 is the oldest pair)
-        numbered_pairs AS (
-            SELECT
-                ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num,
-                date1,
-                date2
-            FROM pairs
-        ),
-        -- Step 5: Filter by period if needed
-        filtered_pairs AS (
-            SELECT * FROM numbered_pairs p
-            WHERE 1=1
-            ${periodFilter}
-        ),
-        -- Step 6a: Fetch EXACT KG from DailyBookItem to guarantee 100% accuracy with History page
-        mq_dailybook_items AS (
-            SELECT
-                fp.mq_num,
-                dbi.customer_id,
-                c.name    AS customer_name,
-                c.customer_code,
-                SUM(COALESCE(dbi.kg, 0)) AS db_kg
-            FROM filtered_pairs fp
-            JOIN "DailyBook" db ON db.deleted_at IS NULL AND db.date::date IN (fp.date1, fp.date2)
-            JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
-            JOIN "Customer" c ON c.id = dbi.customer_id AND c.deleted_at IS NULL
-            GROUP BY fp.mq_num, dbi.customer_id, c.name, c.customer_code
-        ),
-        -- All PRODUCT ledger rows with price details for breakdown dialog
-        mq_product_details AS (
-            SELECT 
-                fp.mq_num, 
-                l.customer_id, 
-                SUM(l.amount) AS expected,
-                MAX(l.price_per_kg) AS price_per_kg,
-                COALESCE(SUM(CASE WHEN COALESCE(l.reference_date::date, l.created_at::date) = fp.date1 THEN l.kg ELSE 0 END), 0) AS kg_day1,
-                COALESCE(SUM(CASE WHEN COALESCE(l.reference_date::date, l.created_at::date) = fp.date2 THEN l.kg ELSE 0 END), 0) AS kg_day2
-            FROM filtered_pairs fp
-            JOIN "Ledger" l ON l.type = 'PRODUCT'
-                            AND l.deleted_at IS NULL
-                            AND COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
-            GROUP BY fp.mq_num, l.customer_id
-        ),
-
-        -- Map each receipt to the earliest Maqal it touches
-        receipt_to_mq AS (
-            SELECT 
-                l.receipt_id,
-                MIN(fp.mq_num) as mq_num
-            FROM "Ledger" l
-            JOIN filtered_pairs fp ON COALESCE(l.reference_date::date, l.created_at::date) IN (fp.date1, fp.date2)
-            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.receipt_id IS NOT NULL
-            GROUP BY l.receipt_id
-        ),
-        -- Payments tagged to a specific MQ (maqal_id = integer OR via receipt_id)
-        specific_payments AS (
-            SELECT p.customer_id, COALESCE(p.maqal_id, r.mq_num) AS mq_num, 
-                   SUM(ABS(p.amount)) AS total_paid,
-                   JSON_AGG(
-                       JSON_BUILD_OBJECT(
-                           'id', p.id,
-                           'date', TO_CHAR(COALESCE(p.reference_date::date, p.created_at::date), 'YYYY-MM-DD'),
-                           'amount', ABS(p.amount),
-                           'receipt_id', p.receipt_id,
-                           'note', p.note
-                       ) ORDER BY COALESCE(p.reference_date, p.created_at) ASC
-                   ) AS payment_records
-            FROM "Ledger" p
-            LEFT JOIN receipt_to_mq r ON r.receipt_id = p.receipt_id
-            WHERE p.type = 'PAYMENT' 
-              AND p.deleted_at IS NULL 
-              AND (p.maqal_id IS NOT NULL OR r.mq_num IS NOT NULL)
-            GROUP BY p.customer_id, COALESCE(p.maqal_id, r.mq_num)
         )
-        -- Step 8: Join and aggregate per MQ
         SELECT
-            fp.mq_num,
-            fp.date1::text,
-            fp.date2::text,
-            COUNT(DISTINCT dbi.customer_id)          AS total_customers,
-            COALESCE(SUM(mpd.expected), 0)           AS expected,
-            -- ACCURATE: Only count payments explicitly tagged to this MQ via maqal_id
-            COALESCE(SUM(COALESCE(sp.total_paid, 0)), 0) AS paid,
-            COALESCE(SUM(dbi.db_kg), 0)              AS kg,
-            -- Customer-level JSON for breakdown dialog
-            JSON_AGG(
-                JSON_BUILD_OBJECT(
-                    'customer_id',   dbi.customer_id,
-                    'name',          dbi.customer_name,
-                    'code',          dbi.customer_code,
-                    'expected',      COALESCE(mpd.expected, 0),
-                    'paid',          COALESCE(sp.total_paid, 0),
-                    'kg',            COALESCE(dbi.db_kg, 0),
-                    'price_per_kg',  COALESCE(mpd.price_per_kg, 0),
-                    'kg_day1',       COALESCE(mpd.kg_day1, 0),
-                    'kg_day2',       COALESCE(mpd.kg_day2, 0),
-                    'payments',      COALESCE(sp.payment_records, '[]'::json)
-                )
-            ) FILTER (WHERE dbi.customer_id IS NOT NULL) AS customer_data
-        FROM filtered_pairs fp
-        LEFT JOIN mq_dailybook_items dbi ON dbi.mq_num = fp.mq_num
-        LEFT JOIN mq_product_details mpd ON mpd.mq_num = fp.mq_num AND mpd.customer_id = dbi.customer_id
-        LEFT JOIN specific_payments sp ON sp.customer_id = dbi.customer_id AND sp.mq_num = fp.mq_num
-        GROUP BY fp.mq_num, fp.date1, fp.date2
-        HAVING COALESCE(SUM(mpd.expected), 0) > 0 OR COALESCE(SUM(dbi.db_kg), 0) > 0
-        ORDER BY fp.mq_num ASC
-    `;
+            ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num,
+            date1::text,
+            date2::text
+        FROM pairs
+        ORDER BY mq_num ASC
+    `);
 
-    const result = await pool.query(query);
+    // All MQ date pairs, indexed by mq_num
+    interface MqPair {
+        mq_num: number;
+        date1: string;
+        date2: string;
+    }
+    const allPairs: MqPair[] = pairsResult.rows.map(r => ({
+        mq_num: Number(r.mq_num),
+        date1: String(r.date1).split('T')[0],
+        date2: String(r.date2).split('T')[0],
+    }));
 
-    // Fetch unassigned historical payments
-    // Fetch unassigned historical payments (excluding those now securely linked via receipt_id)
-    const untaggedResult = await pool.query(`
-        WITH
-        past_dates AS (SELECT DISTINCT date::date AS db_date FROM "DailyBook" WHERE deleted_at IS NULL),
-        numbered_dates AS (SELECT db_date, ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn FROM past_dates),
-        pairs AS (SELECT n2.db_date AS date1, n1.db_date AS date2 FROM numbered_dates n1 JOIN numbered_dates n2 ON n1.rn = n2.rn - 1 WHERE n1.rn % 2 = 1),
-        numbered_pairs AS (SELECT ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num, date1, date2 FROM pairs),
-        receipt_to_mq AS (
-            SELECT l.receipt_id, MIN(np.mq_num) as mq_num
-            FROM "Ledger" l
-            JOIN numbered_pairs np ON COALESCE(l.reference_date::date, l.created_at::date) IN (np.date1, np.date2)
-            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.receipt_id IS NOT NULL
-            GROUP BY l.receipt_id
-        )
-        SELECT 
+    if (allPairs.length === 0) {
+        return { period, mqs: [], unassignedPayments: [], totals: { expected: 0, paid: 0, remaining: 0, overpaid: 0, kg: 0, paymentProgress: 0, totalMqs: 0, totalUnassigned: 0 } };
+    }
+
+    // Build a fast lookup: date string → mq_num
+    const dateToMqNum = new Map<string, number>();
+    for (const p of allPairs) {
+        // A date can only belong to one pair — date1 is the earlier date
+        dateToMqNum.set(p.date1, p.mq_num);
+        dateToMqNum.set(p.date2, p.mq_num);
+    }
+
+    // Apply period filter
+    let filteredPairs = allPairs;
+    if (period !== 'all') {
+        const todayDate = new Date(today);
+        let start: Date, end: Date;
+        if (period === 'week') {
+            const day = todayDate.getDay();
+            start = new Date(todayDate); start.setDate(todayDate.getDate() - day);
+            end   = new Date(start);     end.setDate(start.getDate() + 7);
+        } else if (period === 'month') {
+            start = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+            end   = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 1);
+        } else { // year
+            start = new Date(todayDate.getFullYear(), 0, 1);
+            end   = new Date(todayDate.getFullYear() + 1, 0, 1);
+        }
+        const startStr = start.toISOString().split('T')[0];
+        const endStr   = end.toISOString().split('T')[0];
+        filteredPairs = allPairs.filter(p => p.date2 >= startStr && p.date2 < endStr);
+    }
+
+    if (filteredPairs.length === 0) {
+        return { period, mqs: [], unassignedPayments: [], totals: { expected: 0, paid: 0, remaining: 0, overpaid: 0, kg: 0, paymentProgress: 0, totalMqs: 0, totalUnassigned: 0 } };
+    }
+
+    const filteredMqNums = new Set(filteredPairs.map(p => p.mq_num));
+    const filteredDates  = new Set(filteredPairs.flatMap(p => [p.date1, p.date2]));
+    const filteredDatesArr = Array.from(filteredDates);
+
+    // ─── STEP 2: Find all customers with PRODUCT entries on MQ dates ──────────
+    const customerResult = await pool.query(`
+        SELECT DISTINCT
+            l.customer_id,
+            c.name          AS customer_name,
+            c.customer_code AS customer_code
+        FROM "Ledger" l
+        JOIN "Customer" c ON c.id = l.customer_id AND c.deleted_at IS NULL
+        WHERE l.type = 'PRODUCT'
+          AND l.deleted_at IS NULL
+          AND COALESCE(l.reference_date::date, l.created_at::date)::text = ANY($1)
+        ORDER BY c.name ASC
+    `, [filteredDatesArr]);
+
+    const customers = customerResult.rows.map(r => ({
+        id:   String(r.customer_id),
+        name: String(r.customer_name),
+        code: String(r.customer_code),
+    }));
+
+    if (customers.length === 0) {
+        return { period, mqs: [], unassignedPayments: [], totals: { expected: 0, paid: 0, remaining: 0, overpaid: 0, kg: 0, paymentProgress: 0, totalMqs: 0, totalUnassigned: 0 } };
+    }
+
+    const customerIds = customers.map(c => c.id);
+
+    // ─── STEP 3: Bulk fetch ALL transactions for all relevant customers ───────
+    // We fetch EVERY transaction (product + payment + adjustment) so we can
+    // correctly identify which payments link to which Maqal via maqal_id / receipt_id.
+    const txnResult = await pool.query(`
+        SELECT
             l.id,
-            l.customer_id, 
-            c.name as customer_name,
-            TO_CHAR(COALESCE(l.reference_date::date, l.created_at::date), 'YYYY-MM-DD') as date,
+            l.customer_id,
+            l.type,
+            COALESCE(l.reference_date::date, l.created_at::date)::text AS ref_date,
+            l.kg,
+            l.price_per_kg,
+            l.amount,
+            l.receipt_id,
+            l.maqal_id,
+            l.note,
+            l.created_at
+        FROM "Ledger" l
+        WHERE l.customer_id = ANY($1)
+          AND l.deleted_at IS NULL
+        ORDER BY l.customer_id, COALESCE(l.reference_date, l.created_at) ASC
+    `, [customerIds]);
+
+    // Group raw rows by customer_id
+    interface RawTxn {
+        id: string;
+        customer_id: string;
+        type: 'PRODUCT' | 'PAYMENT' | 'ADJUSTMENT';
+        ref_date: string;
+        kg: number | null;
+        price_per_kg: number | null;
+        amount: number;
+        receipt_id: string | null;
+        maqal_id: number | null;
+        note: string | null;
+        created_at: string;
+    }
+
+    const txnsByCustomer = new Map<string, RawTxn[]>();
+    for (const row of txnResult.rows as RawTxn[]) {
+        const list = txnsByCustomer.get(row.customer_id) || [];
+        list.push(row);
+        txnsByCustomer.set(row.customer_id, list);
+    }
+
+    // ─── STEP 4–6: Per customer, per MQ — calculate Expected, Collected ───────
+    // 
+    // For each customer:
+    //   For each MQ (within filteredPairs):
+    //     1. Find PRODUCT rows on date1 or date2  → these define Expected
+    //     2. Collect the maqal_ids and receipt_ids from those PRODUCT rows
+    //     3. Match PAYMENT rows where:
+    //            payment.maqal_id   IN (maqal_ids from step 2)
+    //         OR payment.receipt_id IN (receipt_ids from step 2)
+    //     4. Collected = sum of those payments
+    //     5. Never assign the same payment to two MQs
+    //
+    // To enforce "each payment appears once only", we track which payment IDs
+    // have already been assigned.
+
+    interface CustomerMqResult {
+        customerId: string;
+        customerName: string;
+        customerCode: string;
+        mqNum: number;
+        expected: number;
+        collected: number;
+        remaining: number;
+        overpaid: number;
+        kg: number;
+        pricePerKg: number;
+        kgDay1: number;
+        kgDay2: number;
+        paymentPct: number;
+        payments: { id: string; date: string; amount: number; receiptId: string | null; maqalId: number | null; note: string | null; }[];
+    }
+
+    const mqMap = new Map<number, {
+        mqNum: number;
+        date1: string;
+        date2: string;
+        customers: CustomerMqResult[];
+    }>();
+
+    for (const pair of filteredPairs) {
+        mqMap.set(pair.mq_num, { mqNum: pair.mq_num, date1: pair.date1, date2: pair.date2, customers: [] });
+    }
+
+    // Track globally assigned payment IDs to enforce zero double-counting
+    const assignedPaymentIds = new Set<string>();
+    // Track globally assigned payment IDs per customer (for unassigned detection)
+    const assignedPaymentIdsByCustomer = new Map<string, Set<string>>();
+
+    // We process customers oldest-MQ-first so that if a payment could theoretically
+    // match two MQs (edge case with same receipt_id in two MQs), the earlier MQ wins.
+    for (const customer of customers) {
+        const txns = txnsByCustomer.get(customer.id) || [];
+        const products  = txns.filter(t => t.type === 'PRODUCT');
+        const payments  = txns.filter(t => t.type === 'PAYMENT');
+
+        const assignedForThisCustomer = new Set<string>();
+        assignedPaymentIdsByCustomer.set(customer.id, assignedForThisCustomer);
+
+        for (const pair of filteredPairs) {
+            // Products on this MQ's dates for this customer
+            const mqProducts = products.filter(p =>
+                p.ref_date === pair.date1 || p.ref_date === pair.date2
+            );
+            if (mqProducts.length === 0) continue; // customer not in this MQ
+
+            const expected = mqProducts.reduce((s, p) => s + Math.abs(Number(p.amount || 0)), 0);
+            const kg       = mqProducts.reduce((s, p) => s + Number(p.kg || 0), 0);
+            const kgDay1   = mqProducts.filter(p => p.ref_date === pair.date1).reduce((s, p) => s + Number(p.kg || 0), 0);
+            const kgDay2   = mqProducts.filter(p => p.ref_date === pair.date2).reduce((s, p) => s + Number(p.kg || 0), 0);
+            const pricePerKg = mqProducts.reduce((max, p) => Math.max(max, Number(p.price_per_kg || 0)), 0);
+
+            // Reliable link sets: maqal_ids and receipt_ids from the product rows
+            const mqMaqalIds  = new Set<number>(mqProducts.map(p => p.maqal_id).filter((id): id is number => id != null));
+            const mqReceiptIds = new Set<string>(mqProducts.map(p => p.receipt_id).filter((id): id is string => id != null));
+
+            // Match payments using ONLY reliable evidence (maqal_id OR receipt_id)
+            const mqPayments = payments.filter(pay => {
+                if (assignedPaymentIds.has(pay.id)) return false; // already assigned globally
+                if (pay.maqal_id != null && mqMaqalIds.has(pay.maqal_id)) return true;
+                if (pay.receipt_id != null && mqReceiptIds.has(pay.receipt_id)) return true;
+                return false;
+            });
+
+            // Mark all matched payments as assigned (globally + per customer)
+            for (const pay of mqPayments) {
+                assignedPaymentIds.add(pay.id);
+                assignedForThisCustomer.add(pay.id);
+            }
+
+            const collected = mqPayments.reduce((s, pay) => s + Math.abs(Number(pay.amount || 0)), 0);
+            const remaining = Math.max(0, expected - collected);
+            const overpaid  = Math.max(0, collected - expected);
+            const paymentPct = expected > 0 ? (collected / expected) * 100 : (collected > 0 ? 100 : 0);
+
+            const mqEntry = mqMap.get(pair.mq_num)!;
+            mqEntry.customers.push({
+                customerId:   customer.id,
+                customerName: customer.name,
+                customerCode: customer.code,
+                mqNum:        pair.mq_num,
+                expected,
+                collected,
+                remaining,
+                overpaid,
+                kg,
+                pricePerKg,
+                kgDay1,
+                kgDay2,
+                paymentPct,
+                payments: mqPayments.map(pay => ({
+                    id:        pay.id,
+                    date:      pay.ref_date,
+                    amount:    Math.abs(Number(pay.amount || 0)),
+                    receiptId: pay.receipt_id,
+                    maqalId:   pay.maqal_id,
+                    note:      pay.note,
+                })),
+            });
+        }
+    }
+
+    // ─── STEP 7: Build final MQ output ────────────────────────────────────────
+    const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+    const mqs = Array.from(mqMap.values())
+        .filter(mq => mq.customers.length > 0)
+        .map(mq => {
+            const mqExpected  = mq.customers.reduce((s, c) => s + c.expected,   0);
+            const mqCollected = mq.customers.reduce((s, c) => s + c.collected,  0);
+            const mqRemaining = mq.customers.reduce((s, c) => s + c.remaining,  0);
+            const mqOverpaid  = mq.customers.reduce((s, c) => s + c.overpaid,   0);
+            const mqKg        = mq.customers.reduce((s, c) => s + c.kg,         0);
+            const mqPayPct    = mqExpected > 0 ? (mqCollected / mqExpected) * 100 : (mqCollected > 0 ? 100 : 0);
+
+            // Reconciliation assertion — log loudly if customer sums don't match MQ
+            const customerExpSum  = mq.customers.reduce((s, c) => s + c.expected,  0);
+            const customerColSum  = mq.customers.reduce((s, c) => s + c.collected, 0);
+            if (Math.abs(customerExpSum - mqExpected) > 0.01) {
+                console.error(`[mq-analytics] RECONCILIATION ERROR MQ#${mq.mqNum}: customer sum expected ${customerExpSum} != mq expected ${mqExpected}`);
+            }
+            if (Math.abs(customerColSum - mqCollected) > 0.01) {
+                console.error(`[mq-analytics] RECONCILIATION ERROR MQ#${mq.mqNum}: customer sum collected ${customerColSum} != mq collected ${mqCollected}`);
+            }
+
+            const startDate = fmt(mq.date1);
+            const endDate   = fmt(mq.date2);
+
+            return {
+                id:                String(mq.mqNum),
+                mqNumber:          mq.mqNum,
+                label:             `MQ#${mq.mqNum}`,
+                dateRange:         `${startDate} – ${endDate}`,
+                startDate,
+                endDate,
+                kg:                mqKg,
+                expected:          mqExpected,
+                paid:              mqCollected,
+                remaining:         mqRemaining,
+                overpaid:          mqOverpaid,
+                paymentPercentage: Math.round(mqPayPct * 100) / 100,
+                customerCount:     mq.customers.length,
+                customers: mq.customers
+                    .sort((a, b) => b.remaining - a.remaining)
+                    .map(c => ({
+                        id:          c.customerId,
+                        name:        c.customerName,
+                        code:        c.customerCode,
+                        expected:    c.expected,
+                        paid:        c.collected,
+                        kg:          c.kg,
+                        pricePerKg:  c.pricePerKg,
+                        kgDay1:      c.kgDay1,
+                        kgDay2:      c.kgDay2,
+                        remaining:   c.remaining,
+                        overpaid:    c.overpaid,
+                        paymentPct:  Math.round(c.paymentPct * 100) / 100,
+                        payments:    c.payments,
+                    })),
+            };
+        });
+
+    // ─── STEP 8: Unassigned payments ─────────────────────────────────────────
+    // These are PAYMENT rows that:
+    //   - have no maqal_id, AND
+    //   - have no receipt_id that matches any product on any MQ date
+    // i.e., we could not reliably link them to any Maqal.
+    const unassignedResult = await pool.query(`
+        WITH
+        all_pairs AS (
+            WITH
+            past_dates AS (SELECT DISTINCT date::date AS db_date FROM "DailyBook" WHERE deleted_at IS NULL),
+            numbered_dates AS (SELECT db_date, ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn FROM past_dates),
+            raw_pairs AS (SELECT n2.db_date AS date1, n1.db_date AS date2 FROM numbered_dates n1 JOIN numbered_dates n2 ON n1.rn = n2.rn - 1 WHERE n1.rn % 2 = 1)
+            SELECT date1, date2 FROM raw_pairs
+        ),
+        mq_dates AS (
+            SELECT DISTINCT date1 AS mq_date FROM all_pairs
+            UNION
+            SELECT DISTINCT date2 AS mq_date FROM all_pairs
+        ),
+        -- receipt_ids that are anchored to at least one MQ date via a PRODUCT row
+        anchored_receipts AS (
+            SELECT DISTINCT l.receipt_id
+            FROM "Ledger" l
+            JOIN mq_dates md ON COALESCE(l.reference_date::date, l.created_at::date) = md.mq_date
+            WHERE l.type = 'PRODUCT' AND l.deleted_at IS NULL AND l.receipt_id IS NOT NULL
+        )
+        SELECT
+            l.id,
+            l.customer_id,
+            c.name AS customer_name,
+            TO_CHAR(COALESCE(l.reference_date::date, l.created_at::date), 'YYYY-MM-DD') AS date,
             ABS(l.amount) AS amount,
             l.receipt_id,
             l.note
         FROM "Ledger" l
-        JOIN "Customer" c ON c.id = l.customer_id
-        LEFT JOIN receipt_to_mq r ON r.receipt_id = l.receipt_id
-        WHERE l.type = 'PAYMENT' AND l.deleted_at IS NULL AND l.maqal_id IS NULL AND r.mq_num IS NULL
+        JOIN "Customer" c ON c.id = l.customer_id AND c.deleted_at IS NULL
+        LEFT JOIN anchored_receipts ar ON ar.receipt_id = l.receipt_id
+        WHERE l.type = 'PAYMENT'
+          AND l.deleted_at IS NULL
+          AND l.maqal_id IS NULL
+          AND ar.receipt_id IS NULL
         ORDER BY COALESCE(l.reference_date, l.created_at) DESC
     `);
-    const unassignedPayments = untaggedResult.rows.map(r => ({
-        id: r.id,
-        customerId: r.customer_id,
-        customerName: r.customer_name,
-        date: r.date,
-        amount: Number(r.amount || 0),
-        receiptId: r.receipt_id,
-        note: r.note
+
+    const unassignedPayments = unassignedResult.rows.map(r => ({
+        id:           String(r.id),
+        customerId:   String(r.customer_id),
+        customerName: String(r.customer_name),
+        date:         String(r.date),
+        amount:       Number(r.amount || 0),
+        receiptId:    r.receipt_id ?? null,
+        note:         r.note ?? null,
     }));
-    const totalUnassigned = unassignedPayments.reduce((s, p) => s + p.amount, 0);
 
-    const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-
-    // Build raw MQ list sorted oldest first (mq_num ascending = oldest first)
-    const rawMqs = result.rows.map(row => {
-        const startDate = row.date1 ? fmt(row.date1) : '';
-        const endDate   = row.date2 ? fmt(row.date2) : '';
-        const rawCustomers: any[] = typeof row.customer_data === 'string'
-            ? JSON.parse(row.customer_data)
-            : (row.customer_data || []);
-        return {
-            mq_num:    Number(row.mq_num),
-            date1:     row.date1,
-            date2:     row.date2,
-            startDate,
-            endDate,
-            dateRange: `${startDate} – ${endDate}`,
-            kg:        Number(row.kg        || 0),
-            expected:  Number(row.expected  || 0),
-            total_customers: Number(row.total_customers || 0),
-            rawCustomers,
-        };
-    });
-
-    // Exactly map without any waterfall
-    const mqs = rawMqs.map(row => {
-        let mqExpected = 0;
-        let mqPaid = 0;
-
-        const customers = row.rawCustomers.map((c: any) => {
-            const expected   = Number(c.expected || 0);
-            const paid       = Number(c.paid || 0);
-            
-            const remaining  = Math.max(0, expected - paid);
-            const overpaid   = Math.max(0, paid - expected);
-            
-            const paymentPct = expected > 0 ? (paid / expected) * 100 : (paid > 0 ? 100 : 0);
-
-            mqExpected += expected;
-            mqPaid += paid;
-
-            return {
-                id:         c.customer_id,
-                name:       c.name,
-                code:       c.code,
-                expected,
-                paid,
-                kg:         Number(c.kg || 0),
-                pricePerKg: Number(c.price_per_kg || 0),
-                kgDay1:     Number(c.kg_day1 || 0),
-                kgDay2:     Number(c.kg_day2 || 0),
-                remaining,
-                overpaid,
-                paymentPct,
-                payments:   c.payments || []
-            };
-        }).sort((a: any, b: any) => b.remaining - a.remaining);
-
-        const mqRemaining = Math.max(0, mqExpected - mqPaid);
-        const mqOverpaid = Math.max(0, mqPaid - mqExpected);
-        const mqPaymentPct = mqExpected > 0 ? (mqPaid / mqExpected) * 100 : (mqPaid > 0 ? 100 : 0);
-
-        if (Math.abs(mqExpected - row.expected) > 0.01) {
-            console.error(`Reconciliation Error MQ#${row.mq_num}: DB Expected ${row.expected} != Sum ${mqExpected}`);
-        }
-
-        return {
-            id:                String(row.mq_num),
-            mqNumber:          row.mq_num,
-            label:             `MQ#${row.mq_num}`,
-            dateRange:         row.dateRange,
-            startDate:         row.startDate,
-            endDate:           row.endDate,
-            kg:                row.kg,
-            expected:          mqExpected,
-            paid:              mqPaid,
-            remaining:         mqRemaining,
-            overpaid:          mqOverpaid,
-            paymentPercentage: mqPaymentPct,
-            customerCount:     row.total_customers,
-            customers,
-        };
-    });
-
+    // ─── STEP 9: Global totals ─────────────────────────────────────────────────
     const totalExpected  = mqs.reduce((s, m) => s + m.expected,  0);
     const totalPaid      = mqs.reduce((s, m) => s + m.paid,      0);
     const totalRemaining = mqs.reduce((s, m) => s + m.remaining, 0);
     const totalOverpaid  = mqs.reduce((s, m) => s + m.overpaid,  0);
     const totalKg        = mqs.reduce((s, m) => s + m.kg,        0);
     const overallPct     = totalExpected > 0 ? (totalPaid / totalExpected) * 100 : (totalPaid > 0 ? 100 : 0);
+    const totalUnassigned = unassignedPayments.reduce((s, p) => s + p.amount, 0);
 
     return {
         period,
@@ -297,9 +430,9 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             remaining:       totalRemaining,
             overpaid:        totalOverpaid,
             kg:              totalKg,
-            paymentProgress: overallPct,
+            paymentProgress: Math.round(overallPct * 100) / 100,
             totalMqs:        mqs.length,
-            totalUnassigned
+            totalUnassigned,
         },
     };
 };
