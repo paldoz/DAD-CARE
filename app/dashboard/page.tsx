@@ -503,57 +503,52 @@ export default function DashboardPage() {
             ══════════════════════════════════════ */}
             <div className="grid grid-cols-2 gap-2 md:gap-3">
 
-                {/* Recent Activity */}
+                {/* Recent Payments */}
                 <div className="rounded-2xl border border-border bg-card p-3 md:p-4 min-w-0">
                     <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-xs md:text-sm font-bold text-foreground truncate mr-2">Recent Activity</h3>
-                        <Link href="/daily-book" className="text-[10px] md:text-xs font-semibold text-primary hover:text-primary/80 transition-colors shrink-0">View all</Link>
+                        <h3 className="text-xs md:text-sm font-bold text-foreground truncate mr-2">Recent Payments</h3>
+                        <Link href="/payments" className="text-[10px] md:text-xs font-semibold text-primary hover:text-primary/80 transition-colors shrink-0">View all</Link>
                     </div>
                     {recentTx.length > 0 ? (
                         <div className="space-y-3">
                             {recentTx.map((tx: any, i: number) => {
-                                const isPayment = tx.type === 'PAYMENT';
-                                const isProduct = tx.type === 'PRODUCT';
-                                const icon = isPayment
-                                    ? <DollarSign className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
-                                    : isProduct
-                                        ? <BookOpen className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
-                                        : <UserPlus className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />;
-                                const iconBg = isPayment ? 'bg-emerald-600' : isProduct ? 'bg-amber-700' : 'bg-blue-700';
-                                const label = isPayment
-                                    ? `${tx.customer_name || 'Customer'} paid $${(tx.amount || 0).toFixed(0)}`
-                                    : isProduct
-                                        ? `${tx.customer_name || 'Customer'} — ${(tx.kg || 0).toFixed(1)} kg`
-                                        : tx.customer_name || 'New customer';
-
-                                // Business date selected by user when entering the transaction
+                                // Business date the user selected when recording this payment
                                 const businessDate = tx.reference_date
                                     ? new Date(tx.reference_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                                    : null;
+                                    : tx.created_at
+                                        ? new Date(tx.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                                        : null;
 
-                                // Actual entry time
+                                // Time the record was entered into the system
                                 const entryTime = tx.created_at
                                     ? new Date(tx.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                                     : null;
 
+                                // Reliable maqal_id directly on the payment row
                                 const mqLabel = tx.maqal_id ? `MQ#${tx.maqal_id}` : null;
 
                                 return (
-                                    <div key={tx.id ?? i} className="flex items-start gap-2 md:gap-3 min-w-0">
-                                        <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl ${iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
-                                            {icon}
+                                    <div key={tx.id ?? i} className="flex items-start gap-2 md:gap-2.5 min-w-0">
+                                        {/* Green dollar icon */}
+                                        <div className="w-6 h-6 md:w-7 md:h-7 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                                            <DollarSign className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{label}</p>
-                                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                                {mqLabel && (
-                                                    <span className="text-[9px] font-black text-primary/80 bg-primary/10 rounded px-1 py-0.5">{mqLabel}</span>
-                                                )}
+                                            {/* Primary: customer name + amount */}
+                                            <p className="text-[11px] md:text-xs font-bold text-foreground truncate leading-tight">
+                                                {tx.customer_name || 'Customer'}{' '}
+                                                <span className="text-emerald-500">${(tx.amount || 0).toFixed(0)}</span>
+                                            </p>
+                                            {/* Secondary: business date · MQ · entered time */}
+                                            <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                                 {businessDate && (
-                                                    <span className="text-[9px] md:text-[10px] font-semibold text-foreground/70">{businessDate}</span>
+                                                    <span className="text-[9px] md:text-[10px] font-semibold text-foreground/65">{businessDate}</span>
+                                                )}
+                                                {mqLabel && (
+                                                    <span className="text-[8px] font-black text-primary bg-primary/10 rounded px-1 py-px">{mqLabel}</span>
                                                 )}
                                                 {entryTime && (
-                                                    <span className="text-[9px] md:text-[10px] text-muted-foreground">· entered {entryTime}</span>
+                                                    <span className="text-[9px] text-muted-foreground">· {entryTime}</span>
                                                 )}
                                             </div>
                                         </div>
@@ -562,28 +557,14 @@ export default function DashboardPage() {
                             })}
                         </div>
                     ) : (
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2 md:gap-3">
-                                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
-                                    <Zap className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{data?.todayCustomerCount || 0} customers active</p>
-                                    <p className="text-[9px] md:text-[10px] text-muted-foreground">Today</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 md:gap-3">
-                                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-amber-700 flex items-center justify-center shrink-0">
-                                    <TrendingUp className="h-3 w-3 md:h-3.5 md:w-3.5 text-white" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-[11px] md:text-sm font-semibold text-foreground truncate">{Math.round(data?.todayKg || 0)} KG processed</p>
-                                    <p className="text-[9px] md:text-[10px] text-muted-foreground">Today</p>
-                                </div>
-                            </div>
+                        <div className="flex flex-col items-center justify-center py-4 gap-1.5">
+                            <DollarSign className="h-6 w-6 text-muted-foreground/30" />
+                            <p className="text-[10px] text-muted-foreground text-center">No payments recorded yet</p>
+                            <Link href="/payments" className="text-[10px] font-semibold text-primary hover:text-primary/80 transition-colors">Record a payment →</Link>
                         </div>
                     )}
                 </div>
+
 
                 {/* Top Outstanding */}
                 <div className="rounded-2xl border border-border bg-card p-3 md:p-4 min-w-0">

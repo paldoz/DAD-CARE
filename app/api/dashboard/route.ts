@@ -59,20 +59,18 @@ const getDashboardData = async (today: string) => {
         pool.query(`
             SELECT
                 l.id,
-                l.type,
                 l.amount,
-                l.kg,
                 l.created_at,
                 l.reference_date,
                 l.maqal_id,
                 l.receipt_id,
-                c.name as customer_name
+                c.name AS customer_name
             FROM "Ledger" l
             JOIN "Customer" c ON c.id = l.customer_id
             WHERE l.deleted_at IS NULL
-              AND NOT (l.type = 'PRODUCT' AND COALESCE(l.amount, 0) = 0 AND COALESCE(l.kg, 0) = 0)
-              AND NOT (l.type = 'PAYMENT' AND COALESCE(l.amount, 0) = 0)
-            ORDER BY COALESCE(l.reference_date, l.created_at) DESC, l.created_at DESC
+              AND l.type = 'PAYMENT'
+              AND COALESCE(l.amount, 0) > 0
+            ORDER BY l.created_at DESC
             LIMIT 5
         `),
         pool.query(`
