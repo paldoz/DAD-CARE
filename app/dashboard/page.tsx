@@ -259,18 +259,20 @@ export default function DashboardPage() {
     const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
 
-    const OV_H = 110;
-    const OV_W = 320;
-    const OV_PAD_X = 20;
-    const ovLabels = mqs.map(m => m.label);
+    // ── Scrollable chart constants ──────────────────────────────────────────
+    // Each MQ column gets COL_W px. The chart scrolls horizontally.
+    const OV_H = 110;              // chart draw area height (px in SVG units)
+    const COL_W = 60;             // px per MQ column — generous spacing
+    const OV_PAD_X = COL_W / 2;  // first/last dot centred in their column
     const ovPaid = mqs.map(m => m.paid);
     const ovRemaining = mqs.map(m => m.remaining);
     const ovMaxVal = Math.max(10, ...ovPaid, ...ovRemaining);
-    const n = ovLabels.length || 1;
+    const n = mqs.length || 1;
+    const OV_W = COL_W * n;       // total SVG width — grows with MQ count
 
     const ovCoords = (values: number[]) =>
         values.map((v, i) => ({
-            x: OV_PAD_X + i * ((OV_W - OV_PAD_X * 2) / Math.max(n - 1, 1)),
+            x: OV_PAD_X + i * COL_W,
             y: OV_H - (v / ovMaxVal) * OV_H,
         }));
 
@@ -650,67 +652,117 @@ export default function DashboardPage() {
                             </div>
                         </div>
 
-                        {/* ── SVG Line Chart — tap a dot to see MQ details ── */}
-                        <div className="relative w-full mb-2">
-                            <p className="text-[9px] text-muted-foreground text-center mb-1">Tap any dot to see MQ details</p>
-                            <svg viewBox={`0 -8 ${OV_W} 185`} className="w-full overflow-visible" style={{ height: 185 }} preserveAspectRatio="none">
-                                <defs>
-                                    <linearGradient id="ovGP4" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
-                                        <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
-                                    </linearGradient>
-                                    <linearGradient id="ovGR4" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#f87171" stopOpacity="0.15" />
-                                        <stop offset="100%" stopColor="#f87171" stopOpacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                {/* Gridlines */}
-                                {[0, 0.25, 0.5, 0.75, 1].map((t, i) => (
-                                    <line key={i} x1={OV_PAD_X} y1={OV_H * t} x2={OV_W - OV_PAD_X} y2={OV_H * t}
-                                        stroke="currentColor" strokeOpacity="0.04" strokeWidth="1"
-                                        strokeDasharray={i > 0 ? "2 4" : "0"} />
-                                ))}
-                                {/* Area fills */}
-                                {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP4)" />}
-                                {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR4)" />}
-                                {/* Lines */}
-                                {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-                                {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
+                        {/* ── Scrollable line chart ── */}
+                        <div className="relative w-full mb-3">
+                            {/* Hint label */}
+                            <p className="text-[9px] text-muted-foreground text-center mb-2 flex items-center justify-center gap-1">
+                                <span>← Swipe to explore MQs →</span>
+                            </p>
 
-                                {/* Dots + MQ label + % — staggered rows to prevent overlap */}
-                                {paidCoords.map((c, i) => {
-                                    const mq = mqs[i];
-                                    if (!mq) return null;
-                                    const isSelected = selectedDot === i;
-                                    const pct = mq.paymentPercentage;
-                                    const pctColor = pct >= 90 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
-                                    // Stagger: even index labels sit at row A, odd at row B — prevents overlap
-                                    const rowOffset = i % 2 === 0 ? 0 : 12;
-                                    return (
-                                        <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
-                                            onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
-                                            {/* Tick — extends to staggered label row */}
-                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 8 + rowOffset} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
-                                            {/* MQ label */}
-                                            <text x={c.x} y={OV_H + 18 + rowOffset} fontSize="7" fill="currentColor" fillOpacity={isSelected ? 1 : 0.5}
-                                                textAnchor="middle" fontWeight={isSelected ? "900" : "700"}>
-                                                {mq.label}
-                                            </text>
-                                            {/* % */}
-                                            <text x={c.x} y={OV_H + 27 + rowOffset} fontSize="7" fill={pctColor}
-                                                textAnchor="middle" fontWeight="900">
-                                                {Math.round(pct)}%
-                                            </text>
-                                            {/* Selected ring */}
-                                            {isSelected && <circle cx={c.x} cy={c.y} r={10} fill="#2563eb" fillOpacity="0.15" />}
-                                            {/* Dot */}
-                                            <circle cx={c.x} cy={c.y} r={isSelected ? 5.5 : 3.5}
-                                                fill={isSelected ? '#fff' : '#2563eb'}
-                                                stroke="#2563eb" strokeWidth={isSelected ? 2.5 : 1.5} />
-                                        </g>
-                                    );
-                                })}
-                            </svg>
+                            {/* Scroll container */}
+                            <div
+                                className="overflow-x-auto pb-1 rounded-xl"
+                                style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}
+                            >
+                                {/* Inner container — width grows with MQ count */}
+                                <div style={{ minWidth: OV_W, position: 'relative' }}>
+
+                                    {/* SVG line chart */}
+                                    <svg
+                                        viewBox={`0 -8 ${OV_W} ${OV_H + 8}`}
+                                        width={OV_W}
+                                        height={OV_H + 8}
+                                        style={{ display: 'block', overflow: 'visible' }}
+                                        preserveAspectRatio="none"
+                                    >
+                                        <defs>
+                                            <linearGradient id="ovGP5" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
+                                                <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                                            </linearGradient>
+                                            <linearGradient id="ovGR5" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="#f87171" stopOpacity="0.15" />
+                                                <stop offset="100%" stopColor="#f87171" stopOpacity="0" />
+                                            </linearGradient>
+                                        </defs>
+
+                                        {/* Gridlines */}
+                                        {[0, 0.25, 0.5, 0.75, 1].map((t, gi) => (
+                                            <line key={gi}
+                                                x1={OV_PAD_X} y1={OV_H * t}
+                                                x2={OV_W - OV_PAD_X} y2={OV_H * t}
+                                                stroke="currentColor" strokeOpacity="0.05" strokeWidth="1"
+                                                strokeDasharray={gi > 0 ? '3 5' : '0'} />
+                                        ))}
+
+                                        {/* Area fills */}
+                                        {paidPath && <path d={`${paidPath} L ${paidCoords[paidCoords.length-1]?.x} ${OV_H} L ${paidCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGP5)" />}
+                                        {remPath && <path d={`${remPath} L ${remCoords[remCoords.length-1]?.x} ${OV_H} L ${remCoords[0]?.x} ${OV_H} Z`} fill="url(#ovGR5)" />}
+
+                                        {/* Lines */}
+                                        {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+                                        {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
+
+                                        {/* Dots only — labels live in HTML below */}
+                                        {paidCoords.map((c, i) => {
+                                            const mq = mqs[i];
+                                            if (!mq) return null;
+                                            const isSelected = selectedDot === i;
+                                            return (
+                                                <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
+                                                    onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
+                                                    {isSelected && <circle cx={c.x} cy={c.y} r={12} fill="#2563eb" fillOpacity="0.15" />}
+                                                    <circle cx={c.x} cy={c.y} r={isSelected ? 6 : 4}
+                                                        fill={isSelected ? '#fff' : '#2563eb'}
+                                                        stroke="#2563eb" strokeWidth={isSelected ? 2.5 : 1.5} />
+                                                    {/* Tick down to label row */}
+                                                    <line x1={c.x} y1={OV_H} x2={c.x} y2={OV_H + 6}
+                                                        stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
+                                                </g>
+                                            );
+                                        })}
+                                    </svg>
+
+                                    {/* HTML labels row — one per MQ, perfectly aligned with dots */}
+                                    <div style={{ display: 'flex', width: OV_W }}>
+                                        {mqs.map((mq, i) => {
+                                            const isSelected = selectedDot === i;
+                                            const pct = mq.paymentPercentage;
+                                            const pctColor = pct >= 90 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
+                                            return (
+                                                <button
+                                                    key={mq.id}
+                                                    onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}
+                                                    style={{ width: COL_W, flexShrink: 0 }}
+                                                    className={`flex flex-col items-center pt-1 pb-2 transition-all ${
+                                                        isSelected
+                                                            ? 'bg-primary/8 rounded-xl'
+                                                            : 'hover:bg-muted/60 rounded-xl'
+                                                    }`}
+                                                >
+                                                    <span
+                                                        className="text-[9px] font-bold leading-tight"
+                                                        style={{ color: isSelected ? '#2563eb' : undefined, opacity: isSelected ? 1 : 0.65 }}
+                                                    >
+                                                        {mq.label}
+                                                    </span>
+                                                    <span
+                                                        className="text-[10px] font-black leading-tight mt-0.5"
+                                                        style={{ color: pctColor }}
+                                                    >
+                                                        {Math.round(pct)}%
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                </div>{/* end inner */}
+                            </div>{/* end scroll container */}
+
+                            {/* Right-edge fade — visual hint that content scrolls */}
+                            <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-10 rounded-r-xl"
+                                style={{ background: 'linear-gradient(to right, transparent, var(--card, #fff) 90%)' }} />
                         </div>
 
                         {/* ── Detail panel — appears when a dot is tapped ── */}
