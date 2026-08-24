@@ -81,6 +81,14 @@ interface MqAnalyticsData {
             remaining: number;
             overpaid?: number;
             paymentPct?: number;
+            payments: {
+                id: string;
+                date: string;
+                amount: number;
+                receiptId: string | null;
+                maqalId: number | null;
+                note: string | null;
+            }[];
         }[];
     }[];
     totals: {
@@ -129,6 +137,7 @@ export default function DashboardPage() {
     const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year' | 'all'>('all');
     const [expandedMqDetail, setExpandedMqDetail] = useState<boolean>(false);
     const [selectedDot, setSelectedDot] = useState<number | null>(null);
+    const [paymentDrillDown, setPaymentDrillDown] = useState<{ mqLabel: string; mqDateRange: string; customers: MqAnalyticsData['mqs'][0]['customers'] } | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -644,7 +653,7 @@ export default function DashboardPage() {
                         {/* ── SVG Line Chart — tap a dot to see MQ details ── */}
                         <div className="relative w-full mb-2">
                             <p className="text-[9px] text-muted-foreground text-center mb-1">Tap any dot to see MQ details</p>
-                            <svg viewBox={`0 -8 ${OV_W} 160`} className="w-full overflow-visible" style={{ height: 160 }} preserveAspectRatio="none">
+                            <svg viewBox={`0 -8 ${OV_W} 185`} className="w-full overflow-visible" style={{ height: 185 }} preserveAspectRatio="none">
                                 <defs>
                                     <linearGradient id="ovGP4" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="0%" stopColor="#2563eb" stopOpacity="0.2" />
@@ -668,27 +677,29 @@ export default function DashboardPage() {
                                 {paidPath && <path d={paidPath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
                                 {remPath && <path d={remPath} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
 
-                                {/* Dots + MQ label + % */}
+                                {/* Dots + MQ label + % — staggered rows to prevent overlap */}
                                 {paidCoords.map((c, i) => {
                                     const mq = mqs[i];
                                     if (!mq) return null;
                                     const isSelected = selectedDot === i;
                                     const pct = mq.paymentPercentage;
                                     const pctColor = pct >= 90 ? '#22c55e' : pct >= 60 ? '#f59e0b' : '#ef4444';
+                                    // Stagger: even index labels sit at row A, odd at row B — prevents overlap
+                                    const rowOffset = i % 2 === 0 ? 0 : 12;
                                     return (
                                         <g key={`dot-${i}`} style={{ cursor: 'pointer' }}
                                             onClick={() => { setSelectedDot(isSelected ? null : i); setExpandedMqDetail(false); }}>
-                                            {/* Tick */}
-                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 7} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
+                                            {/* Tick — extends to staggered label row */}
+                                            <line x1={c.x} y1={OV_H + 3} x2={c.x} y2={OV_H + 8 + rowOffset} stroke="currentColor" strokeOpacity="0.15" strokeWidth="1" />
                                             {/* MQ label */}
-                                            <text x={c.x} y={OV_H + 16} fontSize="7" fill="currentColor" fillOpacity={isSelected ? 1 : 0.5}
+                                            <text x={c.x} y={OV_H + 18 + rowOffset} fontSize="7" fill="currentColor" fillOpacity={isSelected ? 1 : 0.5}
                                                 textAnchor="middle" fontWeight={isSelected ? "900" : "700"}>
-                                                {mq.label.length > 5 ? mq.label.slice(0, 5) : mq.label}
+                                                {mq.label}
                                             </text>
                                             {/* % */}
-                                            <text x={c.x} y={OV_H + 27} fontSize="7.5" fill={pctColor}
+                                            <text x={c.x} y={OV_H + 27 + rowOffset} fontSize="7" fill={pctColor}
                                                 textAnchor="middle" fontWeight="900">
-                                                {pct}%
+                                                {Math.round(pct)}%
                                             </text>
                                             {/* Selected ring */}
                                             {isSelected && <circle cx={c.x} cy={c.y} r={10} fill="#2563eb" fillOpacity="0.15" />}
@@ -749,10 +760,14 @@ export default function DashboardPage() {
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
                                             <p className="text-xs font-black text-foreground tabular-nums">{fmtMoney(mq.expected)}</p>
                                         </div>
-                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
-                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Collected</p>
+                                        <button
+                                            onClick={() => setPaymentDrillDown({ mqLabel: mq.label, mqDateRange: mq.dateRange || '', customers: mq.customers })}
+                                            className="bg-card rounded-xl p-2.5 border border-primary/40 text-center hover:bg-primary/5 active:scale-95 transition-all cursor-pointer group"
+                                            title="Tap to see payment breakdown"
+                                        >
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5 group-hover:text-primary transition-colors">Collected 👆</p>
                                             <p className="text-xs font-black text-blue-500 tabular-nums">{fmtMoney(mq.paid)}</p>
-                                        </div>
+                                        </button>
                                         <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
                                             <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{fmtMoney(mq.remaining)}</p>
@@ -815,6 +830,83 @@ export default function DashboardPage() {
                                 </div>
                             );
                         })()}
+
+                        {/* ── Payment drill-down bottom sheet ── */}
+                        {paymentDrillDown && (
+                            <div
+                                className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+                                onClick={() => setPaymentDrillDown(null)}
+                            >
+                                <div
+                                    className="w-full max-w-lg bg-card rounded-t-3xl border-t border-border shadow-2xl max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    {/* Sheet header */}
+                                    <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/50 shrink-0">
+                                        <div>
+                                            <p className="text-base font-black text-foreground">{paymentDrillDown.mqLabel} — Collected Payments</p>
+                                            {paymentDrillDown.mqDateRange && (
+                                                <p className="text-[11px] text-muted-foreground">📅 {paymentDrillDown.mqDateRange}</p>
+                                            )}
+                                        </div>
+                                        <button onClick={() => setPaymentDrillDown(null)}
+                                            className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors text-sm font-black">
+                                            ✕
+                                        </button>
+                                    </div>
+
+                                    {/* Payment list */}
+                                    <div className="overflow-y-auto flex-1 px-5 py-3 space-y-4">
+                                        {paymentDrillDown.customers
+                                            .filter((c: any) => c.payments && c.payments.length > 0)
+                                            .map((c: any) => (
+                                                <div key={c.id}>
+                                                    {/* Customer header */}
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-black text-primary shrink-0">
+                                                                {c.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <span className="text-[12px] font-bold text-foreground">{c.name}</span>
+                                                        </div>
+                                                        <span className="text-[11px] font-black text-blue-500">
+                                                            {fmtMoney(c.payments.reduce((s: number, p: any) => s + p.amount, 0))}
+                                                        </span>
+                                                    </div>
+                                                    {/* Payment rows */}
+                                                    <div className="space-y-1 pl-8">
+                                                        {c.payments.map((pay: any) => (
+                                                            <div key={pay.id} className="flex items-start justify-between gap-2 text-[10px] py-1 border-b border-border/30">
+                                                                <div className="min-w-0">
+                                                                    <p className="font-semibold text-foreground">
+                                                                        {new Date(pay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                                    </p>
+                                                                    <p className="text-muted-foreground">
+                                                                        {pay.maqalId ? `MQ ID: ${pay.maqalId}` : pay.receiptId ? `Receipt: ${String(pay.receiptId).slice(0, 8)}…` : 'No link'}
+                                                                    </p>
+                                                                    {pay.note && <p className="text-muted-foreground italic truncate">{pay.note}</p>}
+                                                                </div>
+                                                                <span className="font-black text-blue-500 shrink-0">{fmtMoney(pay.amount)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        {paymentDrillDown.customers.every((c: any) => !c.payments || c.payments.length === 0) && (
+                                            <p className="text-sm text-muted-foreground text-center py-8">No payments recorded for this Maqal yet.</p>
+                                        )}
+                                    </div>
+
+                                    {/* Sheet footer — total */}
+                                    <div className="px-5 py-4 border-t border-border/50 shrink-0 flex items-center justify-between bg-muted/30">
+                                        <span className="text-xs font-bold text-muted-foreground">Total Collected</span>
+                                        <span className="text-base font-black text-blue-500">
+                                            {fmtMoney(paymentDrillDown.customers.reduce((s: number, c: any) => s + (c.payments || []).reduce((ps: number, p: any) => ps + p.amount, 0), 0))}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
             </div>
