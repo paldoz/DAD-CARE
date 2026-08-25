@@ -130,7 +130,7 @@ async function verifyReconciliation() {
                         if (paymentMqMapping.get(pay.id) === pair.mq_num) return true;
                         return false;
                     }
-                    if (pay.maqal_id != null && mqMaqalIds.has(pay.maqal_id)) return true;
+                    if (pay.maqal_id != null && (pay.maqal_id === pair.mq_num || mqMaqalIds.has(pay.maqal_id))) return true;
                     if (pay.receipt_id != null && mqReceiptIds.has(pay.receipt_id)) return true;
                     return false;
                 });

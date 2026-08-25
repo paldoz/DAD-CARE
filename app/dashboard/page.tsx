@@ -166,7 +166,7 @@ export default function DashboardPage() {
         revalidateIfStale: false
     });
 
-    const { data: overviewResponse, isLoading: overviewLoading } = useSWR<MqAnalyticsData>(
+    const { data: overviewResponse, isLoading: overviewLoading, mutate: mutateOverview } = useSWR<MqAnalyticsData>(
         `/api/dashboard/mq-analytics?period=${overviewPeriod}`,
         fetcher,
         { revalidateOnFocus: false, dedupingInterval: 30000 }
@@ -217,6 +217,13 @@ export default function DashboardPage() {
         const handleStorage = (e: StorageEvent) => {
             if (e.key === 'dadwork_customers_stale' && document.visibilityState === 'visible') {
                 mutateDashboard();
+                mutateOverview();
+            }
+        };
+        const handleCustom = () => {
+            if (document.visibilityState === 'visible') {
+                mutateDashboard();
+                mutateOverview();
             }
         };
         const handleFocus = () => {
@@ -225,18 +232,21 @@ export default function DashboardPage() {
             if (staleSignal && staleSignal !== lastCheck) {
                 sessionStorage.setItem('dashboard_last_check', staleSignal);
                 mutateDashboard();
+                mutateOverview();
             }
         };
         window.addEventListener('storage', handleStorage);
+        window.addEventListener('dadwork_customers_stale', handleCustom);
         window.addEventListener('focus', handleFocus);
         handleFocus();
         return () => {
             unsub();
             document.removeEventListener('mousedown', handleClickOutside);
             window.removeEventListener('storage', handleStorage);
+            window.removeEventListener('dadwork_customers_stale', handleCustom);
             window.removeEventListener('focus', handleFocus);
         };
-    }, [mutateDashboard]);
+    }, [mutateDashboard, mutateOverview]);
 
     const handleLogout = async () => {
         setShowProfileMenu(false);

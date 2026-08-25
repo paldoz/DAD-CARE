@@ -13,7 +13,7 @@ import { DollarSign, Plus, Loader2, Trash2, Package, ArrowRight, Receipt, Lock, 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { AnimatedBackground } from '@/components/animated-background';
 import { useSession } from '@/hooks/useSession';
 
@@ -970,6 +970,8 @@ export default function LedgerPage() {
 
             // 4. Refresh data instantly using Optimistic UI (Zero Bandwidth!)
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            window.dispatchEvent(new Event('dadwork_customers_stale'));
+            mutate(key => typeof key === 'string' && key.startsWith('/api/dashboard'), undefined, { revalidate: true });
             
             // Update the ledger transactions optimistically or defer re-fetch (Zero Bandwidth!)
             mutateLedger((current: any) => current, { revalidate: false });
@@ -1104,6 +1106,8 @@ export default function LedgerPage() {
             
             setFreshBalance(null);
             localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+            window.dispatchEvent(new Event('dadwork_customers_stale'));
+            mutate(key => typeof key === 'string' && key.startsWith('/api/dashboard'), undefined, { revalidate: true });
             mutateLedger((current: any) => current, { revalidate: true });
             mutateCustomers((current: any) => current, { revalidate: true });
             toast.success('Receipt voided successfully!');

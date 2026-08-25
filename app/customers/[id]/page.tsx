@@ -234,7 +234,7 @@ export default function CustomerDetailPage() {
     const revalidateAllCustomerCaches = () => {
         // Universal SWR wildcard mutation to completely bust caches across the whole app
         mutate(key => typeof key === 'string' && key.startsWith('/api/customers'), undefined, { revalidate: true });
-        mutate('/api/dashboard');
+        mutate(key => typeof key === 'string' && key.startsWith('/api/dashboard'), undefined, { revalidate: true });
         localStorage.setItem('dadwork_customers_stale', Date.now().toString());
         window.dispatchEvent(new Event('dadwork_customers_stale'));
     };

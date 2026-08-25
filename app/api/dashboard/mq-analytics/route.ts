@@ -236,10 +236,10 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             const mqMaqalIds  = new Set<number>(mqProducts.map(p => p.maqal_id).filter((id): id is number => id != null));
             const mqReceiptIds = new Set<string>(mqProducts.map(p => p.receipt_id).filter((id): id is string => id != null));
 
-            // Match payments using ONLY reliable evidence (maqal_id OR receipt_id)
+            // Match payments using ONLY reliable evidence (direct maqal_id, linked maqal_id, OR receipt_id)
             const mqPayments = payments.filter(pay => {
                 if (assignedPaymentIds.has(pay.id)) return false; // already assigned globally
-                if (pay.maqal_id != null && mqMaqalIds.has(pay.maqal_id)) return true;
+                if (pay.maqal_id != null && (pay.maqal_id === pair.mq_num || mqMaqalIds.has(pay.maqal_id))) return true;
                 if (pay.receipt_id != null && mqReceiptIds.has(pay.receipt_id)) return true;
                 return false;
             });
