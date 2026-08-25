@@ -817,7 +817,7 @@ export default function DashboardPage() {
                                     </div>
 
                                     {/* Money stats grid */}
-                                    <div className={`grid ${mq.overpaid > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 md:gap-2 px-4 mb-3`}>
+                                    <div className={`grid ${(mq.overpaid ?? 0) > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 md:gap-2 px-4 mb-3`}>
                                         <div className="bg-card rounded-xl p-2 md:p-2.5 border border-border/40 text-center">
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
                                             <p className="text-xs font-black text-foreground tabular-nums">${fmtMoney(mq.expected)}</p>
@@ -834,10 +834,10 @@ export default function DashboardPage() {
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Customer Debt</p>
                                             <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>${fmtMoney(mq.remaining)}</p>
                                         </div>
-                                        {mq.overpaid > 0 && (
+                                        {(mq.overpaid ?? 0) > 0 && (
                                             <div className="bg-card rounded-xl p-2 md:p-2.5 border border-emerald-500/30 text-center bg-emerald-500/5">
                                                 <p className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 mb-0.5">Reesto</p>
-                                                <p className="text-xs font-black text-emerald-500 tabular-nums">+${fmtMoney(mq.overpaid)}</p>
+                                                <p className="text-xs font-black text-emerald-500 tabular-nums">+${fmtMoney(mq.overpaid || 0)}</p>
                                             </div>
                                         )}
                                     </div>
