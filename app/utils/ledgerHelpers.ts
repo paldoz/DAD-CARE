@@ -279,10 +279,10 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
     let displayCounter = 1;
     const maqalIdMap = new Map<number, number>();
     for (const m of merged) {
-        if (m.maqalId != null) {
-            m.displayMaqalId = m.maqalId;
-            maqalIdMap.set(m.maqalId, m.maqalId);
-        } else if (m.totalMaqalka > 0) {
+        if (m.totalMaqalka > 0) {
+            if (m.maqalId != null) {
+                maqalIdMap.set(m.maqalId, displayCounter);
+            }
             m.displayMaqalId = displayCounter++;
         }
         
