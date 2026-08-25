@@ -24,33 +24,16 @@ type Period = 'week' | 'month' | 'year' | 'all';
  * it groups by maqal_id or receipt_id, never by naked payment dates.
  */
 
+import { MAQAL_PAIRS_CTE, validateMaqalPairs } from '@/lib/maqal-utils';
+
 const getMqAnalyticsData = async (period: Period, today: string) => {
 
-    // ─── STEP 1: Derive MQ date pairs from DailyBook ─────────────────────────
+    // ─── STEP 1: Derive MQ date pairs from DailyBook (Authoritative Chronological ASC) ──
     const pairsResult = await pool.query(`
-        WITH
-        past_dates AS (
-            SELECT DISTINCT date::date AS db_date
-            FROM "DailyBook"
-            WHERE deleted_at IS NULL
-        ),
-        numbered_dates AS (
-            SELECT db_date,
-                   ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn
-            FROM past_dates
-        ),
-        pairs AS (
-            SELECT n2.db_date AS date1, n1.db_date AS date2
-            FROM numbered_dates n1
-            JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
-            WHERE n1.rn % 2 = 1
-        )
-        SELECT
-            ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num,
-            date1::text,
-            date2::text
+        ${MAQAL_PAIRS_CTE}
+        SELECT mq_num, date1::text, date2::text
         FROM pairs
-        ORDER BY mq_num ASC
+        ORDER BY mq_num ASC;
     `);
 
     // All MQ date pairs, indexed by mq_num
@@ -64,6 +47,8 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
         date1: String(r.date1).split('T')[0],
         date2: String(r.date2).split('T')[0],
     }));
+
+    validateMaqalPairs(allPairs);
 
     if (allPairs.length === 0) {
         return { period, mqs: [], unassignedPayments: [], totals: { expected: 0, paid: 0, remaining: 0, overpaid: 0, kg: 0, paymentProgress: 0, totalMqs: 0, totalUnassigned: 0 } };

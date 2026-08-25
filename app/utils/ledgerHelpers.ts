@@ -254,11 +254,11 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
     let displayCounter = 1;
     const maqalIdMap = new Map<number, number>();
     for (const m of merged) {
-        if (m.totalMaqalka > 0 || m.maqalId != null) {
+        if (m.maqalId != null) {
+            m.displayMaqalId = m.maqalId;
+            maqalIdMap.set(m.maqalId, m.maqalId);
+        } else if (m.totalMaqalka > 0) {
             m.displayMaqalId = displayCounter++;
-            if (m.maqalId != null) {
-                maqalIdMap.set(m.maqalId, m.displayMaqalId);
-            }
         }
         
         // STRICT RECEIPT ENGINE MATH: 
@@ -270,8 +270,12 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
     for (const m of merged) {
         for (const e of m.entries) {
-            if (e.type === 'PAYMENT' && e.maqal_id != null) {
-                e.displayMaqalId = maqalIdMap.get(e.maqal_id);
+            if (e.type === 'PAYMENT') {
+                if (e.maqal_id != null) {
+                    e.displayMaqalId = maqalIdMap.get(e.maqal_id) ?? e.maqal_id;
+                } else if (m.displayMaqalId != null) {
+                    e.displayMaqalId = m.displayMaqalId;
+                }
             }
         }
     }

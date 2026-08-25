@@ -3,34 +3,15 @@ import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 import { unstable_cache } from 'next/cache';
 
+import { MAQAL_PAIRS_CTE, validateMaqalPairs } from '@/lib/maqal-utils';
+
 const getCachedMaqalPairs = unstable_cache(
     async () => {
-        // Query historical pairs from DailyBook
-        // We return ALL consecutive pairs of dates (rolling window) to guarantee no pairs are missed
+        // Query authoritative chronological non-overlapping pairs from DailyBook
         const query = `
-            WITH past_dates AS (
-                SELECT DISTINCT date::date as db_date
-                FROM "DailyBook"
-                WHERE deleted_at IS NULL
-            ),
-            numbered_dates AS (
-                SELECT db_date,
-                       ROW_NUMBER() OVER (ORDER BY db_date DESC) as rn
-                FROM past_dates
-            ),
-            pairs AS (
-                SELECT n2.db_date::date as date1, n1.db_date::date as date2
-                FROM numbered_dates n1
-                JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
-                WHERE n1.rn % 2 = 1
-            ),
-            numbered_pairs AS (
-                SELECT date1, date2,
-                       ROW_NUMBER() OVER (ORDER BY date2 ASC) as maqal_id
-                FROM pairs
-            )
+            ${MAQAL_PAIRS_CTE}
             SELECT 
-                p.maqal_id,
+                p.mq_num as maqal_id,
                 p.date1::text as date1, 
                 p.date2::text as date2,
                 (
@@ -65,11 +46,17 @@ const getCachedMaqalPairs = unstable_cache(
                         COALESCE((SELECT SUM(amount) FROM "Ledger" WHERE customer_id = prod.customer_id AND type = 'PRODUCT' AND deleted_at IS NULL AND COALESCE(reference_date::date, created_at::date) < p.date1), 0)
                     )
                 ) as payment_count
-            FROM numbered_pairs p
+            FROM pairs p
             ORDER BY p.date1 DESC;
         `;
         
         const result = await pool.query(query);
+        const pairsToValidate = result.rows.map(r => ({
+            mq_num: Number(r.maqal_id),
+            date1: String(r.date1).split('T')[0],
+            date2: String(r.date2).split('T')[0]
+        }));
+        validateMaqalPairs(pairsToValidate.slice().reverse());
         return result.rows;
     },
     ['maqal-pairs-data'],

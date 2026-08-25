@@ -5,6 +5,8 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
 });
 
+import { MAQAL_PAIRS_CTE, validateMaqalPairs } from '@/lib/maqal-utils';
+
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get('mode');
@@ -14,34 +16,26 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        // 1. Determine exact DailyBook pairs
+        // 1. Determine exact DailyBook pairs (Authoritative Chronological ASC)
         const pairsResult = await pool.query(`
-            WITH past_dates AS (
-                SELECT DISTINCT date::date AS db_date
-                FROM "DailyBook"
-                WHERE deleted_at IS NULL
-            ),
-            numbered_dates AS (
-                SELECT db_date,
-                       ROW_NUMBER() OVER (ORDER BY db_date DESC) as rn
-                FROM past_dates
-            )
-            SELECT date1, date2,
-                   ROW_NUMBER() OVER (ORDER BY date2 ASC) as mq_num
-            FROM (
-                SELECT n2.db_date::date as date1, n1.db_date::date as date2
-                FROM numbered_dates n1
-                JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
-                WHERE n1.rn % 2 = 1
-            ) all_pairs
+            ${MAQAL_PAIRS_CTE}
+            SELECT mq_num, date1::text, date2::text
+            FROM pairs
             ORDER BY mq_num ASC;
         `);
 
+        const allPairs = pairsResult.rows.map(r => ({
+            mq_num: Number(r.mq_num),
+            date1: String(r.date1).split('T')[0],
+            date2: String(r.date2).split('T')[0]
+        }));
+        validateMaqalPairs(allPairs);
+
         const dateToMqNum = new Map<string, { num: number; pair: any }>();
-        for (const pair of pairsResult.rows) {
-            const d1 = new Date(pair.date1).toISOString().split('T')[0];
-            const d2 = new Date(pair.date2).toISOString().split('T')[0];
-            const num = Number(pair.mq_num);
+        for (const pair of allPairs) {
+            const d1 = pair.date1;
+            const d2 = pair.date2;
+            const num = pair.mq_num;
             dateToMqNum.set(d1, { num, pair });
             dateToMqNum.set(d2, { num, pair });
         }

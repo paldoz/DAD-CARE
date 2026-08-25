@@ -4,33 +4,16 @@ import { requireSession } from '@/lib/require-session';
 
 import { unstable_cache } from 'next/cache';
 
+import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
+
 const getCachedMaqalLatest = unstable_cache(
     async () => {
         const query = `
-            WITH past_dates AS (
-                SELECT DISTINCT date::date as db_date
-                FROM "DailyBook"
-                WHERE deleted_at IS NULL
-            ),
-            numbered_dates AS (
-                SELECT db_date,
-                       ROW_NUMBER() OVER (ORDER BY db_date DESC) as rn
-                FROM past_dates
-            ),
-            numbered_pairs AS (
-                SELECT date1, date2,
-                       ROW_NUMBER() OVER (ORDER BY date2 ASC) as maqal_id
-                FROM (
-                    SELECT n2.db_date::date as date1, n1.db_date::date as date2
-                    FROM numbered_dates n1
-                    JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
-                    WHERE n1.rn % 2 = 1
-                ) all_pairs
-            ),
+            ${MAQAL_PAIRS_CTE},
             latest_pair AS (
-                SELECT date1, date2, maqal_id
-                FROM numbered_pairs
-                ORDER BY date1 DESC
+                SELECT date1, date2, mq_num as maqal_id
+                FROM pairs
+                ORDER BY mq_num DESC
                 LIMIT 1
             ),
             pair_customers AS (

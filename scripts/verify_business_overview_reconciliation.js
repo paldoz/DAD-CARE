@@ -11,31 +11,28 @@ async function verifyReconciliation() {
         console.log("       BUSINESS OVERVIEW — AUTHORITATIVE MAQAL RECONCILIATION AUDIT           ");
         console.log("===============================================================================\n");
 
-        // 1. Fetch all DailyBook date pairs (single source of truth)
+        // 1. Fetch all DailyBook date pairs (single source of truth - Chronological ASC)
         const pairsResult = await pool.query(`
-            WITH
-            past_dates AS (
+            WITH past_dates AS (
                 SELECT DISTINCT date::date AS db_date
                 FROM "DailyBook"
                 WHERE deleted_at IS NULL
             ),
             numbered_dates AS (
                 SELECT db_date,
-                       ROW_NUMBER() OVER (ORDER BY db_date DESC) AS rn
+                       ROW_NUMBER() OVER (ORDER BY db_date ASC) as rn
                 FROM past_dates
             ),
             pairs AS (
-                SELECT n2.db_date AS date1, n1.db_date AS date2
+                SELECT n1.db_date::date AS date1, n2.db_date::date AS date2,
+                       ((n1.rn + 1) / 2)::int AS mq_num
                 FROM numbered_dates n1
-                JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
+                JOIN numbered_dates n2 ON n2.rn = n1.rn + 1
                 WHERE n1.rn % 2 = 1
             )
-            SELECT
-                ROW_NUMBER() OVER (ORDER BY date2 ASC) AS mq_num,
-                date1::text,
-                date2::text
+            SELECT mq_num, date1::text, date2::text
             FROM pairs
-            ORDER BY mq_num ASC
+            ORDER BY mq_num ASC;
         `);
 
         const allPairs = pairsResult.rows.map(r => ({
@@ -43,6 +40,15 @@ async function verifyReconciliation() {
             date1: String(r.date1).split('T')[0],
             date2: String(r.date2).split('T')[0],
         }));
+
+        // Validate no overlapping or duplicate dates
+        const seenDates = new Map();
+        for (const p of allPairs) {
+            if (seenDates.has(p.date1)) throw new Error(`Duplicate date ${p.date1} in MQ#${seenDates.get(p.date1)} and MQ#${p.mq_num}`);
+            seenDates.set(p.date1, p.mq_num);
+            if (seenDates.has(p.date2)) throw new Error(`Duplicate date ${p.date2} in MQ#${seenDates.get(p.date2)} and MQ#${p.mq_num}`);
+            seenDates.set(p.date2, p.mq_num);
+        }
 
         console.log(`Found ${allPairs.length} authoritative Maqal date pairs.`);
 

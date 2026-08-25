@@ -2,6 +2,7 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { validateSession } from '@/lib/sessions-store';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
 
 
 export const dynamic = 'force-dynamic';
@@ -56,27 +57,7 @@ const getDashboardData = async (today: string) => {
             WHERE dbi.deleted_at IS NULL AND dbi.present IS NOT FALSE
         `, [today]),
         pool.query(`
-            WITH past_dates AS (
-                SELECT DISTINCT date::date as db_date
-                FROM "DailyBook"
-                WHERE deleted_at IS NULL
-            ),
-            numbered_dates AS (
-                SELECT db_date,
-                       ROW_NUMBER() OVER (ORDER BY db_date DESC) as rn
-                FROM past_dates
-            ),
-            pairs AS (
-                SELECT n2.db_date::date as date1, n1.db_date::date as date2
-                FROM numbered_dates n1
-                JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
-                WHERE n1.rn % 2 = 1
-            ),
-            numbered_pairs AS (
-                SELECT date1, date2,
-                       ROW_NUMBER() OVER (ORDER BY date2 ASC) as mq_num
-                FROM pairs
-            ),
+            ${MAQAL_PAIRS_CTE},
             recent_payments AS (
                 SELECT
                     l.id,
