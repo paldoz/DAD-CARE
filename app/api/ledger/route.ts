@@ -136,15 +136,15 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 const prevDebt = runningDebt;
 
                 if (type === 'PRODUCT') {
-                    entryAmount = Math.round(parseFloat(kg) * parseFloat(price));
-                    runningDebt = Math.round(runningDebt + entryAmount);
+                    entryAmount = Number((parseFloat(kg) * parseFloat(price)).toFixed(2));
+                    runningDebt = Number((runningDebt + entryAmount).toFixed(2));
                 } else if (type === 'PAYMENT') {
-                    entryAmount = Math.round(parseFloat(amount));
-                    runningDebt = Math.round(runningDebt - entryAmount);
+                    entryAmount = Number(parseFloat(amount).toFixed(2));
+                    runningDebt = Number((runningDebt - entryAmount).toFixed(2));
                 } else if (type === 'ADJUSTMENT') {
-                    entryAmount = Math.round(parseFloat(amount));
+                    entryAmount = Number(parseFloat(amount).toFixed(2));
                     const lowerNote = (note || '').toLowerCase();
-                    runningDebt = Math.round(runningDebt + entryAmount);
+                    runningDebt = Number((runningDebt + entryAmount).toFixed(2));
                 }
 
                 entriesToInsert.push({

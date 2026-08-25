@@ -216,7 +216,7 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
                     effectivePrice = oldKg > 0 ? (oldAmt / oldKg) : 0;
                 }
 
-                let newAmount = Math.round(newKg * effectivePrice);
+                let newAmount = Number((newKg * effectivePrice).toFixed(2));
 
                 // --- NOTE PARSER SYNCHRONIZATION ---
                 if (dailyItem.note) {
@@ -245,17 +245,17 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
                             const secondEntry = results[1];
                             const p1 = firstEntry.price !== null ? firstEntry.price : effectivePrice;
                             const p2 = secondEntry.price !== null ? secondEntry.price : effectivePrice;
-                            newAmount = Math.round((firstEntry.kg * p1) + (secondEntry.kg * p2));
+                            newAmount = Number(((firstEntry.kg * p1) + (secondEntry.kg * p2)).toFixed(2));
                         } else {
                             const p1 = firstEntry.price !== null ? firstEntry.price : effectivePrice;
                             const mainKgNum = Math.max(0, newKg - firstEntry.kg);
-                            newAmount = Math.round((firstEntry.kg * p1) + (mainKgNum * effectivePrice));
+                            newAmount = Number(((firstEntry.kg * p1) + (mainKgNum * effectivePrice)).toFixed(2));
                         }
                     } else {
                         // Notebook Pricing Override fallback
                         const priceMatch = noteText.match(/(?:^|\s)\$?(\d+(?:\.\d+)?)(?:\s|$)/);
                         if (priceMatch) {
-                            newAmount = Math.round(newKg * parseFloat(priceMatch[1]));
+                            newAmount = Number((newKg * parseFloat(priceMatch[1])).toFixed(2));
                         }
                     }
                 }

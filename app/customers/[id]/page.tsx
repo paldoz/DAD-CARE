@@ -93,6 +93,20 @@ interface Customer {
     is_inactive?: boolean;
 }
 
+const formatMoney = (val: number): string => {
+    const num = Number(val || 0);
+    const hasCents = Math.abs(num % 1) > 0.001;
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: 2
+    });
+};
+
+const formatKg = (val: number | string): string => {
+    const num = parseFloat(String(val)) || 0;
+    return Number(num.toFixed(2)).toString();
+};
+
 
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
@@ -1071,7 +1085,7 @@ export default function CustomerDetailPage() {
                         </div>
                         <div className="text-right shrink-0">
                             <p className={`text-lg sm:text-xl font-black leading-none ${summary.currentBalance > 0 ? 'text-destructive' : 'text-emerald-500'}`}>
-                                ${Math.abs(Math.round(summary.currentBalance)).toLocaleString()}
+                                ${formatMoney(Math.abs(summary.currentBalance))}
                             </p>
                             <span className={`text-[8px] uppercase font-bold ${summary.currentBalance > 0 ? 'text-destructive/70' : 'text-emerald-500/70'}`}>
                                 {/* Driven by getBalanceLabel — single source of truth */}
@@ -1325,7 +1339,7 @@ export default function CustomerDetailPage() {
                                         })()}
                                     </div>
                                     <span className={`text-sm font-black shrink-0 ${receipt.closingBalance > 0 ? 'text-destructive' : 'text-emerald-500'}`}>
-                                        {receipt.closingBalance < 0 ? '-' : ''}${Math.abs(Math.round(receipt.closingBalance)).toLocaleString()}
+                                        {receipt.closingBalance < 0 ? '-' : ''}${formatMoney(Math.abs(receipt.closingBalance))}
                                     </span>
                                     {isSuperAdmin && (
                                         <div 
@@ -1437,23 +1451,22 @@ export default function CustomerDetailPage() {
 
                                                     {/* 1. Maqalka entries (products) */}
                                                     {receipt.entries.filter(e => e.type === 'PRODUCT').filter((e, idx, arr) => {
-                                                        if (Math.round(e.kg || 0) > 0) return true;
-                                                        const hasOther = arr.some(other => other.reference_date === e.reference_date && other.id !== e.id && Math.round(other.kg || 0) > 0);
+                                                        if ((e.kg || 0) > 0) return true;
+                                                        const hasOther = arr.some(other => other.reference_date === e.reference_date && other.id !== e.id && (other.kg || 0) > 0);
                                                         return !hasOther;
                                                     }).map((e, idx, arr) => {
-                                                        const isAbsent = Math.round(e.kg || 0) === 0;
-                                                        const hasMain = arr.some(other => other.reference_date === e.reference_date && !other.note && Math.round(other.kg || 0) > 0);
+                                                        const isAbsent = !e.kg || e.kg === 0;
+                                                        const hasMain = arr.some(other => other.reference_date === e.reference_date && !other.note && (other.kg || 0) > 0);
                                                         return (
                                                             <div key={e.id} className={`flex justify-between items-start py-1.5 border-b border-blue-200 dark:border-blue-900/40 font-medium ${isAbsent ? 'opacity-60 line-through-none' : ''}`}>
                                                                 <div className="flex flex-col flex-1">
                                                                     <span>
                                                                         {(e.note && hasMain) ? '↳ ' : ''}
-                                                                        {format(new Date(e.reference_date), 'MMM dd')} · {isAbsent ? '❌ Baaqatay' : `${Math.round(e.kg || 0)}KG @ $${e.price_per_kg}`}
+                                                                        {format(new Date(e.reference_date), 'MMM dd')} · {isAbsent ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
                                                                         {e.note ? ` (${e.note})` : ''}
                                                                     </span>
-                                                                    {/* Edit/Undo completely removed for PRODUCT entries as requested */}
                                                                 </div>
-                                                                <span className="font-bold shrink-0">{isAbsent ? '$0' : `$${Math.round(e.amount || 0).toLocaleString()}`}</span>
+                                                                <span className="font-bold shrink-0">{isAbsent ? '$0' : `$${formatMoney(e.amount || 0)}`}</span>
                                                             </div>
                                                         );
                                                     })}
@@ -1470,7 +1483,7 @@ export default function CustomerDetailPage() {
                                                                         {pct}% Paid
                                                                     </span>
                                                                 </span>
-                                                                <span>${Math.round(receipt.totalMaqalka).toLocaleString()}</span>
+                                                                <span>${formatMoney(receipt.totalMaqalka)}</span>
                                                             </div>
                                                         );
                                                     })()}
@@ -1485,7 +1498,7 @@ export default function CustomerDetailPage() {
                                                             <span>{receipt.openingBalance < 0 ? LABEL_HEYN : LABEL_REESTO}</span>
                                                             <span>
                                                                 {receipt.openingBalance < 0 ? '-' : '+'}
-                                                                ${Math.abs(Math.round(receipt.openingBalance)).toLocaleString()}
+                                                                ${formatMoney(Math.abs(receipt.openingBalance))}
                                                             </span>
                                                         </div>
                                                     )}
@@ -1494,17 +1507,17 @@ export default function CustomerDetailPage() {
                                                     {receipt.entries.filter(e => e.type === 'ADJUSTMENT').map(e => (
                                                         <div key={e.id} className="flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-amber-700 dark:text-amber-500 font-bold bg-amber-500/5 px-1 -ml-1 rounded-sm mt-1">
                                                             <span>{(e.amount || 0) < 0 ? LABEL_HEYN : LABEL_REESTO}</span>
-                                                            <span>{(e.amount || 0) > 0 ? '+' : ''}${Math.abs(Math.round(e.amount || 0)).toLocaleString()}</span>
+                                                            <span>{(e.amount || 0) > 0 ? '+' : ''}${formatMoney(Math.abs(e.amount || 0))}</span>
                                                         </div>
                                                     ))}
 
                                                     {/* 4. Lacagta Guud — total owed (Maqalka + Heyn) */}
                                                     {(receipt.totalMaqalka > 0 || receipt.totalAdjustment > 0) && (() => {
-                                                        const totalOwed = Math.round(receipt.totalMaqalka + receipt.totalAdjustment + receipt.openingBalance);
+                                                        const totalOwed = Number((receipt.totalMaqalka + receipt.totalAdjustment + receipt.openingBalance).toFixed(2));
                                                         return (
                                                             <div className="flex justify-between py-1.5 border-b-2 border-red-300 dark:border-red-900/50 font-black text-slate-900 dark:text-slate-100">
                                                                 <span>{totalOwed < 0 ? LABEL_HEYN : LABEL_LACAGTA_GUUD}</span>
-                                                                <span>${Math.abs(totalOwed).toLocaleString()}</span>
+                                                                <span>${formatMoney(Math.abs(totalOwed))}</span>
                                                             </div>
                                                         );
                                                     })()}

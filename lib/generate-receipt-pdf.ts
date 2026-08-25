@@ -21,6 +21,20 @@ export interface ReceiptData {
     closingBalance: number;
 }
 
+const formatMoney = (val: number): string => {
+    const num = Number(val || 0);
+    const hasCents = Math.abs(num % 1) > 0.001;
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: 2
+    });
+};
+
+const formatKg = (val: number | string): string => {
+    const num = parseFloat(String(val)) || 0;
+    return Number(num.toFixed(2)).toString();
+};
+
 // import jsPDF from 'jspdf'; removed for dynamic import
 
 export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
@@ -91,10 +105,10 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
 
         productEntries.forEach(entry => {
             const dateStr = format(new Date(entry.reference_date), 'MMM dd');
-            const isAbsent = Math.round(entry.kg || 0) === 0;
+            const isAbsent = !entry.kg || entry.kg === 0;
             const noteLabel = entry.note ? ` (${entry.note})` : '';
-            const kgStr = isAbsent ? 'Baaqatay' : `${Math.round(entry.kg || 0)}KG x $${entry.price_per_kg}${noteLabel}`;
-            const amountStr = isAbsent ? '$0' : `$${Math.round(entry.amount || 0).toLocaleString()}`;
+            const kgStr = isAbsent ? 'Baaqatay' : `${formatKg(entry.kg || 0)}KG x $${entry.price_per_kg}${noteLabel}`;
+            const amountStr = isAbsent ? '$0' : `$${formatMoney(entry.amount || 0)}`;
 
             doc.text(`${dateStr} · ${kgStr}`, margin, y);
             doc.text(amountStr, pageWidth - margin, y, { align: 'right' });
@@ -110,7 +124,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'bold');
     doc.text('Maqalka Total', margin, y);
-    doc.text(`$${Math.round(data.totalMaqalka).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+    doc.text(`$${formatMoney(data.totalMaqalka)}`, pageWidth - margin, y, { align: 'right' });
     y += 4;
 
     // ===== REESTO (Previous Balance) =====
@@ -119,7 +133,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         doc.setFont('helvetica', 'normal');
         doc.text('Reesto', margin, y);
         const sign = data.openingBalance > 0 ? '+' : '';
-        doc.text(`${sign}$${Math.round(data.openingBalance).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`${sign}$${formatMoney(data.openingBalance)}`, pageWidth - margin, y, { align: 'right' });
         y += 4;
     }
 
@@ -129,7 +143,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         doc.setFontSize(7);
         doc.setFont('helvetica', 'normal');
         doc.text('Reesto', margin, y);
-        doc.text(`+$${Math.round(entry.amount || 0).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`+$${formatMoney(entry.amount || 0)}`, pageWidth - margin, y, { align: 'right' });
         y += 3.5;
     });
 
@@ -143,7 +157,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
         doc.text('Lacagta Guud', margin, y);
-        doc.text(`$${Math.round(subtotal).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`$${formatMoney(subtotal)}`, pageWidth - margin, y, { align: 'right' });
         y += 5;
     }
 
@@ -161,7 +175,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         paymentEntries.forEach(entry => {
             const dateStr = format(new Date(entry.reference_date), 'MMM dd');
             doc.text(`${dateStr} Payment`, margin, y);
-            doc.text(`-$${Math.round(entry.amount || 0).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+            doc.text(`-$${formatMoney(entry.amount || 0)}`, pageWidth - margin, y, { align: 'right' });
             y += 3.5;
         });
 
@@ -180,7 +194,7 @@ export async function generateReceiptPDF(data: ReceiptData): Promise<any> {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'bold');
         doc.text('REESTO', margin, y);
-        doc.text(`$${Math.abs(Math.round(data.closingBalance)).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`$${formatMoney(Math.abs(data.closingBalance))}`, pageWidth - margin, y, { align: 'right' });
         y += 3.5;
 
         doc.setFontSize(6);
@@ -232,33 +246,33 @@ export function shareReceiptToWhatsApp(data: ReceiptData, phone?: string) {
         lines.push('📦 *MAQALKA:*');
         products.forEach(e => {
             const dateStr = format(new Date(e.reference_date), 'MMM dd');
-            const isAbsent = Math.round(e.kg || 0) === 0;
+            const isAbsent = !e.kg || e.kg === 0;
             if (isAbsent) {
                 lines.push(`  ${dateStr} · \u274c Baaqatay = *$0*`);
             } else {
                 const noteLabel = e.note ? ` (${e.note})` : '';
-                lines.push(`  ${dateStr} · ${Math.round(e.kg || 0)}KG \u00d7 $${e.price_per_kg}${noteLabel} = *$${Math.round(e.amount || 0).toLocaleString()}*`);
+                lines.push(`  ${dateStr} · ${formatKg(e.kg || 0)}KG \u00d7 $${e.price_per_kg}${noteLabel} = *$${formatMoney(e.amount || 0)}*`);
             }
         });
-        lines.push(`  📊 *Maqalka Total: $${Math.round(data.totalMaqalka).toLocaleString()}*`);
+        lines.push(`  📊 *Maqalka Total: $${formatMoney(data.totalMaqalka)}*`);
         lines.push('');
     }
 
     // Previous balance & Adjustments
     if (data.openingBalance !== 0) {
         const sign = data.openingBalance > 0 ? '+' : '';
-        lines.push(`🔄 Reesto: ${sign}$${Math.round(data.openingBalance).toLocaleString()}`);
+        lines.push(`🔄 Reesto: ${sign}$${formatMoney(data.openingBalance)}`);
     }
     
     const adjustments = data.entries.filter(e => e.type === 'ADJUSTMENT');
     adjustments.forEach(entry => {
-        lines.push(`🔄 Reesto: +$${Math.round(entry.amount || 0).toLocaleString()}`);
+        lines.push(`🔄 Reesto: +$${formatMoney(entry.amount || 0)}`);
     });
 
     // Subtotal
     const subtotal = data.totalMaqalka + data.totalAdjustment + data.openingBalance;
     if (data.totalMaqalka > 0 || data.totalAdjustment > 0) {
-        lines.push(`📋 *Lacagta Guud: $${Math.round(subtotal).toLocaleString()}*`);
+        lines.push(`📋 *Lacagta Guud: $${formatMoney(subtotal)}*`);
     }
 
     // Payments
@@ -268,7 +282,7 @@ export function shareReceiptToWhatsApp(data: ReceiptData, phone?: string) {
         lines.push('💰 *LACAGAHA:*');
         payments.forEach(e => {
             const dateStr = format(new Date(e.reference_date), 'MMM dd');
-            lines.push(`  ${dateStr} Payment: *-$${Math.round(e.amount || 0).toLocaleString()}*`);
+            lines.push(`  ${dateStr} Payment: *-$${formatMoney(e.amount || 0)}*`);
         });
     }
 
@@ -277,7 +291,7 @@ export function shareReceiptToWhatsApp(data: ReceiptData, phone?: string) {
         lines.push('');
         lines.push('═══════════════');
         const emoji = data.closingBalance > 0 ? '🔴' : '🟢';
-        lines.push(`${emoji} *REESTO: $${Math.abs(Math.round(data.closingBalance)).toLocaleString()}*`);
+        lines.push(`${emoji} *REESTO: $${formatMoney(Math.abs(data.closingBalance))}*`);
         if (data.closingBalance > 0) {
             lines.push('_(Amount Owed)_');
         } else {

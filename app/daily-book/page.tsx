@@ -84,7 +84,7 @@ function getFormattedNoteBadges(note: string | undefined): { text: string, isVip
     const badges = [];
     for (const part of parts) {
         const isVip = part.toLowerCase().includes('vip');
-        const match = part.match(/^(\d+)\s+([a-zA-Z]+)(?:\s+(\d+))?$/);
+        const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
         if (match) {
             const count = match[1];
             const label = match[2];
@@ -1232,7 +1232,7 @@ function DailyBookPageInner() {
                                                                         </div>
                                                                     ));
                                                                 })()}
-                                                                <span className="font-black text-primary text-sm md:text-base">{Math.round(item.kg)} <span className="text-[9px] opacity-60">KG</span></span>
+                                                                <span className="font-black text-primary text-sm md:text-base">{formatKg(item.kg)} <span className="text-[9px] opacity-60">KG</span></span>
                                                             </div>
                                                         )}
                                                         {item.note && !item.note.toLowerCase().trim().match(/^\d*\s*vip$/i) && <div className="text-[9px] text-muted-foreground truncate max-w-[90px] ml-auto mt-0.5">{item.note}</div>}
@@ -1535,7 +1535,7 @@ function DailyBookPageInner() {
                                                                                 {item.present === false ? (
                                                                                     <span className="px-2 py-1 rounded-full bg-red-500/10 text-red-600 text-[10px] font-bold uppercase tracking-wider">Absent</span>
                                                                                 ) : (
-                                                                                    <span className="font-black text-primary text-base md:text-lg">{Math.round(item.kg)} <span className="text-[10px] opacity-60">KG</span></span>
+                                                                                    <span className="font-black text-primary text-base md:text-lg">{formatKg(item.kg)} <span className="text-[10px] opacity-60">KG</span></span>
                                                                                 )}
                                                                                 {(() => {
                                                                                     if (!item.note) return null;

@@ -256,8 +256,15 @@ export default function DashboardPage() {
     const ovTotals = overviewResponse?.totals || { expected: 0, paid: 0, remaining: 0, kg: 0, paymentProgress: 0, totalMqs: 0 };
     const hasOverviewData = mqs.length > 0;
     
-    const fmtMoney = (v: number) => '$' + v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    const fmtKg = (v: number) => Math.round(v).toLocaleString() + ' KG';
+    const fmtMoney = (v: number) => {
+        const num = Number(v || 0);
+        const hasCents = Math.abs(num % 1) > 0.001;
+        return '$' + num.toLocaleString(undefined, { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2 });
+    };
+    const fmtKg = (v: number) => {
+        const num = parseFloat(String(v)) || 0;
+        return Number(num.toFixed(2)).toString() + ' KG';
+    };
 
     // ── Scrollable chart constants ──────────────────────────────────────────
     // Each MQ column gets COL_W px. The chart scrolls horizontally.

@@ -1,6 +1,20 @@
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
 
+const formatMoney = (val: number): string => {
+    const num = Number(val || 0);
+    const hasCents = Math.abs(num % 1) > 0.001;
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: 2
+    });
+};
+
+const formatKg = (val: number | string): string => {
+    const num = parseFloat(String(val)) || 0;
+    return Number(num.toFixed(2)).toString();
+};
+
 // Define types based on what's used
 interface Transaction {
     id: string;
@@ -212,10 +226,10 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
 
         productEntries.forEach(entry => {
             const dateStr = format(new Date(entry.reference_date), 'MMM dd');
-            const isAbsent = Math.round(entry.kg || 0) === 0;
+            const isAbsent = !entry.kg || entry.kg === 0;
             const noteLabel = entry.note ? ` (${entry.note})` : '';
-            const kgStr = isAbsent ? 'Baaqatay' : `${Math.round(entry.kg || 0)}KG @ $${entry.price_per_kg}${noteLabel}`;
-            const amountStr = isAbsent ? '$0' : `$${Math.round(entry.amount).toLocaleString()}`;
+            const kgStr = isAbsent ? 'Baaqatay' : `${formatKg(entry.kg || 0)}KG @ $${entry.price_per_kg}${noteLabel}`;
+            const amountStr = isAbsent ? '$0' : `$${formatMoney(entry.amount)}`;
 
             doc.text(`${dateStr} · ${kgStr}`, margin, y);
             doc.text(amountStr, pageWidth - margin, y, { align: 'right' });
@@ -231,7 +245,7 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
     doc.setFontSize(7.5);
     doc.setFont('helvetica', 'bold');
     doc.text('Maqalka Total', margin, y);
-    doc.text(`$${Math.round(receipt.totalMaqalka).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+    doc.text(`$${formatMoney(receipt.totalMaqalka)}`, pageWidth - margin, y, { align: 'right' });
     y += 4;
 
     // ===== REESTO (Previous Balance) =====
@@ -240,7 +254,7 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
         doc.setFont('helvetica', 'normal');
         doc.text('Reesto', margin, y);
         const sign = receipt.openingBalance > 0 ? '+' : '';
-        doc.text(`${sign}$${Math.round(receipt.openingBalance).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`${sign}$${formatMoney(receipt.openingBalance)}`, pageWidth - margin, y, { align: 'right' });
         y += 4;
     }
 
@@ -250,7 +264,7 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
         doc.setFontSize(7);
         doc.setFont('helvetica', 'normal');
         doc.text('Reesto', margin, y);
-        doc.text(`+$${Math.round(entry.amount).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`+$${formatMoney(entry.amount)}`, pageWidth - margin, y, { align: 'right' });
         y += 3.5;
     });
 
@@ -264,7 +278,7 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
         doc.text('Lacagta Guud', margin, y);
-        doc.text(`$${Math.round(subtotal).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`$${formatMoney(subtotal)}`, pageWidth - margin, y, { align: 'right' });
         y += 5;
     }
 
@@ -282,7 +296,7 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
         paymentEntries.forEach(entry => {
             const dateStr = format(new Date(entry.reference_date), 'MMM dd');
             doc.text(`${dateStr} Payment`, margin, y);
-            doc.text(`-$${Math.round(entry.amount).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+            doc.text(`-$${formatMoney(entry.amount)}`, pageWidth - margin, y, { align: 'right' });
             y += 3.5;
         });
 
@@ -301,7 +315,7 @@ function drawReceiptOnDoc(doc: jsPDF, customer: any, receipt: ReceiptGroup) {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'bold');
         doc.text('REESTO', margin, y);
-        doc.text(`$${Math.abs(Math.round(receipt.closingBalance)).toLocaleString()}`, pageWidth - margin, y, { align: 'right' });
+        doc.text(`$${formatMoney(Math.abs(receipt.closingBalance))}`, pageWidth - margin, y, { align: 'right' });
         y += 3.5;
 
         doc.setFontSize(6);

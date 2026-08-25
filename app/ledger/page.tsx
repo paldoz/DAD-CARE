@@ -83,6 +83,20 @@ interface CustomerSummary {
     currentBalance: number;
 }
 
+const formatMoney = (val: number): string => {
+    const num = Number(val || 0);
+    const hasCents = Math.abs(num % 1) > 0.001;
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: 2
+    });
+};
+
+const formatKg = (val: number | string): string => {
+    const num = parseFloat(String(val)) || 0;
+    return Number(num.toFixed(2)).toString();
+};
+
 interface DailyBookRecord {
     date: string;
     kg: number;
@@ -777,12 +791,11 @@ export default function LedgerPage() {
         const total = dateEntries.reduce((sum, p) => {
             const kg = parseFloat(p.kg) || 0;
             const price = parseFloat(p.pricePerKg) || 0;
-            const pExtra = parseFloat(p.extraKg || '0') * parseFloat(p.extraPricePerKg || '0');
+            const pExtra = (parseFloat(p.extraKg || '0') || 0) * (parseFloat(p.extraPricePerKg || '0') || 0);
             const pMain = kg * price;
-            return sum + Math.round(pMain + pExtra);
+            return sum + pMain + pExtra;
         }, 0);
-        console.log('[DEBUG-TRACE] Render productGrandTotal:', total, 'from dateEntries:', dateEntries);
-        return total;
+        return Number(total.toFixed(2));
     }, [dateEntries]);
 
     const activePaymentAmount = paymentEntries.reduce((sum, pay) => {
@@ -1140,7 +1153,7 @@ export default function LedgerPage() {
                                                 "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter border animate-in fade-in zoom-in duration-300",
                                                 effectiveBalance > 0 ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                                             )}>
-                                                Current Balance: ${Math.abs(Math.round(effectiveBalance)).toLocaleString()}
+                                                Current Balance: ${formatMoney(Math.abs(effectiveBalance))}
                                                 {effectiveBalance > 0 ? " (OWED)" : " (CREDIT)"}
                                             </div>
                                             {history.length > 0 && !oldMaqalDone && (
@@ -1709,19 +1722,19 @@ export default function LedgerPage() {
 
                                                         {/* Products */}
                                                         {lastReceiptGroup.entries.filter((e: any) => e.type === 'PRODUCT').filter((e: any, idx: number, arr: any[]) => {
-                                                            if (Math.round(e.kg || 0) > 0) return true;
-                                                            const hasOther = arr.some((other: any) => other.reference_date === e.reference_date && other.id !== e.id && Math.round(other.kg || 0) > 0);
+                                                            if ((e.kg || 0) > 0) return true;
+                                                            const hasOther = arr.some((other: any) => other.reference_date === e.reference_date && other.id !== e.id && (other.kg || 0) > 0);
                                                             return !hasOther;
                                                         }).map((e: any, idx: number, arr: any[]) => {
-                                                            const hasMain = arr.some((other: any) => other.reference_date === e.reference_date && !other.note && Math.round(other.kg || 0) > 0);
+                                                            const hasMain = arr.some((other: any) => other.reference_date === e.reference_date && !other.note && (other.kg || 0) > 0);
                                                             return (
-                                                            <div key={e.id} className={`flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 font-medium ${Math.round(e.kg || 0) === 0 ? 'opacity-60' : ''}`}>
+                                                            <div key={e.id} className={`flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 font-medium ${!e.kg || e.kg === 0 ? 'opacity-60' : ''}`}>
                                                                 <span>
                                                                     {(e.note && hasMain) ? '↳ ' : ''}
-                                                                    {format(new Date(e.reference_date), 'MMM dd')} · {Math.round(e.kg || 0) === 0 ? '❌ Baaqatay' : `${Math.round(e.kg || 0)}KG @ $${e.price_per_kg}`}
+                                                                    {format(new Date(e.reference_date), 'MMM dd')} · {!e.kg || e.kg === 0 ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
                                                                     {e.note ? ` (${e.note})` : ''}
                                                                 </span>
-                                                                <span className="font-bold">{Math.round(e.kg || 0) === 0 ? '$0' : `$${Math.round(e.amount).toLocaleString()}`}</span>
+                                                                <span className="font-bold">{!e.kg || e.kg === 0 ? '$0' : `$${formatMoney(e.amount)}`}</span>
                                                             </div>
                                                         )})}
 
@@ -1737,7 +1750,7 @@ export default function LedgerPage() {
                                                                             {pct}% Paid
                                                                         </span>
                                                                     </span>
-                                                                    <span>${Math.round(lastReceiptGroup.totalMaqalka).toLocaleString()}</span>
+                                                                    <span>${formatMoney(lastReceiptGroup.totalMaqalka)}</span>
                                                                 </div>
                                                             );
                                                         })()}
@@ -1750,7 +1763,7 @@ export default function LedgerPage() {
                                                                     : 'text-amber-700 dark:text-amber-500 bg-amber-500/5'
                                                             }`}>
                                                                 <span>{lastReceiptGroup.openingBalance < 0 ? 'Heyn' : 'Reesto'}</span>
-                                                                <span>{lastReceiptGroup.openingBalance > 0 ? '+' : '-'}${Math.abs(Math.round(lastReceiptGroup.openingBalance)).toLocaleString()}</span>
+                                                                <span>{lastReceiptGroup.openingBalance > 0 ? '+' : '-'}${formatMoney(Math.abs(lastReceiptGroup.openingBalance))}</span>
                                                             </div>
                                                             )}
 
@@ -1759,18 +1772,18 @@ export default function LedgerPage() {
                                                         {lastReceiptGroup.entries.filter((e: any) => e.type === 'ADJUSTMENT').map((e: any) => (
                                                             <div key={e.id} className="flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-amber-700 dark:text-amber-500 font-bold bg-amber-500/5 px-1 -ml-1 rounded-sm mt-1">
                                                                 <span>{e.note || (e.amount < 0 ? 'Heyn' : 'Reesto')}</span>
-                                                                <span>{e.amount > 0 ? '+' : '-'}${Math.abs(Math.round(e.amount)).toLocaleString()}</span>
+                                                                <span>{e.amount > 0 ? '+' : '-'}${formatMoney(Math.abs(e.amount))}</span>
                                                             </div>
                                                         ))}
 
 
                                                         {/* Lacagta Guud */}
                                                         {(lastReceiptGroup.totalMaqalka > 0 || lastReceiptGroup.totalAdjustment > 0) && (() => {
-                                                            const lastTotal = Math.round(lastReceiptGroup.totalMaqalka + lastReceiptGroup.totalAdjustment + lastReceiptGroup.openingBalance);
+                                                            const lastTotal = Number((lastReceiptGroup.totalMaqalka + lastReceiptGroup.totalAdjustment + lastReceiptGroup.openingBalance).toFixed(2));
                                                             return (
                                                                 <div className="flex justify-between py-1.5 border-b-2 border-red-300 dark:border-red-900/50 font-black text-slate-900 dark:text-slate-100">
                                                                     <span className={lastTotal < 0 ? 'text-emerald-600 dark:text-emerald-500' : ''}>{lastTotal < 0 ? 'Heyn' : 'Lacagta Guud'}</span>
-                                                                    <span className={lastTotal < 0 ? 'text-emerald-600 dark:text-emerald-500' : ''}>${Math.abs(lastTotal).toLocaleString()}</span>
+                                                                    <span className={lastTotal < 0 ? 'text-emerald-600 dark:text-emerald-500' : ''}>${formatMoney(Math.abs(lastTotal))}</span>
                                                                 </div>
                                                             );
                                                         })()}
@@ -1789,7 +1802,7 @@ export default function LedgerPage() {
                                                                                 </span>
                                                                             )}
                                                                         </span>
-                                                                        <span>-${Math.round(e.amount).toLocaleString()}</span>
+                                                                        <span>-${formatMoney(e.amount)}</span>
                                                                     </div>
                                                                 ))}
                                                             </>
@@ -1800,7 +1813,7 @@ export default function LedgerPage() {
                                                             <div className="flex justify-between items-center pt-2 mt-2 border-t-2 border-double border-amber-400/50 dark:border-amber-600/50 px-1 py-1">
                                                                 <span className="font-black text-sm text-[#C19A6B] dark:text-[#D4B087]">{lastReceiptGroup.closingBalance <= 0 ? 'Heyn' : 'Reesto'}</span>
                                                                 <span className={`text-lg font-black ${lastReceiptGroup.closingBalance > 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-500'}`}>
-                                                                    ${Math.abs(Math.round(lastReceiptGroup.closingBalance)).toLocaleString()}
+                                                                    ${formatMoney(Math.abs(lastReceiptGroup.closingBalance))}
                                                                 </span>
                                                             </div>
                                                         )}
@@ -1862,13 +1875,13 @@ export default function LedgerPage() {
                                                                     {showMain && (
                                                                         <div className="flex justify-between">
                                                                             <span>{format(new Date(entry.date), 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
-                                                                            <span className="font-bold text-foreground">${Math.round(mainKg * parseFloat(entry.pricePerKg)).toLocaleString()}</span>
+                                                                            <span className="font-bold text-foreground">${formatMoney(mainKg * parseFloat(entry.pricePerKg))}</span>
                                                                         </div>
                                                                     )}
                                                                     {showExtra && (
                                                                         <div className={cn("flex justify-between text-[10px] text-muted-foreground/80", (showMain && mainKg > 0) ? "pl-3" : "")}>
                                                                             <span>{(showMain && mainKg > 0) ? '↳ ' : ''}{format(new Date(entry.date), 'MMM dd')} · {entry.extraKg}KG × ${entry.extraPricePerKg} ({entry.extraNote || 'Notebook'})</span>
-                                                                            <span className="font-bold text-foreground">${Math.round(extraKg * parseFloat(entry.extraPricePerKg || '0')).toLocaleString()}</span>
+                                                                            <span className="font-bold text-foreground">${formatMoney(extraKg * parseFloat(entry.extraPricePerKg || '0'))}</span>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -1878,7 +1891,7 @@ export default function LedgerPage() {
                                                         {/* Maqalka Total */}
                                                         <div className="flex justify-between py-1.5 border-b border-border/40 font-bold text-foreground">
                                                             <span>{dynamicMaqalLabel}</span>
-                                                            <span>${productGrandTotal.toLocaleString()}</span>
+                                                            <span>${formatMoney(productGrandTotal)}</span>
                                                         </div>
 
                                                         {/* Reesto (Carry-over Balance) */}
@@ -1896,7 +1909,7 @@ export default function LedgerPage() {
                                                                     />
                                                                 ) : (
                                                                     <span className={cn("font-black", currentReesto < 0 ? "text-emerald-600" : "text-destructive")}>
-                                                                        {currentReesto < 0 ? "-" : "+"}{Math.abs(Math.round(currentReesto)).toLocaleString()}
+                                                                        {currentReesto < 0 ? "-" : "+"}${formatMoney(Math.abs(currentReesto))}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1909,7 +1922,7 @@ export default function LedgerPage() {
                                                         }).map((pay, idx) => (
                                                             <div key={`adj-${idx}`} className="flex justify-between items-center py-1.5 border-b border-border/40 font-bold">
                                                                 <span className="text-amber-600 dark:text-amber-500">{pay.note}</span>
-                                                                <span className="text-amber-600 dark:text-amber-500">-${Math.round(parseFloat(pay.amount)).toLocaleString()}</span>
+                                                                <span className="text-amber-600 dark:text-amber-500">-${formatMoney(parseFloat(pay.amount))}</span>
                                                             </div>
                                                         ))}
 
@@ -1917,7 +1930,7 @@ export default function LedgerPage() {
                                                         {(productGrandTotal > 0 || effectiveBalance !== 0 || activeAdjustmentsAmount > 0) && (
                                                             <div className="flex justify-between py-1.5 border-b-2 border-border font-black text-foreground">
                                                                 <span className={subtotal < 0 ? 'text-emerald-600 dark:text-emerald-500' : ''}>{subtotal < 0 ? 'Heyn' : 'Lacagta Guud'}</span>
-                                                                <span className={subtotal < 0 ? 'text-emerald-600 dark:text-emerald-500' : ''}>${Math.abs(Math.round(subtotal)).toLocaleString()}</span>
+                                                                <span className={subtotal < 0 ? 'text-emerald-600 dark:text-emerald-500' : ''}>${formatMoney(Math.abs(subtotal))}</span>
                                                             </div>
                                                         )}
 
@@ -1931,7 +1944,7 @@ export default function LedgerPage() {
                                                                 }).map((pay, idx) => (
                                                                     <div key={`pay-${idx}`} className="flex justify-between py-1 border-b border-border/30 text-emerald-600 font-bold">
                                                                         <span>{format(new Date(pay.date || new Date()), 'MMM dd yyyy')} {pay.note || 'Lacagta'}</span>
-                                                                        <span>-${Math.round(parseFloat(pay.amount)).toLocaleString()}</span>
+                                                                        <span>-${formatMoney(parseFloat(pay.amount))}</span>
                                                                     </div>
                                                                 ))}
                                                             </>
@@ -1943,7 +1956,7 @@ export default function LedgerPage() {
                                                                 <div className="flex justify-between items-center pt-2 mt-1 border-t-2 border-double border-amber-400 dark:border-amber-600 px-1 py-1">
                                                                     <span className="font-black text-sm text-[#C19A6B] dark:text-[#D4B087]">{finalLacagtaGuud <= 0 ? 'Heyn' : 'Reesto'}</span>
                                                                     <span className={`text-lg font-black ${finalLacagtaGuud > 0 ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-500'}`}>
-                                                                        ${Math.abs(Math.round(finalLacagtaGuud)).toLocaleString()}
+                                                                        ${formatMoney(Math.abs(finalLacagtaGuud))}
                                                                     </span>
                                                                 </div>
                                                                 <p className={`text-[8px] text-right font-bold uppercase ${finalLacagtaGuud > 0 ? 'text-destructive/60' : 'text-emerald-500/60'}`}>
@@ -1985,7 +1998,7 @@ export default function LedgerPage() {
                         <div className="flex-1">
                             <p className="text-[10px] font-black uppercase tracking-widest text-[#C19A6B] dark:text-[#D4B087] leading-none mb-1">{activePaymentAmount > 0 ? (finalLacagtaGuud <= 0 ? 'Heyn' : 'Reesto') : 'Lacagta Guud'}</p>
                             <p className={`text-xl font-black leading-none ${finalLacagtaGuud > 0 ? 'text-destructive' : 'text-emerald-500'}`}>
-                                ${Math.round(finalLacagtaGuud).toLocaleString()}
+                                ${formatMoney(Math.abs(finalLacagtaGuud))}
                             </p>
                         </div>
                         {isSuperAdmin || (isAdmin && selectedCustomerId && priorityIds.has(selectedCustomerId)) ? (
