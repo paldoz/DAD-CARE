@@ -8,7 +8,7 @@ import { unstable_cache } from 'next/cache';
 import { MAQAL_PAIRS_CTE, validateMaqalPairs } from '@/lib/maqal-utils';
 
 const fetchCustomerDailyEntriesData = async (customerId: string) => {
-    // 1. Fetch authoritative DailyBook 2-day pairs
+    // 1. Fetch authoritative DailyBook 2-day pairs (strictly chronological ASC)
     const pairsRes = await pool.query(`
         ${MAQAL_PAIRS_CTE}
         SELECT mq_num, date1::text as date1, date2::text as date2
@@ -30,9 +30,19 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
 
     validateMaqalPairs(allPairs);
 
-    // 2. Fetch customer's already processed product dates
+    if (allPairs.length === 0) {
+        return {
+            result: [],
+            allUnprocessedDates: [],
+            maqalId: 1
+        };
+    }
+
+    // 2. Fetch customer's already processed product dates & maqal IDs
     const processedRes = await pool.query(`
-        SELECT DISTINCT TO_CHAR((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date_str
+        SELECT DISTINCT 
+            COALESCE(reference_date::date, created_at::date)::text as date_str,
+            maqal_id
         FROM "Ledger"
         WHERE customer_id = $1
           AND type = 'PRODUCT'
@@ -41,9 +51,58 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
     `, [customerId]);
 
     const processedDates = new Set(processedRes.rows.map(r => r.date_str as string));
+    const processedMqNums = new Set<number>(
+        processedRes.rows
+            .map(r => r.maqal_id)
+            .filter((id): id is number => id != null && !isNaN(Number(id)))
+            .map(Number)
+    );
 
-    // 3. Find unprocessed pairs
-    const unprocessedPairs = allPairs.filter(p => !processedDates.has(p.date1) || !processedDates.has(p.date2));
+    // Map any processed ledger dates back to their authoritative mq_num in allPairs
+    for (const pair of allPairs) {
+        if (processedDates.has(pair.date1) || processedDates.has(pair.date2)) {
+            processedMqNums.add(pair.mq_num);
+        }
+    }
+
+    const maxProcessedMq = processedMqNums.size > 0 ? Math.max(...Array.from(processedMqNums)) : 0;
+
+    let unprocessedPairs: PairRecord[] = [];
+
+    if (maxProcessedMq > 0) {
+        // Customer has already progressed up to maxProcessedMq.
+        // Prevent date regression: next applicable pairs are strictly mq_num > maxProcessedMq.
+        unprocessedPairs = allPairs.filter(p => p.mq_num > maxProcessedMq);
+    } else {
+        // Brand new customer with no ledger history yet:
+        // Find their earliest active DailyBookItem date or Customer created_at date
+        const [earliestDbRes, customerRes] = await Promise.all([
+            pool.query(`
+                SELECT MIN(db.date)::text as earliest_date
+                FROM "DailyBookItem" dbi
+                JOIN "DailyBook" db ON dbi.daily_book_id = db.id
+                WHERE dbi.customer_id = $1
+                  AND dbi.deleted_at IS NULL
+                  AND db.deleted_at IS NULL
+            `, [customerId]),
+            pool.query(`
+                SELECT (created_at AT TIME ZONE 'Africa/Mogadishu')::date::text as created_date
+                FROM "Customer"
+                WHERE id = $1
+            `, [customerId])
+        ]);
+
+        const earliestDate = earliestDbRes.rows[0]?.earliest_date || customerRes.rows[0]?.created_date;
+
+        if (earliestDate) {
+            // Start from the pair containing or closest to this earliest date
+            const startPair = allPairs.find(p => p.date2 >= earliestDate) || allPairs[allPairs.length - 1];
+            unprocessedPairs = allPairs.filter(p => p.mq_num >= startPair.mq_num);
+        } else {
+            // Fallback: start from the latest pair
+            unprocessedPairs = [allPairs[allPairs.length - 1]];
+        }
+    }
 
     const allUnprocessedDates: string[] = [];
     for (const p of unprocessedPairs) {

@@ -687,17 +687,17 @@ export default function LedgerPage() {
                 const d1 = allUnprocessedDates[i];
                 const d2 = allUnprocessedDates[i + 1];
                 const pairIndex = i / 2;
-                const isWaitingPair = pairIndex === totalPairs - 1; // Last pair is always the waiting/locked pair
-                const isCurrentReady = pairIndex === 0 && totalPairs > 1; // First pair, not the only one
+                const isCurrentReady = pairIndex === 0; // First unprocessed pair in sequence is ALWAYS Current
+                const isWaitingPair = pairIndex === totalPairs - 1 && totalPairs > 1; // Trailing waiting pair
                 
                 let prefix: string;
                 let suffix: string;
-                if (isWaitingPair) {
-                    prefix = '⏳';
-                    suffix = '(Waiting)';
-                } else if (isCurrentReady) {
+                if (isCurrentReady) {
                     prefix = '📌';
                     suffix = '(Current)';
+                } else if (isWaitingPair) {
+                    prefix = '⏳';
+                    suffix = '(Waiting)';
                 } else {
                     prefix = '❌';
                     suffix = '(Pending)';
