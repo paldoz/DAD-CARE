@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { format, parseISO } from 'date-fns';
-import { groupTransactionsInfoReceipts, type Transaction } from '@/app/utils/ledgerHelpers';
+import { groupTransactionsInfoReceipts, calculateMaqalCharge, type Transaction } from '@/app/utils/ledgerHelpers';
 import { smartCustomerSearch } from '@/lib/search-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -791,11 +791,11 @@ export default function LedgerPage() {
         const total = dateEntries.reduce((sum, p) => {
             const kg = parseFloat(p.kg) || 0;
             const price = parseFloat(p.pricePerKg) || 0;
-            const pExtra = (parseFloat(p.extraKg || '0') || 0) * (parseFloat(p.extraPricePerKg || '0') || 0);
-            const pMain = kg * price;
+            const pExtra = p.extraKg && p.extraPricePerKg ? calculateMaqalCharge(p.extraKg, p.extraPricePerKg) : 0;
+            const pMain = (kg > 0 && price > 0) ? calculateMaqalCharge(kg, price) : 0;
             return sum + pMain + pExtra;
         }, 0);
-        return Number(total.toFixed(2));
+        return total;
     }, [dateEntries]);
 
     const activePaymentAmount = paymentEntries.reduce((sum, pay) => {
@@ -1879,13 +1879,13 @@ export default function LedgerPage() {
                                                                     {showMain && (
                                                                         <div className="flex justify-between">
                                                                             <span>{format(new Date(entry.date), 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
-                                                                            <span className="font-bold text-foreground">${formatMoney(mainKg * parseFloat(entry.pricePerKg))}</span>
+                                                                            <span className="font-bold text-foreground">${formatMoney(mainKg > 0 ? calculateMaqalCharge(mainKg, entry.pricePerKg) : 0)}</span>
                                                                         </div>
                                                                     )}
                                                                     {showExtra && (
                                                                         <div className={cn("flex justify-between text-[10px] text-muted-foreground/80", (showMain && mainKg > 0) ? "pl-3" : "")}>
                                                                             <span>{(showMain && mainKg > 0) ? '↳ ' : ''}{format(new Date(entry.date), 'MMM dd')} · {entry.extraKg}KG × ${entry.extraPricePerKg} ({entry.extraNote || 'Notebook'})</span>
-                                                                            <span className="font-bold text-foreground">${formatMoney(extraKg * parseFloat(entry.extraPricePerKg || '0'))}</span>
+                                                                            <span className="font-bold text-foreground">${formatMoney(extraKg > 0 ? calculateMaqalCharge(extraKg, entry.extraPricePerKg || '0') : 0)}</span>
                                                                         </div>
                                                                     )}
                                                                 </div>

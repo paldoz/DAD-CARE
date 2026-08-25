@@ -3,6 +3,7 @@ import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
 import { revalidateTag, revalidatePath, unstable_cache } from 'next/cache';
 import pool from '@/lib/db';
+import { calculateMaqalCharge } from '@/lib/ledger-utils';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
 import { z } from 'zod';
@@ -137,7 +138,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 
                 if (type === 'PRODUCT') {
                     // FLOOR rule: fractional dollar is forgiven. e.g. 4.5 KG × $35 = $157.50 → $157
-                    entryAmount = Math.floor(parseFloat(kg) * parseFloat(price));
+                    entryAmount = calculateMaqalCharge(kg, price);
                     runningDebt = Number((runningDebt + entryAmount).toFixed(2));
                 } else if (type === 'PAYMENT') {
                     entryAmount = Number(parseFloat(amount).toFixed(2));

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
 import pool from '@/lib/db';
-import { recalculateCustomerLedger, recalculateMultipleCustomerLedgers } from '@/lib/ledger-utils';
+import { recalculateCustomerLedger, recalculateMultipleCustomerLedgers, calculateMaqalCharge } from '@/lib/ledger-utils';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
@@ -216,7 +216,7 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
                     effectivePrice = oldKg > 0 ? (oldAmt / oldKg) : 0;
                 }
 
-                let newAmount = Number((newKg * effectivePrice).toFixed(2));
+                let newAmount = calculateMaqalCharge(newKg, effectivePrice);
 
                 // --- NOTE PARSER SYNCHRONIZATION ---
                 if (dailyItem.note) {
@@ -245,17 +245,17 @@ export const POST = trackApiRoute('/api/daily-book', async (request: Request) =>
                             const secondEntry = results[1];
                             const p1 = firstEntry.price !== null ? firstEntry.price : effectivePrice;
                             const p2 = secondEntry.price !== null ? secondEntry.price : effectivePrice;
-                            newAmount = Number(((firstEntry.kg * p1) + (secondEntry.kg * p2)).toFixed(2));
+                            newAmount = calculateMaqalCharge(firstEntry.kg, p1) + calculateMaqalCharge(secondEntry.kg, p2);
                         } else {
                             const p1 = firstEntry.price !== null ? firstEntry.price : effectivePrice;
                             const mainKgNum = Math.max(0, newKg - firstEntry.kg);
-                            newAmount = Number(((firstEntry.kg * p1) + (mainKgNum * effectivePrice)).toFixed(2));
+                            newAmount = calculateMaqalCharge(firstEntry.kg, p1) + calculateMaqalCharge(mainKgNum, effectivePrice);
                         }
                     } else {
                         // Notebook Pricing Override fallback
                         const priceMatch = noteText.match(/(?:^|\s)\$?(\d+(?:\.\d+)?)(?:\s|$)/);
                         if (priceMatch) {
-                            newAmount = Number((newKg * parseFloat(priceMatch[1])).toFixed(2));
+                            newAmount = calculateMaqalCharge(newKg, parseFloat(priceMatch[1]));
                         }
                     }
                 }

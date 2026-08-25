@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { logAudit } from '@/lib/audit';
 import { revalidateTag, revalidatePath } from 'next/cache';
-import { recalculateCustomerLedger } from '@/lib/ledger-utils';
+import { recalculateCustomerLedger, calculateMaqalCharge } from '@/lib/ledger-utils';
 
 export async function DELETE(
     request: Request,
@@ -168,7 +168,7 @@ export async function PATCH(
         // PAYMENT/ADJUSTMENT amounts are kept exact (toFixed(2)).
         let newAmount: number;
         if (ledger.type === 'PRODUCT') {
-            newAmount = Math.floor(newKg * newPrice);
+            newAmount = calculateMaqalCharge(newKg, newPrice);
         } else {
             newAmount = amount !== undefined ? Number(parseFloat(amount).toFixed(2)) : Number(ledger.amount);
         }

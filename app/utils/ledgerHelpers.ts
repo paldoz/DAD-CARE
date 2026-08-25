@@ -1,5 +1,22 @@
 import { format } from 'date-fns';
 
+/**
+ * Authoritative Maqal Charge Calculation:
+ * Keeps KG decimals (e.g. 4.5 KG), but drops/forgives the fractional dollar.
+ * Formula: Math.floor(kg * price)
+ * Examples:
+ *   4.5 * 35 = 157.50 -> 157
+ *   5.0 * 35 = 175.00 -> 175
+ *   3.5 * 35 = 122.50 -> 122
+ *   2.5 * 35 = 87.50  -> 87
+ *   4.25 * 35 = 148.75 -> 148
+ */
+export function calculateMaqalCharge(kg: number | string, price: number | string): number {
+    const k = typeof kg === 'number' ? kg : parseFloat(kg) || 0;
+    const p = typeof price === 'number' ? price : parseFloat(price) || 0;
+    return Math.floor(k * p);
+}
+
 export interface Transaction {
     id: string;
     type: 'PRODUCT' | 'PAYMENT' | 'ADJUSTMENT';
