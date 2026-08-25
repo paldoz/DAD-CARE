@@ -56,50 +56,67 @@ interface DashboardData {
     recentTransactions: any[];
 }
 
+interface MqCustomer {
+    id: string;
+    name: string;
+    code: string;
+    expected: number;
+    paid: number;
+    kg: number;
+    pricePerKg?: number;
+    remaining: number;
+    overpaid: number;
+    paymentPct: number;
+    payments: {
+        id: string;
+        date: string;
+        amount: number;
+        receiptId: string | null;
+        maqalId: number | null;
+        note: string | null;
+    }[];
+}
+
+interface MqData {
+    id: string;
+    mqNumber?: number;
+    label: string;
+    dateRange?: string;
+    startDate?: string;
+    endDate?: string;
+    kg: number;
+    expected: number;
+    paid: number;
+    remaining: number;     // Gross customer debts
+    overpaid: number;      // Gross Dheeraadka Maqalka
+    netDebt?: number;      // Net debt (expected > collected)
+    netReesto?: number;    // Net dheeraadka (collected > expected)
+    paymentPercentage: number;
+    reconciliationStatus?: string;
+    customerCount: number;
+    customers: MqCustomer[];
+}
+
 interface MqAnalyticsData {
     period: string;
-    mqs: {
-        id: string;
-        label: string;
-        dateRange?: string;
-        startDate?: string;
-        endDate?: string;
-        kg: number;
-        expected: number;
-        paid: number;
-        remaining: number;
-        overpaid?: number;
-        paymentPercentage: number;
-        customerCount: number;
-        customers: {
-            id: string;
-            name: string;
-            code: string;
-            expected: number;
-            paid: number;
-            kg: number;
-            remaining: number;
-            overpaid?: number;
-            paymentPct?: number;
-            payments: {
-                id: string;
-                date: string;
-                amount: number;
-                receiptId: string | null;
-                maqalId: number | null;
-                note: string | null;
-            }[];
-        }[];
-    }[];
+    reconciliationStatus?: string;
+    mqs: MqData[];
     totals: {
         expected: number;
         paid: number;
         remaining: number;
+        overpaid?: number;
         kg: number;
         paymentProgress: number;
         totalMqs: number;
     };
 }
+
+type DrillDownPayload = {
+    mqLabel: string;
+    mqDateRange: string;
+    customers: MqCustomer[];
+};
 
 /* ── Compact sparkline (card decoration only) ─────────── */
 function BlueSparkline() {
@@ -137,7 +154,9 @@ export default function DashboardPage() {
     const [overviewPeriod, setOverviewPeriod] = useState<'week' | 'month' | 'year' | 'all'>('all');
     const [expandedMqDetail, setExpandedMqDetail] = useState<boolean>(false);
     const [selectedDot, setSelectedDot] = useState<number | null>(null);
-    const [paymentDrillDown, setPaymentDrillDown] = useState<{ mqLabel: string; mqDateRange: string; customers: MqAnalyticsData['mqs'][0]['customers'] } | null>(null);
+    const [paymentDrillDown, setPaymentDrillDown] = useState<DrillDownPayload | null>(null);
+    const [debtDrillDown, setDebtDrillDown] = useState<DrillDownPayload | null>(null);
+    const [overpaidDrillDown, setOverpaidDrillDown] = useState<DrillDownPayload | null>(null);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const { data, isLoading, mutate: mutateDashboard } = useSWR<DashboardData>('/api/dashboard', fetcher, {
@@ -779,7 +798,10 @@ export default function DashboardPage() {
                             const pct = mq.paymentPercentage;
                             const pctColor = pct >= 90 ? 'text-emerald-500' : pct >= 60 ? 'text-amber-500' : 'text-red-500';
                             const barColor = pct >= 90 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500';
-                            const debtCustomers = mq.customers.filter((c: any) => c.remaining > 0);
+                            const netOutstanding = Number((mq.expected - mq.paid).toFixed(2));
+                            const dheeraadka = mq.overpaid ?? 0;
+                            const debtCustomers = mq.customers.filter(c => c.remaining > 0);
+                            const overpaidCustomers = mq.customers.filter(c => (c.overpaid ?? 0) > 0);
                             return (
                                 <div className="mt-1 rounded-2xl border border-primary/30 bg-gradient-to-b from-primary/5 to-transparent overflow-hidden animate-in slide-in-from-top-2 duration-200">
                                     {/* Panel header */}
@@ -804,7 +826,7 @@ export default function DashboardPage() {
                                     </div>
 
                                     {/* Progress bar */}
-                                    <div className="px-4 mb-3">
+                                    <div className="px-4 mb-2">
                                         <div className="flex items-center justify-between mb-1">
                                             <span className="text-[10px] font-semibold text-muted-foreground">Payment Progress</span>
                                             <span className={`text-sm font-black ${pctColor}`}>
@@ -816,33 +838,51 @@ export default function DashboardPage() {
                                         </div>
                                     </div>
 
-                                    {/* Money stats grid */}
-                                    <div className={`grid ${(mq.overpaid ?? 0) > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 md:gap-2 px-4 mb-3`}>
-                                        <div className="bg-card rounded-xl p-2 md:p-2.5 border border-border/40 text-center">
-                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
-                                            <p className="text-xs font-black text-foreground tabular-nums">${fmtMoney(mq.expected)}</p>
+                                    {/* ── Accounting rows ── */}
+                                    <div className="px-4 mb-3 space-y-1.5">
+                                        {/* Expected */}
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] font-semibold text-muted-foreground">Expected</span>
+                                            <span className="text-[12px] font-black text-foreground tabular-nums">{fmtMoney(mq.expected)}</span>
                                         </div>
+                                        {/* Collected — clickable */}
                                         <button
                                             onClick={() => setPaymentDrillDown({ mqLabel: mq.label, mqDateRange: mq.dateRange || '', customers: mq.customers })}
-                                            className="bg-card rounded-xl p-2 md:p-2.5 border border-primary/40 text-center hover:bg-primary/5 active:scale-95 transition-all cursor-pointer group"
-                                            title="Tap to see payment breakdown"
+                                            className="w-full flex items-center justify-between rounded-lg bg-blue-500/8 border border-blue-500/20 px-2 py-1.5 hover:bg-blue-500/15 active:scale-[0.99] transition-all group"
                                         >
-                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5 group-hover:text-primary transition-colors">Collected 👆</p>
-                                            <p className="text-xs font-black text-blue-500 tabular-nums">${fmtMoney(mq.paid)}</p>
+                                            <span className="text-[11px] font-semibold text-blue-500 group-hover:text-blue-400">Collected 👆</span>
+                                            <span className="text-[12px] font-black text-blue-500 tabular-nums">{fmtMoney(mq.paid)}</span>
                                         </button>
-                                        <div className="bg-card rounded-xl p-2 md:p-2.5 border border-border/40 text-center">
-                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Customer Debt</p>
-                                            <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>${fmtMoney(mq.remaining)}</p>
-                                        </div>
-                                        {(mq.overpaid ?? 0) > 0 && (
-                                            <div className="bg-card rounded-xl p-2 md:p-2.5 border border-emerald-500/30 text-center bg-emerald-500/5">
-                                                <p className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 mb-0.5">Reesto</p>
-                                                <p className="text-xs font-black text-emerald-500 tabular-nums">+${fmtMoney(mq.overpaid || 0)}</p>
-                                            </div>
+                                        {/* Customer Debt — clickable */}
+                                        {mq.remaining > 0 && (
+                                            <button
+                                                onClick={() => setDebtDrillDown({ mqLabel: mq.label, mqDateRange: mq.dateRange || '', customers: mq.customers })}
+                                                className="w-full flex items-center justify-between rounded-lg bg-amber-500/8 border border-amber-500/20 px-2 py-1.5 hover:bg-amber-500/15 active:scale-[0.99] transition-all group"
+                                            >
+                                                <span className="text-[11px] font-semibold text-amber-500 group-hover:text-amber-400">Customer Debt 👆</span>
+                                                <span className="text-[12px] font-black text-amber-500 tabular-nums">{fmtMoney(mq.remaining)}</span>
+                                            </button>
                                         )}
+                                        {/* Dheeraadka Maqalka — clickable */}
+                                        {dheeraadka > 0 && (
+                                            <button
+                                                onClick={() => setOverpaidDrillDown({ mqLabel: mq.label, mqDateRange: mq.dateRange || '', customers: mq.customers })}
+                                                className="w-full flex items-center justify-between rounded-lg bg-emerald-500/8 border border-emerald-500/20 px-2 py-1.5 hover:bg-emerald-500/15 active:scale-[0.99] transition-all group"
+                                            >
+                                                <span className="text-[11px] font-semibold text-emerald-500 group-hover:text-emerald-400">Dheeraadka Maqalka 👆</span>
+                                                <span className="text-[12px] font-black text-emerald-500 tabular-nums">+{fmtMoney(dheeraadka)}</span>
+                                            </button>
+                                        )}
+                                        {/* Net Outstanding divider */}
+                                        <div className="border-t border-border/30 pt-1.5 flex items-center justify-between">
+                                            <span className="text-[11px] font-bold text-muted-foreground">Net Outstanding</span>
+                                            <span className={`text-[12px] font-black tabular-nums ${netOutstanding > 0 ? 'text-amber-500' : netOutstanding < 0 ? 'text-emerald-500' : 'text-emerald-500'}`}>
+                                                {netOutstanding > 0 ? fmtMoney(netOutstanding) : netOutstanding < 0 ? `+${fmtMoney(Math.abs(netOutstanding))}` : fmtMoney(0)}
+                                            </span>
+                                        </div>
                                     </div>
 
-                                    {/* Customer section */}
+                                    {/* Customer debt section toggle */}
                                     <div className="border-t border-border/40 px-4 py-3">
                                         <button
                                             onClick={() => setExpandedMqDetail(!expandedMqDetail)}
@@ -855,7 +895,7 @@ export default function DashboardPage() {
                                                         : '✅ All customers paid in full'}
                                                 </span>
                                                 {debtCustomers.length > 0 && (
-                                                    <span className="text-[10px] font-bold text-amber-500">{fmtMoney(mq.remaining)} total owed</span>
+                                                    <span className="text-[10px] font-bold text-amber-500">{fmtMoney(mq.remaining)} owed</span>
                                                 )}
                                             </div>
                                             {debtCustomers.length > 0 && (
@@ -865,8 +905,9 @@ export default function DashboardPage() {
 
                                         {expandedMqDetail && debtCustomers.length > 0 && (
                                             <div className="mt-2 space-y-1.5">
-                                                {debtCustomers.map((c: any) => {
-                                                    const cPct = c.expected > 0 ? Math.min(100, Math.round((c.paid / c.expected) * 100)) : (c.paid > 0 ? 100 : 0);
+                                                {debtCustomers.map(c => {
+                                                    const cPct = c.paymentPct ?? (c.expected > 0 ? (c.paid / c.expected) * 100 : 0);
+                                                    const cPctCapped = Math.min(100, cPct);
                                                     const cBarColor = cPct >= 90 ? 'bg-emerald-500' : cPct >= 60 ? 'bg-amber-500' : 'bg-red-500';
                                                     const cTextColor = cPct >= 90 ? 'text-emerald-500' : cPct >= 60 ? 'text-amber-500' : 'text-red-500';
                                                     return (
@@ -879,9 +920,9 @@ export default function DashboardPage() {
                                                                 <p className="text-[11px] font-bold text-foreground truncate">{c.name}</p>
                                                                 <div className="flex items-center gap-1.5 mt-0.5">
                                                                     <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                                                                        <div className={`h-full ${cBarColor} rounded-full`} style={{ width: `${cPct}%` }} />
+                                                                        <div className={`h-full ${cBarColor} rounded-full`} style={{ width: `${cPctCapped}%` }} />
                                                                     </div>
-                                                                    <span className={`text-[9px] font-black shrink-0 ${cTextColor}`}>{cPct}%</span>
+                                                                    <span className={`text-[9px] font-black shrink-0 ${cTextColor}`}>{cPct % 1 === 0 ? cPct.toFixed(0) : cPct.toFixed(1)}%</span>
                                                                 </div>
                                                             </div>
                                                             <div className="text-right shrink-0">
@@ -899,107 +940,219 @@ export default function DashboardPage() {
                             );
                         })()}
 
-                        {/* ── Payment drill-down Glassmorphism Modal ── */}
+                        {/* ── COLLECTED PAYMENTS Modal ── */}
                         {paymentDrillDown && (
                             <div
                                 className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
                                 onClick={() => setPaymentDrillDown(null)}
                             >
                                 <div
-                                    style={{
-                                        background: 'rgba(15, 23, 42, 0.82)',
-                                        backdropFilter: 'blur(24px)',
-                                        WebkitBackdropFilter: 'blur(24px)',
-                                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                                        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.35)',
-                                    }}
-                                    className="w-full max-w-lg rounded-3xl max-h-[85vh] flex flex-col overflow-hidden text-foreground animate-in zoom-in-95 duration-200"
+                                    style={{ background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)' }}
+                                    className="w-full max-w-lg rounded-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
                                     onClick={e => e.stopPropagation()}
                                 >
-                                    {/* Modal header */}
                                     <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/10 shrink-0">
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <span className="text-base md:text-lg font-black text-white">{paymentDrillDown.mqLabel}</span>
-                                                <span className="text-xs font-bold text-blue-400">Collected Payments</span>
+                                                <span className="text-xs font-bold text-blue-400 bg-blue-500/15 border border-blue-400/30 px-2 py-0.5 rounded-full">Collected Payments</span>
                                             </div>
-                                            {paymentDrillDown.mqDateRange && (
-                                                <p className="text-[11px] font-medium text-slate-300 mt-0.5">📅 {paymentDrillDown.mqDateRange}</p>
-                                            )}
+                                            {paymentDrillDown.mqDateRange && <p className="text-[11px] font-medium text-slate-300 mt-0.5">📅 {paymentDrillDown.mqDateRange}</p>}
                                         </div>
-                                        <button 
-                                            onClick={() => setPaymentDrillDown(null)}
-                                            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors text-sm font-black"
-                                        >
-                                            ✕
-                                        </button>
+                                        <button onClick={() => setPaymentDrillDown(null)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors text-sm font-black">✕</button>
                                     </div>
-
-                                    {/* Payment list */}
                                     <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
-                                        {paymentDrillDown.customers
-                                            .filter((c: any) => c.payments && c.payments.length > 0)
-                                            .map((c: any) => {
-                                                const totalCustomerPaid = c.payments.reduce((s: number, p: any) => s + p.amount, 0);
-                                                return (
-                                                    <div key={c.id} className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.08]">
-                                                        {/* Customer header */}
-                                                        <div className="flex items-center justify-between mb-2">
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-xs font-black text-blue-400 shrink-0">
-                                                                    {c.name.charAt(0).toUpperCase()}
-                                                                </div>
-                                                                <span className="text-sm font-bold text-white truncate">{c.name}</span>
-                                                            </div>
-                                                            <span className="text-xs font-black text-emerald-400 tabular-nums">
-                                                                ${fmtMoney(totalCustomerPaid)}
-                                                            </span>
-                                                        </div>
-
-                                                        {/* Payment rows */}
-                                                        <div className="space-y-1.5 pl-9">
-                                                            {c.payments.map((pay: any) => (
-                                                                <div key={pay.id} className="flex items-start justify-between gap-2 text-xs py-1.5 border-t border-white/[0.06]">
-                                                                    <div className="min-w-0">
-                                                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                                                            <span className="font-medium text-slate-300">
-                                                                                {new Date(pay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                                            </span>
-                                                                            <span className="text-[9px] font-black text-blue-400 bg-blue-500/15 border border-blue-400/30 px-1.5 py-0.5 rounded">
-                                                                                {paymentDrillDown.mqLabel}
-                                                                            </span>
-                                                                            {pay.receiptId && (
-                                                                                <span className="text-[9px] font-mono text-slate-400">
-                                                                                    Receipt: {String(pay.receiptId).slice(0, 8)}…
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        {pay.note && <p className="text-[10px] text-slate-400 italic truncate mt-0.5">{pay.note}</p>}
-                                                                    </div>
-                                                                    <span className="font-black text-emerald-400 shrink-0 tabular-nums">+${fmtMoney(pay.amount)}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                        {paymentDrillDown.customers.filter(c => c.payments && c.payments.length > 0).map(c => (
+                                            <div key={c.id} className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.08]">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-xs font-black text-blue-400 shrink-0">{c.name.charAt(0).toUpperCase()}</div>
+                                                        <span className="text-sm font-bold text-white">{c.name}</span>
                                                     </div>
-                                                );
-                                            })}
-
-                                        {paymentDrillDown.customers.every((c: any) => !c.payments || c.payments.length === 0) && (
-                                            <div className="text-center py-12 text-slate-400">
-                                                <p className="text-sm">No payments recorded for this Maqal yet.</p>
+                                                    <span className="text-xs font-black text-emerald-400">{fmtMoney(c.payments.reduce((s, p) => s + p.amount, 0))}</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-400 pl-9 mb-2">Expected: {fmtMoney(c.expected)}</p>
+                                                <div className="space-y-1.5 pl-9">
+                                                    {c.payments.map(pay => (
+                                                        <div key={pay.id} className="flex items-start justify-between gap-2 text-xs py-1.5 border-t border-white/[0.06]">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="font-medium text-slate-300">{new Date(pay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                                                    <span className="text-[9px] font-black text-blue-400 bg-blue-500/15 border border-blue-400/30 px-1.5 py-0.5 rounded">{paymentDrillDown.mqLabel}</span>
+                                                                    {pay.receiptId && <span className="text-[9px] font-mono text-slate-400">#{String(pay.receiptId).slice(0,8)}…</span>}
+                                                                </div>
+                                                                {pay.note && <p className="text-[10px] text-slate-400 italic mt-0.5">{pay.note}</p>}
+                                                            </div>
+                                                            <span className="font-black text-emerald-400 shrink-0">+{fmtMoney(pay.amount)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
+                                        ))}
+                                        {paymentDrillDown.customers.every(c => !c.payments || c.payments.length === 0) && (
+                                            <div className="text-center py-12 text-slate-400"><p className="text-sm">No payments recorded for this Maqal yet.</p></div>
                                         )}
                                     </div>
-
-                                    {/* Modal footer — total */}
                                     <div className="px-5 py-4 border-t border-white/10 shrink-0 flex items-center justify-between bg-black/20">
                                         <div>
                                             <p className="text-xs font-bold text-slate-300">Total Collected</p>
-                                            <p className="text-[10px] text-slate-400">Sum of customer payments in this Maqal</p>
+                                            <p className="text-[10px] text-slate-400">Sum of all payments in this Maqal</p>
                                         </div>
-                                        <span className="text-lg font-black text-emerald-400 tabular-nums">
-                                            ${fmtMoney(paymentDrillDown.customers.reduce((s: number, c: any) => s + (c.payments || []).reduce((ps: number, p: any) => ps + p.amount, 0), 0))}
-                                        </span>
+                                        <span className="text-lg font-black text-emerald-400 tabular-nums">{fmtMoney(paymentDrillDown.customers.reduce((s, c) => s + c.payments.reduce((ps, p) => ps + p.amount, 0), 0))}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── CUSTOMER DEBT Modal ── */}
+                        {debtDrillDown && (
+                            <div
+                                className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+                                onClick={() => setDebtDrillDown(null)}
+                            >
+                                <div
+                                    style={{ background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', border: '1px solid rgba(245,158,11,0.25)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)' }}
+                                    className="w-full max-w-lg rounded-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/10 shrink-0">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-base md:text-lg font-black text-white">{debtDrillDown.mqLabel}</span>
+                                                <span className="text-xs font-bold text-amber-400 bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 rounded-full">Customer Debt</span>
+                                            </div>
+                                            {debtDrillDown.mqDateRange && <p className="text-[11px] font-medium text-slate-300 mt-0.5">📅 {debtDrillDown.mqDateRange}</p>}
+                                        </div>
+                                        <button onClick={() => setDebtDrillDown(null)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors text-sm font-black">✕</button>
+                                    </div>
+                                    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-2.5">
+                                        {debtDrillDown.customers.filter(c => c.remaining > 0).map(c => {
+                                            const cPct = c.paymentPct ?? (c.expected > 0 ? (c.paid / c.expected) * 100 : 0);
+                                            const pctColor = cPct >= 90 ? 'text-emerald-400' : cPct >= 60 ? 'text-amber-400' : 'text-red-400';
+                                            const barW = Math.min(100, Math.max(0, cPct));
+                                            const barColor = cPct >= 90 ? 'bg-emerald-500' : cPct >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                                            return (
+                                                <div key={c.id} className="p-3.5 rounded-2xl bg-white/[0.04] border border-amber-500/[0.15]">
+                                                    <div className="flex items-start justify-between mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-xs font-black text-amber-400 shrink-0">{c.name.charAt(0).toUpperCase()}</div>
+                                                            <div>
+                                                                <p className="text-sm font-bold text-white">{c.name}</p>
+                                                                {c.kg > 0 && <p className="text-[10px] text-slate-400">{fmtKg(c.kg)}{c.pricePerKg ? ` × $${c.pricePerKg}` : ''}</p>}
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-sm font-black text-amber-400">{fmtMoney(c.remaining)} owed</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2 mb-2 text-center">
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400">Expected</p>
+                                                            <p className="text-[11px] font-black text-slate-200">{fmtMoney(c.expected)}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400">Collected</p>
+                                                            <p className="text-[11px] font-black text-blue-400">{fmtMoney(c.paid)}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400">Paid %</p>
+                                                            <p className={`text-[11px] font-black ${pctColor}`}>{cPct % 1 === 0 ? cPct.toFixed(0) : cPct.toFixed(2)}%</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                        <div className={`h-full ${barColor} rounded-full transition-all duration-700`} style={{ width: `${barW}%` }} />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {debtDrillDown.customers.every(c => c.remaining <= 0) && (
+                                            <div className="text-center py-12 text-slate-400"><p className="text-sm">✅ No customers with debt in this Maqal.</p></div>
+                                        )}
+                                    </div>
+                                    <div className="px-5 py-4 border-t border-white/10 shrink-0 flex items-center justify-between bg-black/20">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-300">Total Customer Debt</p>
+                                            <p className="text-[10px] text-slate-400">{debtDrillDown.customers.filter(c => c.remaining > 0).length} customers owe money</p>
+                                        </div>
+                                        <span className="text-lg font-black text-amber-400 tabular-nums">{fmtMoney(debtDrillDown.customers.reduce((s, c) => s + c.remaining, 0))}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── DHEERAADKA MAQALKA Modal ── */}
+                        {overpaidDrillDown && (
+                            <div
+                                className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+                                onClick={() => setOverpaidDrillDown(null)}
+                            >
+                                <div
+                                    style={{ background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', border: '1px solid rgba(34,197,94,0.25)', boxShadow: '0 20px 50px rgba(0,0,0,0.4)' }}
+                                    className="w-full max-w-lg rounded-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/10 shrink-0">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-base md:text-lg font-black text-white">{overpaidDrillDown.mqLabel}</span>
+                                                <span className="text-xs font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-400/30 px-2 py-0.5 rounded-full">Dheeraadka Maqalka</span>
+                                            </div>
+                                            {overpaidDrillDown.mqDateRange && <p className="text-[11px] font-medium text-slate-300 mt-0.5">📅 {overpaidDrillDown.mqDateRange}</p>}
+                                        </div>
+                                        <button onClick={() => setOverpaidDrillDown(null)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors text-sm font-black">✕</button>
+                                    </div>
+                                    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-2.5">
+                                        {overpaidDrillDown.customers.filter(c => (c.overpaid ?? 0) > 0).map(c => {
+                                            const cPct = c.paymentPct ?? (c.expected > 0 ? (c.paid / c.expected) * 100 : 0);
+                                            return (
+                                                <div key={c.id} className="p-3.5 rounded-2xl bg-white/[0.04] border border-emerald-500/[0.15]">
+                                                    <div className="flex items-start justify-between mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-xs font-black text-emerald-400 shrink-0">{c.name.charAt(0).toUpperCase()}</div>
+                                                            <p className="text-sm font-bold text-white">{c.name}</p>
+                                                        </div>
+                                                        <span className="text-sm font-black text-emerald-400">+{fmtMoney(c.overpaid ?? 0)}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400">Expected</p>
+                                                            <p className="text-[11px] font-black text-slate-200">{fmtMoney(c.expected)}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400">Collected</p>
+                                                            <p className="text-[11px] font-black text-blue-400">{fmtMoney(c.paid)}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-[9px] text-slate-400">Paid %</p>
+                                                            <p className="text-[11px] font-black text-emerald-400">{cPct % 1 === 0 ? cPct.toFixed(0) : cPct.toFixed(2)}%</p>
+                                                        </div>
+                                                    </div>
+                                                    {c.payments.length > 0 && (
+                                                        <div className="border-t border-white/[0.06] pt-2 space-y-1">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">Payments</p>
+                                                            {c.payments.map(pay => (
+                                                                <div key={pay.id} className="flex items-center justify-between text-xs">
+                                                                    <span className="text-slate-300">{new Date(pay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                                                    <span className="font-black text-emerald-400">+{fmtMoney(pay.amount)}</span>
+                                                                </div>
+                                                            ))}
+                                                            <div className="flex items-center justify-between text-xs border-t border-white/[0.06] pt-1 mt-1">
+                                                                <span className="text-slate-400">Customer total</span>
+                                                                <span className="font-black text-emerald-400">{fmtMoney(c.paid)}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {overpaidDrillDown.customers.every(c => (c.overpaid ?? 0) <= 0) && (
+                                            <div className="text-center py-12 text-slate-400"><p className="text-sm">No customers with Dheeraadka in this Maqal.</p></div>
+                                        )}
+                                    </div>
+                                    <div className="px-5 py-4 border-t border-white/10 shrink-0 flex items-center justify-between bg-black/20">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-300">Total Dheeraadka Maqalka</p>
+                                            <p className="text-[10px] text-slate-400">{overpaidDrillDown.customers.filter(c => (c.overpaid ?? 0) > 0).length} customers overpaid</p>
+                                        </div>
+                                        <span className="text-lg font-black text-emerald-400 tabular-nums">+{fmtMoney(overpaidDrillDown.customers.reduce((s, c) => s + (c.overpaid ?? 0), 0))}</span>
                                     </div>
                                 </div>
                             </div>
