@@ -296,14 +296,14 @@ export default function LedgerPage() {
         currentBalance: Number(ledgerData.summary.currentBalance || 0)
     } : { totalKg: 0, totalPaid: 0, currentBalance: 0 };
 
-    // SWR fetch for customer daily entries to cache the results
+    // SWR fetch for customer daily entries - must always be fresh so the correct Maqal pair is shown
     const [startDate, setStartDate] = useState<string>('');
     const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
-        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
-        dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
-        keepPreviousData: true,
-        revalidateIfStale: false,
+        revalidateOnFocus: false,    // don't re-fetch on every tab-switch
+        dedupingInterval: 0,         // always fetch fresh — Maqal pair MUST be correct, no stale data
+        keepPreviousData: false,     // don't show old customer's pair while new customer loads
+        revalidateIfStale: true,
         revalidateOnReconnect: false
     });
 
