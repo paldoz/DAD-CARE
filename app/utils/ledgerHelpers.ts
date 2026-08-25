@@ -177,8 +177,16 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
         const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
 
-        const productDates = sorted.filter(t => t.type === 'PRODUCT').map(t => new Date(t.reference_date || 0));
-        let titleString = format(new Date(last.created_at || last.reference_date || new Date()), 'EEEE, MMMM dd, yyyy');
+        const parseSafeDate = (dStr: any): Date => {
+            if (!dStr) return new Date(0);
+            if (typeof dStr === 'string' && dStr.includes('-') && !dStr.includes('T')) {
+                return new Date(dStr.replace(/-/g, '/'));
+            }
+            return new Date(dStr);
+        };
+
+        const productDates = sorted.filter(t => t.type === 'PRODUCT').map(t => parseSafeDate(t.reference_date));
+        let titleString = format(parseSafeDate(last.created_at || last.reference_date), 'EEEE, MMMM dd, yyyy');
 
         let sortDate: Date;
         if (productDates.length > 0) {
@@ -189,7 +197,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             else if (uniqueDates.length === 2) titleString = `Maqalka Taariikhda ${uniqueDates[0]} iyo ${uniqueDates[1]}`;
             else titleString = `Maqalka Taariikhda ${uniqueDates[0]} ila ${uniqueDates[uniqueDates.length - 1]}`;
         } else {
-            sortDate = new Date(first.created_at || first.reference_date || 0);
+            sortDate = parseSafeDate(first.created_at || first.reference_date);
         }
 
         const productReceiptId = sorted.find(t => t.type === 'PRODUCT' && t.receipt_id)?.receipt_id || null;

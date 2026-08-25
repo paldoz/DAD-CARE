@@ -1462,7 +1462,7 @@ export default function CustomerDetailPage() {
                                                                 <div className="flex flex-col flex-1">
                                                                     <span>
                                                                         {(e.note && hasMain) ? '↳ ' : ''}
-                                                                        {format(new Date(e.reference_date), 'MMM dd')} · {isAbsent ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
+                                                                        {format((() => { const d = e.reference_date; if (typeof d === 'string' && d.includes('-') && !d.includes('T')) return new Date(d.replace(/-/g, '/')); return new Date(d || 0); })(), 'MMM dd')} · {isAbsent ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
                                                                         {e.note ? ` (${e.note})` : ''}
                                                                     </span>
                                                                 </div>
@@ -1530,7 +1530,7 @@ export default function CustomerDetailPage() {
                                                                 <div key={e.id} className="flex justify-between items-start py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-emerald-700 dark:text-emerald-500 font-bold">
                                                                     <div className="flex flex-col flex-1">
                                                                         <span className="flex items-center gap-1.5 flex-wrap">
-                                                                            {format(new Date(e.reference_date), 'MMM dd')} Payment
+                                                                            {format((() => { const d = e.reference_date; if (typeof d === 'string' && d.includes('-') && !d.includes('T')) return new Date(d.replace(/-/g, '/')); return new Date(d || 0); })(), 'MMM dd')} Payment
                                                                             {receipt.displayMaqalId != null ? (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_5px_rgba(59,130,246,0.2)]">
                                                                                     ⚡MQ#{receipt.displayMaqalId}
