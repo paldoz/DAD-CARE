@@ -48,15 +48,23 @@ export async function GET(req: NextRequest) {
 
         // 2. Fetch all PRODUCT ledger entries
         const productsResult = await pool.query(`
-            SELECT id, customer_id, reference_date, created_at, amount, maqal_id
+            SELECT id, customer_id, reference_date, created_at, amount, maqal_id, receipt_id
             FROM "Ledger"
             WHERE type = 'PRODUCT' AND deleted_at IS NULL
+        `);
+
+        // 3. Fetch all PAYMENT ledger entries
+        const paymentsResult = await pool.query(`
+            SELECT id, customer_id, reference_date, created_at, amount, maqal_id, receipt_id
+            FROM "Ledger"
+            WHERE type = 'PAYMENT' AND deleted_at IS NULL
         `);
 
         const audit = {
             meta: {
                 timestamp: new Date().toISOString(),
                 total_product_rows: productsResult.rows.length,
+                total_payment_rows: paymentsResult.rows.length,
                 total_assigned: 0,
                 total_already_correct: 0,
                 unassigned_reasons: {} as Record<string, number>
@@ -65,6 +73,9 @@ export async function GET(req: NextRequest) {
             unassigned: [] as any[]
         };
 
+        const productMqMap = new Map<string, number>(); // ledger_id -> mq_num
+        const receiptMqMap = new Map<string, number>(); // receipt_id -> mq_num
+
         for (const p of productsResult.rows) {
             const refDate = new Date(p.reference_date || p.created_at);
             const dateStr = refDate.toISOString().split('T')[0];
@@ -72,12 +83,16 @@ export async function GET(req: NextRequest) {
             const match = dateToMqNum.get(dateStr);
 
             if (match) {
+                productMqMap.set(p.id, match.num);
+                if (p.receipt_id) receiptMqMap.set(p.receipt_id, match.num);
+
                 if (p.maqal_id === match.num) {
                     audit.meta.total_already_correct++;
                 } else {
                     const d1 = new Date(match.pair.date1).toISOString().split('T')[0];
                     const d2 = new Date(match.pair.date2).toISOString().split('T')[0];
                     audit.assignments_needed.push({
+                        type: 'PRODUCT',
                         ledger_id: p.id,
                         customer_id: p.customer_id,
                         reference_date: dateStr,
@@ -90,6 +105,7 @@ export async function GET(req: NextRequest) {
                 }
             } else {
                 audit.unassigned.push({
+                    type: 'PRODUCT',
                     ledger_id: p.id,
                     customer_id: p.customer_id,
                     reference_date: dateStr,
@@ -98,6 +114,35 @@ export async function GET(req: NextRequest) {
                     reason: 'No matching DailyBook pair found for date ' + dateStr
                 });
                 audit.meta.unassigned_reasons[dateStr] = (audit.meta.unassigned_reasons[dateStr] || 0) + 1;
+            }
+        }
+
+        // Align PAYMENT records
+        for (const pay of paymentsResult.rows) {
+            let targetMqNum: number | null = null;
+
+            if (pay.receipt_id && receiptMqMap.has(pay.receipt_id)) {
+                targetMqNum = receiptMqMap.get(pay.receipt_id)!;
+            } else if (pay.maqal_id != null && pay.maqal_id >= 1 && pay.maqal_id <= pairsResult.rows.length) {
+                targetMqNum = pay.maqal_id;
+            }
+
+            if (targetMqNum != null) {
+                if (pay.maqal_id === targetMqNum) {
+                    audit.meta.total_already_correct++;
+                } else {
+                    audit.assignments_needed.push({
+                        type: 'PAYMENT',
+                        ledger_id: pay.id,
+                        customer_id: pay.customer_id,
+                        reference_date: pay.reference_date,
+                        amount: pay.amount,
+                        old_maqal_id: pay.maqal_id,
+                        new_maqal_id: targetMqNum,
+                        evidence: 'Linked via receipt_id / authoritative pair to MQ#' + targetMqNum
+                    });
+                    audit.meta.total_assigned++;
+                }
             }
         }
 

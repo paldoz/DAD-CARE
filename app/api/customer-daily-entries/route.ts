@@ -6,154 +6,114 @@ import { trackApiRoute } from '@/lib/egress-tracker';
 import { unstable_cache } from 'next/cache';
 
 const fetchCustomerDailyEntriesData = async (customerId: string) => {
-    const epochMs = new Date('2026-06-28T00:00:00Z').getTime();
+    // 1. Fetch authoritative DailyBook 2-day pairs
+    const pairsRes = await pool.query(`
+        WITH past_dates AS (
+            SELECT DISTINCT date::date as db_date
+            FROM "DailyBook"
+            WHERE deleted_at IS NULL
+        ),
+        numbered_dates AS (
+            SELECT db_date,
+                   ROW_NUMBER() OVER (ORDER BY db_date DESC) as rn
+            FROM past_dates
+        ),
+        pairs AS (
+            SELECT n2.db_date::date as date1, n1.db_date::date as date2
+            FROM numbered_dates n1
+            JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
+            WHERE n1.rn % 2 = 1
+        ),
+        numbered_pairs AS (
+            SELECT date1, date2,
+                   ROW_NUMBER() OVER (ORDER BY date2 ASC) as mq_num
+            FROM pairs
+        )
+        SELECT mq_num, date1::text as date1, date2::text as date2
+        FROM numbered_pairs
+        ORDER BY mq_num ASC;
+    `);
 
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const toDateStr = (ms: number) => {
-            const d = new Date(ms);
-            return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-        };
+    interface PairRecord {
+        mq_num: number;
+        date1: string;
+        date2: string;
+    }
 
-        const [boundariesRes, processedRes] = await Promise.all([
-            pool.query(`
-                WITH today_q AS (
-                    SELECT TO_CHAR(NOW() AT TIME ZONE 'Africa/Mogadishu', 'YYYY-MM-DD') as today
-                ),
-                max_db_q AS (
-                    SELECT TO_CHAR(MAX(date), 'YYYY-MM-DD') as max_date FROM "DailyBook" WHERE deleted_at IS NULL
-                ),
-                min_db_q AS (
-                    SELECT TO_CHAR(MIN(date_val), 'YYYY-MM-DD') as min_date
-                    FROM (
-                        SELECT db.date as date_val
-                        FROM "DailyBookItem" dbi
-                        JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-                        WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL
-                        UNION ALL
-                        SELECT (reference_date AT TIME ZONE 'Africa/Mogadishu')::date as date_val
-                        FROM "Ledger"
-                        WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL AND reference_date IS NOT NULL
-                    ) as combined
-                )
-                SELECT 
-                    (SELECT today FROM today_q) as today,
-                    (SELECT max_date FROM max_db_q) as max_date,
-                    (SELECT min_date FROM min_db_q) as min_date
-            `, [customerId]),
-            pool.query(`
-                SELECT DISTINCT TO_CHAR((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date_str
-                FROM "Ledger"
-                WHERE customer_id = $1
-                  AND type = 'PRODUCT'
-                  AND deleted_at IS NULL
-                  AND reference_date IS NOT NULL
-            `, [customerId])
-        ]);
+    const allPairs: PairRecord[] = pairsRes.rows.map(r => ({
+        mq_num: Number(r.mq_num),
+        date1: String(r.date1).split('T')[0],
+        date2: String(r.date2).split('T')[0]
+    }));
 
-        const todayStr = boundariesRes.rows[0]?.today as string;
-        const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
-        const todayOffset = Math.floor((todayMs - epochMs) / 86400000);
-        const activePairStart = Math.max(0, Math.floor((todayOffset - 2) / 2) * 2);
+    // 2. Fetch customer's already processed product dates
+    const processedRes = await pool.query(`
+        SELECT DISTINCT TO_CHAR((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, 'YYYY-MM-DD') as date_str
+        FROM "Ledger"
+        WHERE customer_id = $1
+          AND type = 'PRODUCT'
+          AND deleted_at IS NULL
+          AND reference_date IS NOT NULL
+    `, [customerId]);
 
-        const maxDbDateStr = boundariesRes.rows[0]?.max_date as string | null;
-        let maxDbPairStart = -2;
-        if (maxDbDateStr) {
-            const maxDbMs = new Date(`${maxDbDateStr}T00:00:00Z`).getTime();
-            const maxDbOffset = Math.floor((maxDbMs - epochMs) / 86400000);
-            maxDbPairStart = Math.floor(maxDbOffset / 2) * 2;
+    const processedDates = new Set(processedRes.rows.map(r => r.date_str as string));
+
+    // 3. Find unprocessed pairs
+    const unprocessedPairs = allPairs.filter(p => !processedDates.has(p.date1) || !processedDates.has(p.date2));
+
+    const allUnprocessedDates: string[] = [];
+    for (const p of unprocessedPairs) {
+        allUnprocessedDates.push(p.date1, p.date2);
+    }
+
+    // Target pair to show: oldest unprocessed pair if any, or the latest pair
+    const pairToShow = unprocessedPairs.length > 0 
+        ? unprocessedPairs[0] 
+        : (allPairs.length > 0 ? allPairs[allPairs.length - 1] : null);
+
+    const day1Str = pairToShow ? pairToShow.date1 : new Date().toISOString().split('T')[0];
+    const day2Str = pairToShow ? pairToShow.date2 : new Date().toISOString().split('T')[0];
+    const currentMaqalId = pairToShow ? pairToShow.mq_num : 1;
+
+    const itemsQuery = `
+        SELECT TO_CHAR(db.date, 'YYYY-MM-DD') as date,
+               dbi.kg, dbi.note
+        FROM "DailyBookItem" dbi
+        JOIN "DailyBook" db ON dbi.daily_book_id = db.id
+        WHERE dbi.customer_id = $1
+          AND db.date IN ($2::date, $3::date)
+          AND dbi.deleted_at IS NULL
+          AND db.deleted_at IS NULL
+        ORDER BY db.date ASC
+    `;
+    const { rows: items } = await pool.query(itemsQuery, [customerId, day1Str, day2Str]);
+
+    const uniqueDatesMap = new Map<string, { date: string; kg: number; note: string | null; processed: boolean; isReady: boolean }>();
+    for (const item of items) {
+        const dateKey = item.date as string;
+        if (!uniqueDatesMap.has(dateKey)) {
+            uniqueDatesMap.set(dateKey, {
+                date: dateKey,
+                kg: Number(item.kg),
+                note: (item.note as string | null) ?? null,
+                processed: false,
+                isReady: true,
+            });
         }
+    }
 
-        const readyPairStartOffset = Math.max(0, activePairStart);
-        const waitingPairStart = readyPairStartOffset + 2;
+    const result = [];
+    if (uniqueDatesMap.has(day1Str)) result.push(uniqueDatesMap.get(day1Str)!);
+    else result.push({ date: day1Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
+    
+    if (uniqueDatesMap.has(day2Str)) result.push(uniqueDatesMap.get(day2Str)!);
+    else result.push({ date: day2Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
 
-        const minDateStr = boundariesRes.rows[0]?.min_date as string | null;
-        let startOffset = readyPairStartOffset; 
-        if (minDateStr) {
-            const minDateMs = new Date(`${minDateStr}T00:00:00Z`).getTime();
-            const minOffset = Math.floor((minDateMs - epochMs) / 86400000);
-            startOffset = Math.floor(minOffset / 2) * 2;
-        } else {
-            // FIX: If a customer has no history (like on a fresh database), 
-            // force them to start ONE PAIR in the past so the admin can enter a manual Reesto.
-            startOffset = Math.max(0, readyPairStartOffset - 2);
-        }
-        startOffset = Math.max(0, Math.min(startOffset, readyPairStartOffset));
-
-        const processedRows = processedRes.rows;
-        const processedOffsets = new Set(processedRows.map(r => {
-            const ms = new Date(`${(r.date_str as string)}T00:00:00Z`).getTime();
-            return Math.floor((ms - epochMs) / 86400000);
-        }));
-
-        const unprocessedPairs: number[] = [];
-        for (let offset = startOffset; offset <= readyPairStartOffset; offset += 2) {
-            if (!processedOffsets.has(offset) || !processedOffsets.has(offset + 1)) {
-                unprocessedPairs.push(offset);
-            }
-        }
-
-        const allUnprocessedDates: string[] = [];
-        for (const pairOffset of unprocessedPairs) {
-            allUnprocessedDates.push(
-                toDateStr(epochMs + pairOffset * 86400000),
-                toDateStr(epochMs + (pairOffset + 1) * 86400000)
-            );
-        }
-
-        const waitingDay1 = toDateStr(epochMs + waitingPairStart * 86400000);
-        const waitingDay2 = toDateStr(epochMs + (waitingPairStart + 1) * 86400000);
-        allUnprocessedDates.push(waitingDay1, waitingDay2);
-
-        // If there are older unprocessed pairs, show the OLDEST one first so they can resolve it.
-        // Otherwise, show the current active pair.
-        const pairToShow = unprocessedPairs.length > 0 ? unprocessedPairs[0] : readyPairStartOffset;
-        
-        const day1Str = toDateStr(epochMs + pairToShow * 86400000);
-        const day2Str = toDateStr(epochMs + (pairToShow + 1) * 86400000);
-        const currentMaqalId = Math.floor(pairToShow / 2) + 1;
-
-        const itemsQuery = `
-            SELECT TO_CHAR(db.date, 'YYYY-MM-DD') as date,
-                   dbi.kg, dbi.note
-            FROM "DailyBookItem" dbi
-            JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-            WHERE dbi.customer_id = $1
-              AND db.date IN ($2::date, $3::date)
-              AND dbi.deleted_at IS NULL
-              AND db.deleted_at IS NULL
-            ORDER BY db.date ASC
-        `;
-        const { rows: items } = await pool.query(itemsQuery, [customerId, day1Str, day2Str]);
-
-        const uniqueDatesMap = new Map<string, { date: string; kg: number; note: string | null; processed: boolean; isReady: boolean }>();
-        for (const item of items) {
-            const dateKey = item.date as string;
-            if (!uniqueDatesMap.has(dateKey)) {
-                uniqueDatesMap.set(dateKey, {
-                    date: dateKey,
-                    kg: Number(item.kg),
-                    note: (item.note as string | null) ?? null,
-                    processed: false,
-                    isReady: true,
-                });
-            }
-        }
-
-        const result = [];
-        if (uniqueDatesMap.has(day1Str)) result.push(uniqueDatesMap.get(day1Str)!);
-        else result.push({ date: day1Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
-        
-        if (uniqueDatesMap.has(day2Str)) result.push(uniqueDatesMap.get(day2Str)!);
-        else result.push({ date: day2Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
-
-
-
-
-        return {
-            result,
-            allUnprocessedDates,
-            maqalId: currentMaqalId
-        };
+    return {
+        result,
+        allUnprocessedDates,
+        maqalId: currentMaqalId
+    };
 };
 
 

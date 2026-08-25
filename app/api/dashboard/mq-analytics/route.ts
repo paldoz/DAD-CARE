@@ -290,7 +290,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                     date:      pay.ref_date,
                     amount:    Math.abs(Number(pay.amount || 0)),
                     receiptId: pay.receipt_id,
-                    maqalId:   pay.maqal_id,
+                    maqalId:   pair.mq_num,
                     note:      pay.note,
                 })),
             });

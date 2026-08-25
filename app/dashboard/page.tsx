@@ -891,77 +891,106 @@ export default function DashboardPage() {
                             );
                         })()}
 
-                        {/* ── Payment drill-down bottom sheet ── */}
+                        {/* ── Payment drill-down Glassmorphism Modal ── */}
                         {paymentDrillDown && (
                             <div
-                                className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
+                                className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
                                 onClick={() => setPaymentDrillDown(null)}
                             >
                                 <div
-                                    className="w-full max-w-lg bg-card rounded-t-3xl border-t border-border shadow-2xl max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-4 duration-300"
+                                    style={{
+                                        background: 'rgba(15, 23, 42, 0.82)',
+                                        backdropFilter: 'blur(24px)',
+                                        WebkitBackdropFilter: 'blur(24px)',
+                                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                                        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.35)',
+                                    }}
+                                    className="w-full max-w-lg rounded-3xl max-h-[85vh] flex flex-col overflow-hidden text-foreground animate-in zoom-in-95 duration-200"
                                     onClick={e => e.stopPropagation()}
                                 >
-                                    {/* Sheet header */}
-                                    <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border/50 shrink-0">
+                                    {/* Modal header */}
+                                    <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/10 shrink-0">
                                         <div>
-                                            <p className="text-base font-black text-foreground">{paymentDrillDown.mqLabel} — Collected Payments</p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-base md:text-lg font-black text-white">{paymentDrillDown.mqLabel}</span>
+                                                <span className="text-xs font-bold text-blue-400">Collected Payments</span>
+                                            </div>
                                             {paymentDrillDown.mqDateRange && (
-                                                <p className="text-[11px] text-muted-foreground">📅 {paymentDrillDown.mqDateRange}</p>
+                                                <p className="text-[11px] font-medium text-slate-300 mt-0.5">📅 {paymentDrillDown.mqDateRange}</p>
                                             )}
                                         </div>
-                                        <button onClick={() => setPaymentDrillDown(null)}
-                                            className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors text-sm font-black">
+                                        <button 
+                                            onClick={() => setPaymentDrillDown(null)}
+                                            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors text-sm font-black"
+                                        >
                                             ✕
                                         </button>
                                     </div>
 
                                     {/* Payment list */}
-                                    <div className="overflow-y-auto flex-1 px-5 py-3 space-y-4">
+                                    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
                                         {paymentDrillDown.customers
                                             .filter((c: any) => c.payments && c.payments.length > 0)
-                                            .map((c: any) => (
-                                                <div key={c.id}>
-                                                    {/* Customer header */}
-                                                    <div className="flex items-center justify-between mb-1.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-6 h-6 rounded-full bg-primary/15 flex items-center justify-center text-[10px] font-black text-primary shrink-0">
-                                                                {c.name.charAt(0).toUpperCase()}
-                                                            </div>
-                                                            <span className="text-[12px] font-bold text-foreground">{c.name}</span>
-                                                        </div>
-                                                        <span className="text-[11px] font-black text-blue-500">
-                                                            {fmtMoney(c.payments.reduce((s: number, p: any) => s + p.amount, 0))}
-                                                        </span>
-                                                    </div>
-                                                    {/* Payment rows */}
-                                                    <div className="space-y-1 pl-8">
-                                                        {c.payments.map((pay: any) => (
-                                                            <div key={pay.id} className="flex items-start justify-between gap-2 text-[10px] py-1 border-b border-border/30">
-                                                                <div className="min-w-0">
-                                                                    <p className="font-semibold text-foreground">
-                                                                        {new Date(pay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                                    </p>
-                                                                    <p className="text-muted-foreground">
-                                                                        {pay.maqalId ? `MQ ID: ${pay.maqalId}` : pay.receiptId ? `Receipt: ${String(pay.receiptId).slice(0, 8)}…` : 'No link'}
-                                                                    </p>
-                                                                    {pay.note && <p className="text-muted-foreground italic truncate">{pay.note}</p>}
+                                            .map((c: any) => {
+                                                const totalCustomerPaid = c.payments.reduce((s: number, p: any) => s + p.amount, 0);
+                                                return (
+                                                    <div key={c.id} className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.08]">
+                                                        {/* Customer header */}
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-xs font-black text-blue-400 shrink-0">
+                                                                    {c.name.charAt(0).toUpperCase()}
                                                                 </div>
-                                                                <span className="font-black text-blue-500 shrink-0">{fmtMoney(pay.amount)}</span>
+                                                                <span className="text-sm font-bold text-white truncate">{c.name}</span>
                                                             </div>
-                                                        ))}
+                                                            <span className="text-xs font-black text-emerald-400 tabular-nums">
+                                                                ${fmtMoney(totalCustomerPaid)}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Payment rows */}
+                                                        <div className="space-y-1.5 pl-9">
+                                                            {c.payments.map((pay: any) => (
+                                                                <div key={pay.id} className="flex items-start justify-between gap-2 text-xs py-1.5 border-t border-white/[0.06]">
+                                                                    <div className="min-w-0">
+                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                            <span className="font-medium text-slate-300">
+                                                                                {new Date(pay.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-blue-400 bg-blue-500/15 border border-blue-400/30 px-1.5 py-0.5 rounded">
+                                                                                {paymentDrillDown.mqLabel}
+                                                                            </span>
+                                                                            {pay.receiptId && (
+                                                                                <span className="text-[9px] font-mono text-slate-400">
+                                                                                    Receipt: {String(pay.receiptId).slice(0, 8)}…
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        {pay.note && <p className="text-[10px] text-slate-400 italic truncate mt-0.5">{pay.note}</p>}
+                                                                    </div>
+                                                                    <span className="font-black text-emerald-400 shrink-0 tabular-nums">+${fmtMoney(pay.amount)}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
+
                                         {paymentDrillDown.customers.every((c: any) => !c.payments || c.payments.length === 0) && (
-                                            <p className="text-sm text-muted-foreground text-center py-8">No payments recorded for this Maqal yet.</p>
+                                            <div className="text-center py-12 text-slate-400">
+                                                <p className="text-sm">No payments recorded for this Maqal yet.</p>
+                                            </div>
                                         )}
                                     </div>
 
-                                    {/* Sheet footer — total */}
-                                    <div className="px-5 py-4 border-t border-border/50 shrink-0 flex items-center justify-between bg-muted/30">
-                                        <span className="text-xs font-bold text-muted-foreground">Total Collected</span>
-                                        <span className="text-base font-black text-blue-500">
-                                            {fmtMoney(paymentDrillDown.customers.reduce((s: number, c: any) => s + (c.payments || []).reduce((ps: number, p: any) => ps + p.amount, 0), 0))}
+                                    {/* Modal footer — total */}
+                                    <div className="px-5 py-4 border-t border-white/10 shrink-0 flex items-center justify-between bg-black/20">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-300">Total Collected</p>
+                                            <p className="text-[10px] text-slate-400">Sum of customer payments in this Maqal</p>
+                                        </div>
+                                        <span className="text-lg font-black text-emerald-400 tabular-nums">
+                                            ${fmtMoney(paymentDrillDown.customers.reduce((s: number, c: any) => s + (c.payments || []).reduce((ps: number, p: any) => ps + p.amount, 0), 0))}
                                         </span>
                                     </div>
                                 </div>

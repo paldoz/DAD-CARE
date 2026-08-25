@@ -56,21 +56,70 @@ const getDashboardData = async (today: string) => {
             WHERE dbi.deleted_at IS NULL AND dbi.present IS NOT FALSE
         `, [today]),
         pool.query(`
+            WITH past_dates AS (
+                SELECT DISTINCT date::date as db_date
+                FROM "DailyBook"
+                WHERE deleted_at IS NULL
+            ),
+            numbered_dates AS (
+                SELECT db_date,
+                       ROW_NUMBER() OVER (ORDER BY db_date DESC) as rn
+                FROM past_dates
+            ),
+            pairs AS (
+                SELECT n2.db_date::date as date1, n1.db_date::date as date2
+                FROM numbered_dates n1
+                JOIN numbered_dates n2 ON n1.rn = n2.rn - 1
+                WHERE n1.rn % 2 = 1
+            ),
+            numbered_pairs AS (
+                SELECT date1, date2,
+                       ROW_NUMBER() OVER (ORDER BY date2 ASC) as mq_num
+                FROM pairs
+            ),
+            recent_payments AS (
+                SELECT
+                    l.id,
+                    l.amount,
+                    l.created_at,
+                    l.reference_date,
+                    l.maqal_id as direct_maqal_id,
+                    l.receipt_id,
+                    l.customer_id,
+                    c.name AS customer_name
+                FROM "Ledger" l
+                JOIN "Customer" c ON c.id = l.customer_id
+                WHERE l.deleted_at IS NULL
+                  AND l.type = 'PAYMENT'
+                  AND COALESCE(l.amount, 0) > 0
+                ORDER BY l.created_at DESC
+                LIMIT 5
+            )
             SELECT
-                l.id,
-                l.amount,
-                l.created_at,
-                l.reference_date,
-                l.maqal_id,
-                l.receipt_id,
-                c.name AS customer_name
-            FROM "Ledger" l
-            JOIN "Customer" c ON c.id = l.customer_id
-            WHERE l.deleted_at IS NULL
-              AND l.type = 'PAYMENT'
-              AND COALESCE(l.amount, 0) > 0
-            ORDER BY l.created_at DESC
-            LIMIT 5
+                rp.id,
+                rp.amount,
+                rp.created_at,
+                rp.reference_date,
+                COALESCE(
+                    CASE WHEN np_direct.mq_num IS NOT NULL THEN np_direct.mq_num ELSE NULL END,
+                    np_receipt.mq_num
+                ) as maqal_id,
+                rp.receipt_id,
+                rp.customer_name
+            FROM recent_payments rp
+            LEFT JOIN numbered_pairs np_direct ON np_direct.mq_num = rp.direct_maqal_id
+            LEFT JOIN LATERAL (
+                SELECT np.mq_num
+                FROM "Ledger" prod
+                JOIN numbered_pairs np ON COALESCE(prod.reference_date::date, prod.created_at::date) IN (np.date1, np.date2)
+                WHERE prod.customer_id = rp.customer_id
+                  AND prod.type = 'PRODUCT'
+                  AND prod.deleted_at IS NULL
+                  AND rp.receipt_id IS NOT NULL
+                  AND prod.receipt_id = rp.receipt_id
+                ORDER BY prod.created_at ASC
+                LIMIT 1
+            ) np_receipt ON TRUE
         `),
         pool.query(`
             SELECT 
