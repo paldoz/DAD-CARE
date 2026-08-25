@@ -278,7 +278,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 const fetchLedgerData = async (customerId: string, limit: number, offset: number) => {
     const [txnResult, summaryResult] = await Promise.all([
         pool.query(
-            `SELECT id, customer_id, type, TO_CHAR(reference_date, 'YYYY-MM-DD') as reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at, maqal_id FROM "Ledger"
+            `SELECT id, customer_id, type, TO_CHAR(reference_date AT TIME ZONE 'Africa/Nairobi', 'YYYY-MM-DD') as reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at, maqal_id FROM "Ledger"
              WHERE customer_id = $1 AND deleted_at IS NULL
              ORDER BY created_at DESC, id DESC
              LIMIT ${limit} OFFSET ${offset}`,
