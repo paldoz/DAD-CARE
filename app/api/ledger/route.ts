@@ -136,7 +136,8 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 const prevDebt = runningDebt;
 
                 if (type === 'PRODUCT') {
-                    entryAmount = Number((parseFloat(kg) * parseFloat(price)).toFixed(2));
+                    // FLOOR rule: fractional dollar is forgiven. e.g. 4.5 KG × $35 = $157.50 → $157
+                    entryAmount = Math.floor(parseFloat(kg) * parseFloat(price));
                     runningDebt = Number((runningDebt + entryAmount).toFixed(2));
                 } else if (type === 'PAYMENT') {
                     entryAmount = Number(parseFloat(amount).toFixed(2));

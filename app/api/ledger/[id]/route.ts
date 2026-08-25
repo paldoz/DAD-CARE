@@ -159,13 +159,19 @@ export async function PATCH(
             return NextResponse.json({ error: 'Edit limit reached. You can only edit an entry 3 times.' }, { status: 403 });
         }
 
-        const newAmount = amount !== undefined ? Number(parseFloat(amount).toFixed(2)) : ledger.amount;
         const newKg = kg !== undefined ? parseFloat(kg) : ledger.kg;
         const newPrice = price_per_kg !== undefined ? parseFloat(price_per_kg) : ledger.price_per_kg;
         const newRefDate = body.reference_date || ledger.reference_date;
         const newNote = note !== undefined ? note : ledger.note;
 
-
+        // FLOOR rule: PRODUCT Maqal charge = Math.floor(kg × price), fractional dollar is forgiven.
+        // PAYMENT/ADJUSTMENT amounts are kept exact (toFixed(2)).
+        let newAmount: number;
+        if (ledger.type === 'PRODUCT') {
+            newAmount = Math.floor(newKg * newPrice);
+        } else {
+            newAmount = amount !== undefined ? Number(parseFloat(amount).toFixed(2)) : Number(ledger.amount);
+        }
 
         // Update the ledger entry (Super Admin only)
         await client.query(
