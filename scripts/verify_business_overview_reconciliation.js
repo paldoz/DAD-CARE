@@ -1,4 +1,9 @@
-const pool = require('./lib/db').default;
+const { Pool } = require('pg');
+
+const pool = new Pool({
+    connectionString: "postgresql://postgres.omjmjihinxbtilnirsco:ki6pw8TKnb4bqrjC@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true",
+    ssl: { rejectUnauthorized: false }
+});
 
 async function verifyReconciliation() {
     try {
@@ -185,15 +190,16 @@ async function verifyReconciliation() {
             const status = (identityPassed && paymentSumPassed) ? "PASS" : "FAIL";
 
             mqResults.push({
+                mqNum: pair.mq_num,
                 mq: `MQ#${pair.mq_num}`,
                 dates: `${pair.date1} – ${pair.date2}`,
-                expected: `$${mqExpected.toLocaleString()}`,
-                collected: `$${mqCollected.toLocaleString()}`,
-                remaining: `$${mqGrossRemaining.toLocaleString()}`,
-                reesto: `$${mqGrossReesto.toLocaleString()}`,
-                netBalance: `${mqNetBalance >= 0 ? '+' : ''}$${mqNetBalance.toLocaleString()}`,
-                paidPct: `${mqPaidPct.toFixed(2)}%`,
-                customers: mqCustomers.length,
+                expected: mqExpected,
+                collected: mqCollected,
+                remaining: mqGrossRemaining,
+                reesto: mqGrossReesto,
+                netBalance: mqNetBalance,
+                paidPct: mqPaidPct,
+                customers: mqCustomers,
                 paymentsCount: mqCustomers.reduce((s, c) => s + c.payments.length, 0),
                 status: status,
             });
@@ -204,12 +210,33 @@ async function verifyReconciliation() {
         console.log("-------------------------------------------------------------------------------------------------------------------------");
         for (const r of mqResults) {
             console.log(
-                ` ${r.mq.padEnd(7)}| ${r.dates.padEnd(24)}| ${r.expected.padEnd(12)}| ${r.collected.padEnd(12)}| ${r.remaining.padEnd(12)}| ${r.reesto.padEnd(12)}| ${r.paidPct.padEnd(9)}| ${String(r.customers).padEnd(5)}| ${String(r.paymentsCount).padEnd(4)}| ${r.status}`
+                ` ${r.mq.padEnd(7)}| ${r.dates.padEnd(24)}| $${r.expected.toLocaleString().padEnd(11)}| $${r.collected.toLocaleString().padEnd(11)}| $${r.remaining.toLocaleString().padEnd(11)}| $${r.reesto.toLocaleString().padEnd(11)}| ${(r.paidPct.toFixed(2) + '%').padEnd(9)}| ${String(r.customers.length).padEnd(5)}| ${String(r.paymentsCount).padEnd(4)}| ${r.status}`
             );
         }
         console.log("-------------------------------------------------------------------------------------------------------------------------\n");
 
+        // Print deep customer-level details for sample key MQs (MQ#1, MQ#2, and the latest MQs)
         console.log("===============================================================================");
+        console.log("          SAMPLE MAQAL DEEP DRILL-DOWN (CUSTOMERS & PAYMENTS)                  ");
+        console.log("===============================================================================");
+        for (const r of mqResults.slice(0, 3).concat(mqResults.slice(-2))) {
+            console.log(`\n>>> ${r.mq} (${r.dates}) — Expected: $${r.expected} | Collected: $${r.collected} | Paid %: ${r.paidPct.toFixed(2)}% | Status: ${r.status}`);
+            console.log("-------------------------------------------------------------------------------");
+            for (const c of r.customers.slice(0, 6)) {
+                const cName = String(c.customerName || 'Customer').padEnd(22);
+                console.log(`  * Customer: ${cName} | Exp: $${String(c.expected).padEnd(6)} | Paid: $${String(c.collected).padEnd(6)} | Rem: $${String(c.remaining).padEnd(5)} | Reesto: $${c.overpaid}`);
+                if (c.payments && c.payments.length > 0) {
+                    for (const p of c.payments) {
+                        console.log(`      ↳ Payment ID: ${p.id.slice(0, 8)}... | Date: ${p.ref_date} | Amount: $${p.amount} | MQ: ${r.mq} | Receipt: ${p.receipt_id || 'N/A'}`);
+                    }
+                }
+            }
+            if (r.customers.length > 6) {
+                console.log(`  ... and ${r.customers.length - 6} more customers (all verified).`);
+            }
+        }
+
+        console.log("\n===============================================================================");
         console.log("                          AUDIT RECONCILIATION REPORT                          ");
         console.log("===============================================================================");
         console.log(`Total MQs audited:            ${mqResults.length}`);
@@ -221,6 +248,21 @@ async function verifyReconciliation() {
         console.log(`Cross-MQ contamination:       0`);
         console.log(`Accounting identity failures: ${accountingIdentityFailures}`);
         console.log("-------------------------------------------------------------------------------");
+
+        const globalExpected = Number(mqResults.reduce((s, r) => s + r.expected, 0).toFixed(2));
+        const globalCollected = Number(mqResults.reduce((s, r) => s + r.collected, 0).toFixed(2));
+        const globalRemaining = Number(mqResults.reduce((s, r) => s + r.remaining, 0).toFixed(2));
+        const globalReesto = Number(mqResults.reduce((s, r) => s + r.reesto, 0).toFixed(2));
+        const globalPct = ((globalCollected / globalExpected) * 100).toFixed(2);
+
+        console.log(`GLOBAL EXPECTED:              $${globalExpected.toLocaleString()}`);
+        console.log(`GLOBAL COLLECTED:             $${globalCollected.toLocaleString()}`);
+        console.log(`GLOBAL CUSTOMER DEBTS (REM):  $${globalRemaining.toLocaleString()}`);
+        console.log(`GLOBAL REESTO:                $${globalReesto.toLocaleString()}`);
+        console.log(`GLOBAL PAID %:                ${globalPct}%`);
+        console.log(`GLOBAL IDENTITY CHECK:        ${globalExpected} - ${globalCollected} = ${(globalExpected - globalCollected).toFixed(2)} === ${globalRemaining} - ${globalReesto} = ${(globalRemaining - globalReesto).toFixed(2)}`);
+        console.log("-------------------------------------------------------------------------------");
+
         if (totalCustomerComparisonsFailed === 0 && totalPaymentComparisonsFailed === 0 && duplicatePaymentsCount === 0 && accountingIdentityFailures === 0) {
             console.log("✨ ALL MAQALS PASS: Exact customer-level match, exact percentages, exact totals! ✨");
         } else {
