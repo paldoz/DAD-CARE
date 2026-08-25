@@ -269,7 +269,7 @@ export default function DashboardPage() {
     // ── Scrollable chart constants ──────────────────────────────────────────
     // Each MQ column gets COL_W px. The chart scrolls horizontally.
     const OV_H = 110;              // chart draw area height (px in SVG units)
-    const COL_W = 60;             // px per MQ column — generous spacing
+    const COL_W = 68;             // px per MQ column — generous spacing so labels never collide
     const OV_PAD_X = COL_W / 2;  // first/last dot centred in their column
     const ovPaid = mqs.map(m => m.paid);
     const ovRemaining = mqs.map(m => m.remaining);
@@ -758,7 +758,7 @@ export default function DashboardPage() {
                                                         className="text-[10px] font-black leading-tight mt-0.5"
                                                         style={{ color: pctColor }}
                                                     >
-                                                        {Math.round(pct)}%
+                                                        {pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(2)}%
                                                     </span>
                                                 </button>
                                             );
@@ -807,31 +807,39 @@ export default function DashboardPage() {
                                     <div className="px-4 mb-3">
                                         <div className="flex items-center justify-between mb-1">
                                             <span className="text-[10px] font-semibold text-muted-foreground">Payment Progress</span>
-                                            <span className={`text-sm font-black ${pctColor}`}>{pct}%</span>
+                                            <span className={`text-sm font-black ${pctColor}`}>
+                                                {pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(2)}%
+                                            </span>
                                         </div>
                                         <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                                            <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
+                                            <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
                                         </div>
                                     </div>
 
                                     {/* Money stats grid */}
-                                    <div className="grid grid-cols-3 gap-2 px-4 mb-3">
-                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
+                                    <div className={`grid ${mq.overpaid > 0 ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 md:gap-2 px-4 mb-3`}>
+                                        <div className="bg-card rounded-xl p-2 md:p-2.5 border border-border/40 text-center">
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Expected</p>
-                                            <p className="text-xs font-black text-foreground tabular-nums">{fmtMoney(mq.expected)}</p>
+                                            <p className="text-xs font-black text-foreground tabular-nums">${fmtMoney(mq.expected)}</p>
                                         </div>
                                         <button
                                             onClick={() => setPaymentDrillDown({ mqLabel: mq.label, mqDateRange: mq.dateRange || '', customers: mq.customers })}
-                                            className="bg-card rounded-xl p-2.5 border border-primary/40 text-center hover:bg-primary/5 active:scale-95 transition-all cursor-pointer group"
+                                            className="bg-card rounded-xl p-2 md:p-2.5 border border-primary/40 text-center hover:bg-primary/5 active:scale-95 transition-all cursor-pointer group"
                                             title="Tap to see payment breakdown"
                                         >
                                             <p className="text-[9px] font-semibold text-muted-foreground mb-0.5 group-hover:text-primary transition-colors">Collected 👆</p>
-                                            <p className="text-xs font-black text-blue-500 tabular-nums">{fmtMoney(mq.paid)}</p>
+                                            <p className="text-xs font-black text-blue-500 tabular-nums">${fmtMoney(mq.paid)}</p>
                                         </button>
-                                        <div className="bg-card rounded-xl p-2.5 border border-border/40 text-center">
-                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Remaining</p>
-                                            <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>{fmtMoney(mq.remaining)}</p>
+                                        <div className="bg-card rounded-xl p-2 md:p-2.5 border border-border/40 text-center">
+                                            <p className="text-[9px] font-semibold text-muted-foreground mb-0.5">Customer Debt</p>
+                                            <p className={`text-xs font-black tabular-nums ${mq.remaining > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>${fmtMoney(mq.remaining)}</p>
                                         </div>
+                                        {mq.overpaid > 0 && (
+                                            <div className="bg-card rounded-xl p-2 md:p-2.5 border border-emerald-500/30 text-center bg-emerald-500/5">
+                                                <p className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 mb-0.5">Reesto</p>
+                                                <p className="text-xs font-black text-emerald-500 tabular-nums">+${fmtMoney(mq.overpaid)}</p>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Customer section */}

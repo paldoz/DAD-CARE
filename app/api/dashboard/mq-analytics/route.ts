@@ -300,24 +300,44 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
     // ─── STEP 7: Build final MQ output ────────────────────────────────────────
     const fmt = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
+    let globalReconciliationPassed = true;
+
     const mqs = Array.from(mqMap.values())
         .filter(mq => mq.customers.length > 0)
         .map(mq => {
-            const mqExpected  = mq.customers.reduce((s, c) => s + c.expected,   0);
-            const mqCollected = mq.customers.reduce((s, c) => s + c.collected,  0);
-            const mqRemaining = mq.customers.reduce((s, c) => s + c.remaining,  0);
-            const mqOverpaid  = mq.customers.reduce((s, c) => s + c.overpaid,   0);
-            const mqKg        = mq.customers.reduce((s, c) => s + c.kg,         0);
-            const mqPayPct    = mqExpected > 0 ? (mqCollected / mqExpected) * 100 : (mqCollected > 0 ? 100 : 0);
+            const mqExpected       = Number(mq.customers.reduce((s, c) => s + c.expected,   0).toFixed(2));
+            const mqCollected      = Number(mq.customers.reduce((s, c) => s + c.collected,  0).toFixed(2));
+            const mqGrossRemaining = Number(mq.customers.reduce((s, c) => s + c.remaining,  0).toFixed(2));
+            const mqGrossReesto    = Number(mq.customers.reduce((s, c) => s + c.overpaid,   0).toFixed(2));
+            const mqKg             = Number(mq.customers.reduce((s, c) => s + c.kg,         0).toFixed(2));
+            
+            // Net balance: positive means net debt, negative means net reesto
+            const mqNetBalance     = Number((mqExpected - mqCollected).toFixed(2));
+            const mqNetDebt        = mqNetBalance > 0 ? mqNetBalance : 0;
+            const mqNetReesto      = mqNetBalance < 0 ? Math.abs(mqNetBalance) : 0;
 
-            // Reconciliation assertion — log loudly if customer sums don't match MQ
-            const customerExpSum  = mq.customers.reduce((s, c) => s + c.expected,  0);
-            const customerColSum  = mq.customers.reduce((s, c) => s + c.collected, 0);
-            if (Math.abs(customerExpSum - mqExpected) > 0.01) {
-                console.error(`[mq-analytics] RECONCILIATION ERROR MQ#${mq.mqNum}: customer sum expected ${customerExpSum} != mq expected ${mqExpected}`);
-            }
-            if (Math.abs(customerColSum - mqCollected) > 0.01) {
-                console.error(`[mq-analytics] RECONCILIATION ERROR MQ#${mq.mqNum}: customer sum collected ${customerColSum} != mq collected ${mqCollected}`);
+            // Paid % = (Collected / Expected) * 100 — Never cap at 100%
+            const mqPayPct         = mqExpected > 0 ? (mqCollected / mqExpected) * 100 : (mqCollected > 0 ? 100 : 0);
+
+            // ── ACCOUNTING ASSERTIONS ──
+            const expMinusCol = Number((mqExpected - mqCollected).toFixed(2));
+            const remMinusReesto = Number((mqGrossRemaining - mqGrossReesto).toFixed(2));
+            const isAccountingIdentityValid = Math.abs(expMinusCol - remMinusReesto) < 0.01;
+
+            const paymentsSum = Number(mq.customers.flatMap(c => c.payments).reduce((s, p) => s + p.amount, 0).toFixed(2));
+            const isPaymentSumValid = Math.abs(paymentsSum - mqCollected) < 0.01;
+
+            if (!isAccountingIdentityValid || !isPaymentSumValid) {
+                globalReconciliationPassed = false;
+                console.error(`[mq-analytics] RECONCILIATION FAILED MQ#${mq.mqNum}:`, {
+                    expected: mqExpected,
+                    collected: mqCollected,
+                    grossRemaining: mqGrossRemaining,
+                    grossReesto: mqGrossReesto,
+                    expMinusCol,
+                    remMinusReesto,
+                    paymentsSum,
+                });
             }
 
             const startDate = fmt(mq.date1);
@@ -333,9 +353,12 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                 kg:                mqKg,
                 expected:          mqExpected,
                 paid:              mqCollected,
-                remaining:         mqRemaining,
-                overpaid:          mqOverpaid,
-                paymentPercentage: Math.round(mqPayPct * 100) / 100,
+                remaining:         mqGrossRemaining, // Gross customer debts
+                overpaid:          mqGrossReesto,    // Gross customer Reesto
+                netDebt:           mqNetDebt,
+                netReesto:         mqNetReesto,
+                paymentPercentage: Number(mqPayPct.toFixed(2)),
+                reconciliationStatus: (isAccountingIdentityValid && isPaymentSumValid) ? 'PASSED' : 'FAILED',
                 customerCount:     mq.customers.length,
                 customers: mq.customers
                     .sort((a, b) => b.remaining - a.remaining)
@@ -351,17 +374,13 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
                         kgDay2:      c.kgDay2,
                         remaining:   c.remaining,
                         overpaid:    c.overpaid,
-                        paymentPct:  Math.round(c.paymentPct * 100) / 100,
+                        paymentPct:  Number(c.paymentPct.toFixed(2)),
                         payments:    c.payments,
                     })),
             };
         });
 
     // ─── STEP 8: Unassigned payments ─────────────────────────────────────────
-    // These are PAYMENT rows that:
-    //   - have no maqal_id, AND
-    //   - have no receipt_id that matches any product on any MQ date
-    // i.e., we could not reliably link them to any Maqal.
     const unassignedResult = await pool.query(`
         WITH
         all_pairs AS (
@@ -376,7 +395,6 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             UNION
             SELECT DISTINCT date2 AS mq_date FROM all_pairs
         ),
-        -- receipt_ids that are anchored to at least one MQ date via a PRODUCT row
         anchored_receipts AS (
             SELECT DISTINCT l.receipt_id
             FROM "Ledger" l
@@ -412,16 +430,18 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
     }));
 
     // ─── STEP 9: Global totals ─────────────────────────────────────────────────
-    const totalExpected  = mqs.reduce((s, m) => s + m.expected,  0);
-    const totalPaid      = mqs.reduce((s, m) => s + m.paid,      0);
-    const totalRemaining = mqs.reduce((s, m) => s + m.remaining, 0);
-    const totalOverpaid  = mqs.reduce((s, m) => s + m.overpaid,  0);
-    const totalKg        = mqs.reduce((s, m) => s + m.kg,        0);
+    // Derived ONLY from the displayed Maqals as single source of truth
+    const totalExpected  = Number(mqs.reduce((s, m) => s + m.expected,  0).toFixed(2));
+    const totalPaid      = Number(mqs.reduce((s, m) => s + m.paid,      0).toFixed(2));
+    const totalRemaining = Number(mqs.reduce((s, m) => s + m.remaining, 0).toFixed(2));
+    const totalOverpaid  = Number(mqs.reduce((s, m) => s + m.overpaid,  0).toFixed(2));
+    const totalKg        = Number(mqs.reduce((s, m) => s + m.kg,        0).toFixed(2));
     const overallPct     = totalExpected > 0 ? (totalPaid / totalExpected) * 100 : (totalPaid > 0 ? 100 : 0);
-    const totalUnassigned = unassignedPayments.reduce((s, p) => s + p.amount, 0);
+    const totalUnassigned = Number(unassignedPayments.reduce((s, p) => s + p.amount, 0).toFixed(2));
 
     return {
         period,
+        reconciliationStatus: globalReconciliationPassed ? 'PASSED' : 'FAILED',
         mqs,
         unassignedPayments,
         totals: {
@@ -430,7 +450,7 @@ const getMqAnalyticsData = async (period: Period, today: string) => {
             remaining:       totalRemaining,
             overpaid:        totalOverpaid,
             kg:              totalKg,
-            paymentProgress: Math.round(overallPct * 100) / 100,
+            paymentProgress: Number(overallPct.toFixed(2)),
             totalMqs:        mqs.length,
             totalUnassigned,
         },
