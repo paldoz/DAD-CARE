@@ -88,11 +88,11 @@ const getDashboardData = async (today: string) => {
                 rp.receipt_id,
                 rp.customer_name
             FROM recent_payments rp
-            LEFT JOIN numbered_pairs np_direct ON np_direct.mq_num = rp.direct_maqal_id
+            LEFT JOIN pairs np_direct ON np_direct.mq_num = rp.direct_maqal_id
             LEFT JOIN LATERAL (
                 SELECT np.mq_num
                 FROM "Ledger" prod
-                JOIN numbered_pairs np ON COALESCE(prod.reference_date::date, prod.created_at::date) IN (np.date1, np.date2)
+                JOIN pairs np ON COALESCE(prod.reference_date::date, prod.created_at::date) IN (np.date1, np.date2)
                 WHERE prod.customer_id = rp.customer_id
                   AND prod.type = 'PRODUCT'
                   AND prod.deleted_at IS NULL
