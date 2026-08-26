@@ -9,6 +9,24 @@
  * 4. Automatic validation: every date must appear at most once across all pairs.
  */
 
+export const MAQAL_EPOCH = '2026-07-14';
+
+export function getMaqalIdFromDate(dateStr: string): number {
+    const epoch = new Date(`${MAQAL_EPOCH}T00:00:00Z`);
+    const d = new Date(`${dateStr.split('T')[0]}T00:00:00Z`);
+    const diffDays = Math.floor((d.getTime() - epoch.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return 9;
+    return 9 + Math.floor(diffDays / 2);
+}
+
+export function getDisplayMqFromMaqalId(maqalId: number): number {
+    return maqalId >= 9 ? maqalId - 8 : maqalId;
+}
+
+export function getDisplayMqFromDate(dateStr: string): number {
+    return getDisplayMqFromMaqalId(getMaqalIdFromDate(dateStr));
+}
+
 export const MAQAL_PAIRS_CTE = `
     WITH past_dates AS (
         SELECT DISTINCT date::date AS db_date
@@ -22,7 +40,8 @@ export const MAQAL_PAIRS_CTE = `
     ),
     pairs AS (
         SELECT n1.db_date::date AS date1, n2.db_date::date AS date2,
-               ((n1.rn + 1) / 2)::int AS mq_num
+               (9 + FLOOR((n1.db_date - '${MAQAL_EPOCH}'::date) / 2))::int AS maqal_id,
+               (1 + FLOOR((n1.db_date - '${MAQAL_EPOCH}'::date) / 2))::int AS mq_num
         FROM numbered_dates n1
         JOIN numbered_dates n2 ON n2.rn = n1.rn + 1
         WHERE n1.rn % 2 = 1

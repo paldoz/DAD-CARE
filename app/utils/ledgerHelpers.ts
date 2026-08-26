@@ -62,106 +62,36 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         const timeA = new Date(a.created_at || a.reference_date || 0).getTime();
         const timeB = new Date(b.created_at || b.reference_date || 0).getTime();
         if (timeA !== timeB) return timeB - timeA;
-        return a.id.localeCompare(b.id); // Tie-breaker for batch entries
+        return a.id.localeCompare(b.id);
     });
 
-    // 2. Group by `maqal_id` first. If present, it represents a strict pairing lock.
-    // Fall back to `receipt_id` or isolated payment grouping.
+    // 2. Authoritative grouping key:
+    // Every transaction belongs strictly to its receipt_id, or maqal_id if no receipt_id, or an isolated unassigned group.
     const normalizedTxns = sortedTxns.map(t => {
         let key = null;
-        if (t.maqal_id != null) {
-            key = `__MAQAL__${t.maqal_id}`;
-        } else if (t.receipt_id) {
+        if (t.receipt_id) {
             key = t.receipt_id;
+        } else if (t.maqal_id != null) {
+            key = `__MAQAL__${t.maqal_id}`;
         } else if (t.type === 'PAYMENT') {
             key = `__PAY__${t.id}`;
+        } else {
+            key = `__TX__${t.id}`;
         }
         return { ...t, _groupKey: key };
-    }) as (Transaction & { _groupKey: string | null })[];
+    }) as (Transaction & { _groupKey: string })[];
 
-    const withGroupKey = normalizedTxns.filter(t => t._groupKey);
-    const withoutGroupKey = normalizedTxns.filter(t => !t._groupKey);
-
-    const receiptGroups: Transaction[][] = [];
-
-    // 3. Group by _groupKey
-    const groupedByKey = withGroupKey.reduce((acc, t) => {
-        const key = t._groupKey!;
+    const groupedByKey = normalizedTxns.reduce((acc, t) => {
+        const key = t._groupKey;
         if (!acc[key]) acc[key] = [];
         acc[key].push(t);
         return acc;
     }, {} as Record<string, Transaction[]>);
 
-    Object.values(groupedByKey).forEach(group => receiptGroups.push(group));
+    const receiptGroups: Transaction[][] = Object.values(groupedByKey);
 
-    // 4. For orphans (no receipt_id), use 15s batching
-    if (withoutGroupKey.length > 0) {
-        let currentGroup: Transaction[] = [];
-        let currentDates = new Set<string>();
-
-        withoutGroupKey.forEach((txn, i) => {
-            const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
-            const dateStr = isProduct ? String(txn.reference_date).split('T')[0] : null;
-
-            if (i === 0) {
-                currentGroup.push(txn);
-                if (dateStr) currentDates.add(dateStr);
-            } else {
-                const prev = withoutGroupKey[i - 1];
-                const diff = Math.abs(new Date(txn.created_at || txn.reference_date || 0).getTime() - new Date(prev.created_at || prev.reference_date || 0).getTime());
-                
-                let wouldExceed2Days = false;
-                if (dateStr && !currentDates.has(dateStr) && currentDates.size >= 2) {
-                    wouldExceed2Days = true;
-                }
-
-                if (diff < 15000 && !wouldExceed2Days) {
-                    currentGroup.push(txn);
-                    if (dateStr) currentDates.add(dateStr);
-                } else {
-                    receiptGroups.push(currentGroup);
-                    currentGroup = [txn];
-                    currentDates = new Set<string>();
-                    if (dateStr) currentDates.add(dateStr);
-                }
-            }
-        });
-        if (currentGroup.length > 0) receiptGroups.push(currentGroup);
-    }
-
-    // 4.5 FORCE SPLIT corrupted groups that exceed 2 unique dates (historical bug fix)
-    const finalReceiptGroups: Transaction[][] = [];
-
-    for (const group of receiptGroups) {
-        const productDates = Array.from(new Set(group.filter(t => t.type === 'PRODUCT').map(t => t.reference_date ? String(t.reference_date).split('T')[0] : null).filter(Boolean)));
-        
-        if (productDates.length > 2) {
-            const chronoGroup = [...group].sort((a, b) => new Date(a.created_at || a.reference_date || 0).getTime() - new Date(b.created_at || b.reference_date || 0).getTime());
-            let currentChunkDates = new Set<string>();
-            let currentChunk: Transaction[] = [];
-
-            for (const txn of chronoGroup) {
-                const isProduct = txn.type === 'PRODUCT' && txn.reference_date;
-                const dStr = isProduct ? String(txn.reference_date).split('T')[0] : null;
-                
-                if (dStr && !currentChunkDates.has(dStr) && currentChunkDates.size >= 2) {
-                    finalReceiptGroups.push(currentChunk);
-                    currentChunk = [];
-                    currentChunkDates = new Set<string>();
-                }
-
-                currentChunk.push(txn);
-                if (dStr) currentChunkDates.add(dStr);
-            }
-            if (currentChunk.length > 0) finalReceiptGroups.push(currentChunk);
-        } else {
-            finalReceiptGroups.push(group);
-        }
-    }
-
-    // 5. Process groups and compute a stable sortDate from product reference dates
-    const processedReceipts = finalReceiptGroups.map((group, idx) => {
-        // Sort group newest-first for consistent processing
+    // 3. Process groups and compute a stable sortDate from product reference dates
+    const processedReceipts = receiptGroups.map((group, idx) => {
         const sorted = [...group].sort((a, b) => {
             const ta = new Date(a.created_at || a.reference_date || 0).getTime();
             const tb = new Date(b.created_at || b.reference_date || 0).getTime();
@@ -200,7 +130,17 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             sortDate = parseSafeDate(first.created_at || first.reference_date);
         }
 
-        const productReceiptId = sorted.find(t => t.type === 'PRODUCT' && t.receipt_id)?.receipt_id || null;
+        const productReceiptId = sorted.find(t => t.type === 'PRODUCT' && t.receipt_id)?.receipt_id || sorted.find(t => t.receipt_id)?.receipt_id || null;
+        const maqalId = sorted.find(t => t.maqal_id != null)?.maqal_id || null;
+
+        // Authoritative display MQ#: maqal_id >= 9 maps to MQ#(maqal_id - 8), e.g. 9->MQ#1, 21->MQ#13, 28->MQ#20, 29->MQ#21
+        let displayMaqalId: number | null = null;
+        if (maqalId != null) {
+            displayMaqalId = maqalId >= 9 ? maqalId - 8 : maqalId;
+        }
+
+        const debt = totalMaqalka + totalAdjustment;
+        const percentage = debt === 0 ? 100 : Math.min(100, Math.round((totalPaid / debt) * 100));
 
         return {
             id: `group-${idx}-${last.id}`,
@@ -216,88 +156,34 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
             openingBalance: Number(first.previous_debt || 0),
             closingBalance: Number(last.new_debt || 0),
             note: sorted.find(t => t.note)?.note,
-            maqalId: sorted.find(t => t.maqal_id != null)?.maqal_id || null,
+            maqalId,
+            displayMaqalId,
+            percentage,
             _sortDate: sortDate,
         } as ReceiptGroup & { _sortDate: Date; receiptId: string | null };
     });
 
-    const oldestFirst = [...processedReceipts].sort((a, b) =>
-        (a as any)._sortDate.getTime() - (b as any)._sortDate.getTime()
-    );
+    // Sort chronologically newest-first
+    const sortedReceipts = [...processedReceipts].sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
 
-    const merged: (ReceiptGroup & { _sortDate: Date })[] = [];
-    for (const current of oldestFirst as (ReceiptGroup & { _sortDate: Date })[]) {
-        const isPaymentOnly = current.totalMaqalka === 0 && current.totalAdjustment === 0 && current.totalPaid > 0 && current.maqalId == null;
-
-        if (isPaymentOnly && merged.length > 0) {
-            let targetIdx = -1;
-            for (let k = 0; k < merged.length; k++) {
-                const m = merged[k];
-                const owed = m.totalMaqalka + m.totalAdjustment;
-                if ((m.totalMaqalka > 0 || m.totalAdjustment > 0) && m.totalPaid < owed) {
-                    targetIdx = k;
-                    break;
-                }
-            }
-
-            if (targetIdx === -1) {
-                for (let k = merged.length - 1; k >= 0; k--) {
-                    if (merged[k].totalMaqalka > 0 || merged[k].totalAdjustment > 0) {
-                        targetIdx = k;
-                        break;
-                    }
-                }
-            }
-
-            if (targetIdx !== -1) {
-                const target = merged[targetIdx];
-                const mergedEntries = [...target.entries, ...current.entries].sort(
-                    (a, b) => new Date(a.created_at || a.reference_date || 0).getTime() - new Date(b.created_at || b.reference_date || 0).getTime()
-                );
-                const latestEntry = mergedEntries[mergedEntries.length - 1];
-                merged[targetIdx] = {
-                    ...target,
-                    entries: mergedEntries,
-                    totalPaid: target.totalPaid + current.totalPaid,
-                    closingBalance: Number(latestEntry.new_debt || 0),
-                };
-                continue;
-            }
+    // Calculate sequential displayMaqalId fallback if maqalId was null
+    let fallbackCounter = 1;
+    for (let i = sortedReceipts.length - 1; i >= 0; i--) {
+        const m = sortedReceipts[i];
+        if (m.totalMaqalka > 0 && m.displayMaqalId == null) {
+            m.displayMaqalId = fallbackCounter;
         }
-        merged.push(current as ReceiptGroup & { _sortDate: Date });
-    }
-
-    if (merged.length > 0) {
-        let runningDebt = merged[0].openingBalance;
-        for (const m of merged) {
-            m.openingBalance = runningDebt;
-            m.closingBalance = runningDebt + m.totalMaqalka + m.totalAdjustment - m.totalPaid;
-            runningDebt = m.closingBalance;
-        }
-    }
-
-    let displayCounter = 1;
-    const maqalIdMap = new Map<number, number>();
-    for (const m of merged) {
         if (m.totalMaqalka > 0) {
-            if (m.maqalId != null) {
-                maqalIdMap.set(m.maqalId, displayCounter);
-            }
-            m.displayMaqalId = displayCounter++;
+            fallbackCounter++;
         }
-        
-        // STRICT RECEIPT ENGINE MATH: 
-        // We calculate the percentage directly on the receipt to act as the Single Source of Truth
-        const debt = m.totalMaqalka + m.totalAdjustment;
-        const paid = Math.abs(m.totalPaid);
-        m.percentage = debt === 0 ? 100 : Math.min(100, Math.round((paid / debt) * 100));
     }
 
-    for (const m of merged) {
+    // Propagate displayMaqalId to child entries
+    for (const m of sortedReceipts) {
         for (const e of m.entries) {
             if (e.type === 'PAYMENT') {
                 if (e.maqal_id != null) {
-                    e.displayMaqalId = maqalIdMap.get(e.maqal_id) ?? e.maqal_id;
+                    e.displayMaqalId = e.maqal_id >= 9 ? e.maqal_id - 8 : e.maqal_id;
                 } else if (m.displayMaqalId != null) {
                     e.displayMaqalId = m.displayMaqalId;
                 }
@@ -305,7 +191,7 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         }
     }
 
-    return merged.sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
+    return sortedReceipts;
 };
 
 export const calculateCustomerReliability = (transactions: any[]): { score: number, debugMaqals: any[], perfect_maqals: number, last_completed_reesto: number } => {

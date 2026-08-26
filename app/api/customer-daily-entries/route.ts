@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
-import { MAQAL_PAIRS_CTE, validateMaqalPairs } from '@/lib/maqal-utils';
+import { MAQAL_PAIRS_CTE, validateMaqalPairs, getMaqalIdFromDate } from '@/lib/maqal-utils';
 
 const fetchCustomerDailyEntriesData = async (customerId: string) => {
     // 1. Fetch ALL authoritative DailyBook 2-day pairs (strictly chronological ASC)
@@ -131,7 +131,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
 
     const day1Str = pairToShow ? pairToShow.date1 : new Date().toISOString().split('T')[0];
     const day2Str = pairToShow ? pairToShow.date2 : new Date().toISOString().split('T')[0];
-    const currentMaqalId = pairToShow ? pairToShow.mq_num : 1;
+    const currentMaqalId = pairToShow ? getMaqalIdFromDate(pairToShow.date1) : getMaqalIdFromDate(day1Str);
 
     const { rows: items } = await pool.query(`
         SELECT TO_CHAR(db.date, 'YYYY-MM-DD') AS date,
