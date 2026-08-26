@@ -328,66 +328,98 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
     if (session.role !== 'SUPER_ADMIN') {
         return NextResponse.json({ error: 'Only Super Admin can delete Daily Book entries' }, { status: 403 });
     }
+
     const { searchParams } = new URL(request.url);
-    const dateStr = searchParams.get('date');
-    if (!dateStr) return NextResponse.json({ error: 'Date required' }, { status: 400 });
+    let targetDates: string[] = [];
+
+    // Check if dates were sent in JSON body
+    if (request.headers.get('content-type')?.includes('application/json')) {
+        try {
+            const body = await request.json();
+            if (Array.isArray(body.dates) && body.dates.length > 0) {
+                targetDates = body.dates.map((d: any) => String(d).substring(0, 10));
+            } else if (body.date) {
+                targetDates = [String(body.date).substring(0, 10)];
+            }
+        } catch (e) {
+            // fallback to search params
+        }
+    }
+
+    if (targetDates.length === 0) {
+        const datesParam = searchParams.get('dates');
+        const dateStr = searchParams.get('date');
+        if (datesParam) {
+            targetDates = datesParam.split(',').map(d => d.trim().substring(0, 10)).filter(Boolean);
+        } else if (dateStr) {
+            targetDates = [dateStr.substring(0, 10)];
+        }
+    }
+
+    if (targetDates.length === 0) {
+        return NextResponse.json({ error: 'At least one date is required' }, { status: 400 });
+    }
+
+    const username = session?.username || 'unknown';
 
     try {
-        // Get ALL active books for this date (handles duplicate entries gracefully)
-        const { rows: books } = await pool.query(
-            `SELECT id FROM "DailyBook" WHERE date::date = $1::date AND deleted_at IS NULL`,
-            [dateStr]
-        );
+        let totalDeletedRecords = 0;
+        const processedDates: string[] = [];
 
-        if (books.length === 0) {
-            // Also check if there are soft-deleted books — if so, return success (already deleted)
-            const { rows: anyBooks } = await pool.query(
-                `SELECT id FROM "DailyBook" WHERE date::date = $1::date`,
+        for (const dateStr of targetDates) {
+            const { rows: books } = await pool.query(
+                `SELECT id FROM "DailyBook" WHERE date::date = $1::date AND deleted_at IS NULL`,
                 [dateStr]
             );
-            if (anyBooks.length > 0) {
-                return NextResponse.json({ success: true, alreadyDeleted: true });
+
+            if (books.length > 0) {
+                // Soft-delete matching books and items
+                await Promise.all(books.map(async (book) => {
+                    await pool.query(
+                        `UPDATE "DailyBookItem" SET deleted_at = NOW() WHERE daily_book_id = $1 AND deleted_at IS NULL`,
+                        [book.id]
+                    );
+                    await pool.query(
+                        `UPDATE "DailyBook" SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2`,
+                        [username, book.id]
+                    );
+                }));
+
+                totalDeletedRecords += books.length;
+                processedDates.push(dateStr);
+
+                // Audit log per soft-deleted date
+                await logAudit(
+                    request,
+                    'DELETE_DAILY_BOOK',
+                    `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s)). Historical Customer Ledger, Maqal History, and Payments PRESERVED.`
+                );
+
+                try {
+                    // @ts-ignore
+                    revalidateTag(`daily-book-${dateStr}`);
+                } catch (e) { }
             }
-            return NextResponse.json({ error: 'Book not found' }, { status: 404 });
         }
 
-        const username = session?.username || 'unknown';
-
-        // 1. Soft-delete ALL matching books and items
-        await Promise.all(books.map(async (book) => {
-            await pool.query(
-                `UPDATE "DailyBookItem" SET deleted_at = NOW() WHERE daily_book_id = $1 AND deleted_at IS NULL`,
-                [book.id]
-            );
-            await pool.query(
-                `UPDATE "DailyBook" SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2`,
-                [username, book.id]
-            );
-        }));
-
-        // The user specifically requested that deleting a Daily Book MUST NOT delete the Ledger entries.
-        await logAudit(
-            request,
-            'DELETE_DAILY_BOOK',
-            `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s)). Historical Customer Ledger, Maqal History, and Payments PRESERVED.`
-        );
-
         try {
-            // Revalidate the specific date, history, AND customers so warning signs are instantly synced
-            // @ts-ignore
-            revalidateTag(`daily-book-${dateStr}`);
             // @ts-ignore
             revalidateTag('daily-book-history');
             // @ts-ignore
+            revalidateTag('daily-book-init');
+            // @ts-ignore
             revalidateTag('customers');
-            
             // @ts-ignore
             revalidateTag('dashboard');
         } catch (e) {
             console.error('Failed to revalidate paths:', e);
         }
 
-        return NextResponse.json({ success: true, deletedCount: books.length });
+        return NextResponse.json({ 
+            success: true, 
+            deletedCount: totalDeletedRecords, 
+            processedDates 
+        });
     } catch (error: any) {
         console.error('Delete DailyBook Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

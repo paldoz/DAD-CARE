@@ -2,6 +2,7 @@ import pool from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
+import { revalidateTag } from 'next/cache';
 
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,19 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
         }
 
+        try {
+            // @ts-ignore
+            revalidateTag('daily-book-history');
+            // @ts-ignore
+            revalidateTag('daily-book-init');
+            // @ts-ignore
+            revalidateTag('customers');
+            // @ts-ignore
+            revalidateTag('dashboard');
+        } catch (e) {
+            console.error('Failed to revalidate paths:', e);
+        }
+
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error('Restore Trash Error:', error);
@@ -83,6 +97,19 @@ export async function DELETE(request: Request) {
             await pool.query(`DELETE FROM "DailyBook" WHERE deleted_at < NOW() - INTERVAL '30 days'`);
             await pool.query(`DELETE FROM "Ledger" WHERE deleted_at < NOW() - INTERVAL '30 days'`);
             await logAudit(request, 'PURGE_TRASH', `Purged trash older than 30 days automatically`);
+        }
+        
+        try {
+            // @ts-ignore
+            revalidateTag('daily-book-history');
+            // @ts-ignore
+            revalidateTag('daily-book-init');
+            // @ts-ignore
+            revalidateTag('customers');
+            // @ts-ignore
+            revalidateTag('dashboard');
+        } catch (e) {
+            console.error('Failed to revalidate paths:', e);
         }
         
         return NextResponse.json({ success: true });

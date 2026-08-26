@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
-import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check } from 'lucide-react';
+import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check, Minus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
@@ -116,6 +116,9 @@ function DailyBookPageInner() {
     const [processedCustomerIds, setProcessedCustomerIds] = useState<Set<string>>(new Set());
     const [loadingLedgerStatus, setLoadingLedgerStatus] = useState(false);
     const [historyLedgerStatus, setHistoryLedgerStatus] = useState<Record<string, Set<string>>>({});
+    const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
+    const [singleDeleteEntry, setSingleDeleteEntry] = useState<SavedEntry | null>(null);
+    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
     const [deleteConfirmDate, setDeleteConfirmDate] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isInitialized, setIsInitialized] = useState(false);
@@ -419,29 +422,80 @@ function DailyBookPageInner() {
         swrMutate(`/api/daily-book?date=${editDateStr}`);
     };
 
-    const handleDeleteEntry = async () => {
-        if (!deleteConfirmDate) return;
+    const toggleSelectDate = (dStr: string) => {
+        const key = dStr.substring(0, 10);
+        setSelectedDates(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = (allVisibleDates: string[]) => {
+        const visibleKeys = allVisibleDates.map(d => d.substring(0, 10));
+        const allSelected = visibleKeys.length > 0 && visibleKeys.every(k => selectedDates.has(k));
+        if (allSelected) {
+            setSelectedDates(new Set());
+        } else {
+            setSelectedDates(new Set(visibleKeys));
+        }
+    };
+
+    const handleDeleteSingleEntry = async () => {
+        if (!singleDeleteEntry && !deleteConfirmDate) return;
         setIsDeleting(true);
-        const deleteDateStr = deleteConfirmDate.substring(0, 10);
+        const deleteDateStr = (singleDeleteEntry ? singleDeleteEntry.date : deleteConfirmDate!).substring(0, 10);
         try {
             const res = await fetch(`/api/daily-book?date=${deleteDateStr}`, { method: 'DELETE' });
             if (!res.ok) throw new Error(await res.text());
-            // Optimistically remove from local list instantly — no loading screen
+            // Optimistically remove from local list instantly
             setSavedEntries(prev => prev.filter(e => e.date.substring(0, 10) !== deleteDateStr));
-            toast.success('Moved to Recycle Bin');
+            setSelectedDates(prev => {
+                const next = new Set(prev);
+                next.delete(deleteDateStr);
+                return next;
+            });
+            toast.success(`Entry for ${format(new Date(deleteDateStr), 'MMM dd, yyyy')} moved to Trash. Customer Ledger preserved.`);
+            setSingleDeleteEntry(null);
             setDeleteConfirmDate(null);
 
-            // Immediately fire both refreshes — no delay needed because revalidatePath
-            // on the server is synchronous and the cache is already cleared by the time
-            // we get the 200 response back from the API.
-            mutateInit();                                     // updates history count badge
-            mutateHistory(undefined, { revalidate: true });  // refreshes the entry list
+            mutateInit();
+            mutateHistory(undefined, { revalidate: true });
         } catch (err: any) {
             toast.error('Failed to move to trash: ' + (err.message || 'Server error'));
         } finally {
             setIsDeleting(false);
         }
     };
+
+    const handleDeleteBulkEntries = async () => {
+        if (selectedDates.size === 0) return;
+        setIsDeleting(true);
+        const datesArray = Array.from(selectedDates);
+        try {
+            const res = await fetch('/api/daily-book', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dates: datesArray })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const dateSet = new Set(datesArray);
+            setSavedEntries(prev => prev.filter(e => !dateSet.has(e.date.substring(0, 10))));
+            setSelectedDates(new Set());
+            toast.success(`${datesArray.length} Daily Book entries moved to Trash. Customer Ledger preserved.`);
+            setBulkDeleteModalOpen(false);
+
+            mutateInit();
+            mutateHistory(undefined, { revalidate: true });
+        } catch (err: any) {
+            toast.error('Failed to move entries to trash: ' + (err.message || 'Server error'));
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const handleDeleteEntry = handleDeleteSingleEntry;
 
     const handleSoftDeleteCustomer = async () => {
         if (!pendingDeleteCustomerId) return;
@@ -1265,23 +1319,70 @@ function DailyBookPageInner() {
                         );
                     })()}
 
-                    <SecurityVerificationDialog
-                        isOpen={!!deleteConfirmDate}
-                        onOpenChange={(open) => {
-                            if (!open) setDeleteConfirmDate(null);
-                        }}
-                        onConfirm={handleDeleteEntry}
-                        title="Move to Trash"
-                        description={`Move the entry for ${deleteConfirmDate ? format(new Date(deleteConfirmDate), 'MMMM dd, yyyy') : ''} to the Recycle Bin?`}
-                        isProcessing={isDeleting}
-                    />
+                    {/* ── Single Entry Delete Confirmation Dialog ── */}
+                    <Dialog open={!!singleDeleteEntry} onOpenChange={(o) => { if (!o) setSingleDeleteEntry(null); }}>
+                        <DialogContent className="max-w-sm">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-destructive">
+                                    <Trash2 className="w-4 h-4" />
+                                    Move to Trash?
+                                </DialogTitle>
+                                <DialogDescription className="space-y-2 pt-1">
+                                    <span className="block font-semibold text-foreground">
+                                        {singleDeleteEntry ? format(new Date(singleDeleteEntry.date), 'MMMM dd, yyyy') : ''}
+                                    </span>
+                                    <span className="block text-sm text-muted-foreground">
+                                        {singleDeleteEntry ? `${singleDeleteEntry.items.length} customers · ${formatKg(singleDeleteEntry.totalKg)} KG` : ''}
+                                    </span>
+                                    <span className="block text-xs mt-2 p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-medium">
+                                        ✅ Customer Ledger, Maqal History, receipts, and payments will NOT be deleted.
+                                    </span>
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="flex gap-2 mt-2">
+                                <Button variant="outline" className="flex-1" onClick={() => setSingleDeleteEntry(null)} disabled={isDeleting}>Cancel</Button>
+                                <Button variant="destructive" className="flex-1" onClick={handleDeleteSingleEntry} disabled={isDeleting}>
+                                    {isDeleting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}
+                                    Move to Trash
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* ── Bulk Delete Confirmation Dialog ── */}
+                    <Dialog open={bulkDeleteModalOpen} onOpenChange={(o) => { if (!o) setBulkDeleteModalOpen(false); }}>
+                        <DialogContent className="max-w-sm">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-destructive">
+                                    <Trash2 className="w-4 h-4" />
+                                    Move {selectedDates.size} {selectedDates.size === 1 ? 'entry' : 'entries'} to Trash?
+                                </DialogTitle>
+                                <DialogDescription className="space-y-2 pt-1">
+                                    <span className="block text-sm text-muted-foreground">
+                                        These {selectedDates.size} Daily Book entries will be soft-deleted from active history.
+                                    </span>
+                                    <span className="block text-xs mt-2 p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-medium">
+                                        ✅ Existing Customer Ledger, receipts, payments and Maqal history will remain completely unchanged.
+                                    </span>
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="flex gap-2 mt-2">
+                                <Button variant="outline" className="flex-1" onClick={() => setBulkDeleteModalOpen(false)} disabled={isDeleting}>Cancel</Button>
+                                <Button variant="destructive" className="flex-1" onClick={handleDeleteBulkEntries} disabled={isDeleting}>
+                                    {isDeleting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}
+                                    Move {selectedDates.size} to Trash
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
 
                     <Card className="glass-card">
-                        <CardHeader className="border-b border-border">
+                        <CardHeader className="border-b border-border pb-3">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="text-foreground flex items-center gap-2">
                                     <FileText className="w-5 h-5 text-primary" />
                                     Saved Entries
+                                    {sortedEntries.length > 0 && <span className="text-xs text-muted-foreground font-normal">({sortedEntries.length})</span>}
                                 </CardTitle>
                                 <div className="flex items-center gap-2">
                                     {/* Tiny Compare (Isbarbardhig) Button */}
@@ -1331,6 +1432,62 @@ function DailyBookPageInner() {
                                     </Popover>
                                 </div>
                             </div>
+
+                            {/* ── Select All row ── only shown to Super Admin when there are entries */}
+                            {isSuperAdmin && sortedEntries.length > 0 && (() => {
+                                const visibleDates = sortedEntries.slice(0, visibleEntriesCount).map(e => e.date.substring(0, 10));
+                                const allSelected = visibleDates.length > 0 && visibleDates.every(k => selectedDates.has(k));
+                                const someSelected = visibleDates.some(k => selectedDates.has(k));
+                                return (
+                                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/40">
+                                        <button
+                                            onClick={() => toggleSelectAll(visibleDates)}
+                                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                                                allSelected
+                                                    ? 'bg-primary border-primary text-primary-foreground'
+                                                    : someSelected
+                                                    ? 'bg-primary/20 border-primary text-primary'
+                                                    : 'border-border/60 bg-background hover:border-primary/50'
+                                            }`}
+                                            title={allSelected ? 'Deselect all' : 'Select all visible'}
+                                        >
+                                            {allSelected ? (
+                                                <Check className="w-3 h-3" />
+                                            ) : someSelected ? (
+                                                <Minus className="w-3 h-3" />
+                                            ) : null}
+                                        </button>
+                                        <span className="text-xs text-muted-foreground font-medium">
+                                            {allSelected ? 'Deselect All' : 'Select All'}
+                                        </span>
+
+                                        {/* Bulk action bar */}
+                                        {selectedDates.size > 0 && (
+                                            <div className="flex items-center gap-2 ml-auto animate-in fade-in slide-in-from-right-2 duration-200">
+                                                <span className="text-xs font-bold text-foreground">
+                                                    {selectedDates.size} selected
+                                                </span>
+                                                <Button
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    className="h-7 px-3 text-[11px] font-bold gap-1.5"
+                                                    onClick={() => setBulkDeleteModalOpen(true)}
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                    Move to Trash
+                                                </Button>
+                                                <button
+                                                    onClick={() => setSelectedDates(new Set())}
+                                                    className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                                    title="Clear selection"
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </CardHeader>
                         <CardContent className="p-0">
                             {sortedEntries.length === 0 ? (
@@ -1344,10 +1501,13 @@ function DailyBookPageInner() {
                             ) : (
                                 <>
                                     <div className="divide-y divide-border">
-                                        {sortedEntries.slice(0, visibleEntriesCount).map((entry) => (
+                                        {sortedEntries.slice(0, visibleEntriesCount).map((entry) => {
+                                            const entryKey = entry.date.substring(0, 10);
+                                            const isEntrySelected = selectedDates.has(entryKey);
+                                            return (
                                             <div
                                                 key={entry.date}
-                                                className="group transition-all hover:bg-muted/30"
+                                                className={`group transition-all hover:bg-muted/30 ${isEntrySelected ? 'bg-primary/5 ring-1 ring-inset ring-primary/20' : ''}`}
                                                 onClick={async () => {
                                                     // Fetch ledger status for this date if not already cached
                                                     if (!historyLedgerStatus[entry.date]) {
@@ -1367,6 +1527,20 @@ function DailyBookPageInner() {
                                                 {/* Entry Header - Clickable */}
                                                 <div className="flex flex-col md:flex-row md:items-center justify-between p-4 cursor-pointer">
                                                     <div className="flex items-center gap-3 md:gap-4 flex-1">
+                                                        {/* Per-entry checkbox — only Super Admin */}
+                                                        {isSuperAdmin && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); toggleSelectDate(entry.date); }}
+                                                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                                                                    isEntrySelected
+                                                                        ? 'bg-primary border-primary text-primary-foreground'
+                                                                        : 'border-border/60 bg-background hover:border-primary/50'
+                                                                }`}
+                                                                title={isEntrySelected ? 'Deselect' : 'Select'}
+                                                            >
+                                                                {isEntrySelected && <Check className="w-3 h-3" />}
+                                                            </button>
+                                                        )}
                                                         <div className={`p-2 rounded-lg transition-colors shrink-0 ${expandedEntry === entry.date ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground group-hover:bg-card'}`}>
                                                             {expandedEntry === entry.date ? (
                                                                 <ChevronDown className="w-5 h-5" />
@@ -1481,7 +1655,7 @@ function DailyBookPageInner() {
                                                                 <Button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        setDeleteConfirmDate(entry.date);
+                                                                        setSingleDeleteEntry(entry);
                                                                     }}
                                                                     variant="destructive"
                                                                     size="sm"
@@ -1563,7 +1737,8 @@ function DailyBookPageInner() {
                                                     </div>
                                                 )}
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                     {sortedEntries.length > visibleEntriesCount ? (
                                         <div className="p-4 border-t border-border flex justify-center bg-muted/5">
