@@ -366,8 +366,11 @@ export const DELETE = trackApiRoute('/api/daily-book', async (request: Request) 
         }));
 
         // The user specifically requested that deleting a Daily Book MUST NOT delete the Ledger entries.
-
-        await logAudit(request, 'DELETE_DAILY_BOOK', `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s))`);
+        await logAudit(
+            request,
+            'DELETE_DAILY_BOOK',
+            `Moved daily book entry for ${dateStr} to Trash (deleted ${books.length} record(s)). Historical Customer Ledger, Maqal History, and Payments PRESERVED.`
+        );
 
         try {
             // Revalidate the specific date, history, AND customers so warning signs are instantly synced
