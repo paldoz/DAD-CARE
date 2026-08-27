@@ -38,11 +38,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         };
     }
 
-    // Build a lookup: date string -> mq_num (for cross-referencing processed dates)
-    const dateToMqNum = new Map<string, number>();
+    // Build a lookup: date string -> maqal_id (for cross-referencing processed dates)
+    const dateToMaqalId = new Map<string, number>();
     for (const pair of allPairs) {
-        dateToMqNum.set(pair.date1, pair.mq_num);
-        dateToMqNum.set(pair.date2, pair.mq_num);
+        dateToMaqalId.set(pair.date1, pair.maqal_id);
+        dateToMaqalId.set(pair.date2, pair.maqal_id);
     }
 
     // 2. Fetch customer's processed product DATES & MAQAL IDs from Ledger
@@ -58,21 +58,16 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         ORDER BY date_str ASC
     `, [customerId]);
 
-    const processedMqNums = new Set<number>();
+    const processedMaqalIds = new Set<number>();
 
     for (const row of processedRes.rows) {
-        const dateStr = row.date_str as string;
-        const maqalId = row.maqal_id;
-
-        if (maqalId != null && !isNaN(Number(maqalId))) {
-            const mqIdNum = Number(maqalId);
-            processedMqNums.add(mqIdNum);
-            processedMqNums.add(mqIdNum >= 9 ? mqIdNum - 8 : mqIdNum);
-        }
-
-        const mqFromDate = dateToMqNum.get(dateStr);
-        if (mqFromDate != null) {
-            processedMqNums.add(mqFromDate);
+        if (row.maqal_id != null && !isNaN(Number(row.maqal_id))) {
+            processedMaqalIds.add(Number(row.maqal_id));
+        } else {
+            const mqFromDate = dateToMaqalId.get(row.date_str);
+            if (mqFromDate != null) {
+                processedMaqalIds.add(mqFromDate);
+            }
         }
     }
 
@@ -102,7 +97,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         ? allPairs.filter(p => p.date2 >= earliestDate)
         : allPairs;
 
-    const unprocessedPairs = eligiblePairs.filter(p => !processedMqNums.has(p.mq_num) && !processedMqNums.has(p.maqal_id));
+    const unprocessedPairs = eligiblePairs.filter(p => !processedMaqalIds.has(p.maqal_id));
 
     const allUnprocessedDates: string[] = [];
     for (const p of unprocessedPairs) {
@@ -116,7 +111,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
 
     const day1Str = pairToShow ? pairToShow.date1 : new Date().toISOString().split('T')[0];
     const day2Str = pairToShow ? pairToShow.date2 : new Date().toISOString().split('T')[0];
-    const currentMaqalId = pairToShow ? pairToShow.mq_num : 1;
+    const currentMaqalId = pairToShow ? pairToShow.maqal_id : 9;
 
     const { rows: items } = await pool.query(`
         SELECT TO_CHAR(db.date, 'YYYY-MM-DD') AS date,
