@@ -64,7 +64,8 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 
         const customerId = isBatch ? customerIdBatch : body.customerId;
         const receipt_id = body.receipt_id || (isBatch ? crypto.randomUUID() : null);
-        const maqal_id = body.maqal_id || null;
+        // Client-sent maqal_id is a hint — we will override it with the authoritative DB value below.
+        const client_maqal_id = body.maqal_id || null;
 
         if (!customerId) throw new Error('Customer ID is required');
 
@@ -72,6 +73,9 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
         let runningDebt = 0;
         let customerName = '';
         let entriesToInsert: any[] = [];
+        // authoritative_maqal_id: final value used for ALL rows in this batch.
+        // Resolved below after reading the DB.
+        let authoritative_maqal_id: number | null = client_maqal_id;
 
         try {
             await client.query('BEGIN');
@@ -83,6 +87,22 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             );
             if (customers.length === 0) throw new Error('Customer not found');
             customerName = customers[0].name;
+
+            // 1b. AUTHORITATIVE MAQAL_ID RESOLUTION:
+            // If this batch uses an existing receipt_id, look up the maqal_id from the existing
+            // PRODUCT rows. The client may have sent the wrong (current) maqal_id for a late payment.
+            // The only source of truth for which Maqal a receipt belongs to is the PRODUCT row.
+            if (receipt_id) {
+                const { rows: existingProducts } = await client.query(
+                    `SELECT maqal_id FROM "Ledger" WHERE receipt_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL LIMIT 1`,
+                    [receipt_id]
+                );
+                if (existingProducts.length > 0 && existingProducts[0].maqal_id != null) {
+                    // This receipt already has products — use their maqal_id as the authority.
+                    authoritative_maqal_id = existingProducts[0].maqal_id;
+                }
+                // else: new receipt, use client-sent maqal_id (which should be the current unprocessed maqal).
+            }
 
             // 2. GET CURRENT LATEST DEBT (Atomic start point)
             const { rows: lastEntries } = await client.query(
@@ -160,7 +180,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                     new_debt: runningDebt,
                     note: note || body.note || null,
                     receipt_id: receipt_id,
-                    maqal_id: maqal_id,
+                    maqal_id: authoritative_maqal_id,
                     created_at: new Date(now.getTime() + i).toISOString()
                 });
             }

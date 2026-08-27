@@ -131,7 +131,13 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         }
 
         const productReceiptId = sorted.find(t => t.type === 'PRODUCT' && t.receipt_id)?.receipt_id || sorted.find(t => t.receipt_id)?.receipt_id || null;
-        const maqalId = sorted.find(t => t.maqal_id != null)?.maqal_id || null;
+        // AUTHORITATIVE: maqalId must come from PRODUCT entries only — never from payments.
+        // A payment may carry a wrong maqal_id (e.g. the current maqal at time of late-payment),
+        // but only the PRODUCT row records which Maqal the delivery actually belongs to.
+        const maqalId = sorted.find(t => t.type === 'PRODUCT' && t.maqal_id != null)?.maqal_id
+            ?? sorted.find(t => t.type === 'ADJUSTMENT' && t.maqal_id != null)?.maqal_id
+            ?? sorted.find(t => t.maqal_id != null)?.maqal_id
+            ?? null;
 
         // Authoritative display MQ#: maqal_id >= 9 maps to MQ#(maqal_id - 8), e.g. 9->MQ#1, 21->MQ#13, 28->MQ#20, 29->MQ#21
         let displayMaqalId: number | null = null;
