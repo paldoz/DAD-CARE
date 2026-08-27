@@ -134,37 +134,56 @@ const fetchCustomerDailyEntriesData = async (customerId: string, targetMaqalId?:
         allUnprocessedDates.push(p.date1, p.date2);
     }
 
-    // Build rich timeline options:
-    // 1. Last 2 completed pairs
-    const completedPairs = allPairs.filter(p => processedMaqalIds.has(p.maqal_id)).slice(-2);
-    // 2. Unprocessed pairs (up to 4)
-    const upcomingPairs = unprocessedPairs.slice(0, 4);
+    const formatFriendlyPair = (d1: string, d2: string) => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const p1 = d1.split('-');
+        const p2 = d2.split('-');
+        const m1 = months[parseInt(p1[1], 10) - 1] || p1[1];
+        const day1 = parseInt(p1[2], 10);
+        const m2 = months[parseInt(p2[1], 10) - 1] || p2[1];
+        const day2 = parseInt(p2[2], 10);
+        return `${m1} ${day1} & ${m2} ${day2}`;
+    };
+
+    // Build exactly four chronological options:
+    // 2 previous completed + 2 current/upcoming
+    const allCompleted = allPairs.filter(p => processedMaqalIds.has(p.maqal_id));
+    const allUpcoming = unprocessedPairs;
+
+    const completedSlice = allCompleted.slice(-2);
+    const neededUpcoming = Math.max(2, 4 - completedSlice.length);
+    const upcomingSlice = allUpcoming.slice(0, neededUpcoming);
+    
+    // If not enough upcoming, take up to 4 completed
+    const finalCompleted = allCompleted.slice(-Math.max(completedSlice.length, 4 - upcomingSlice.length));
 
     const timelineOptions: { maqalId: number; mqNum: number; date1: string; date2: string; label: string; status: 'DONE' | 'CURRENT' | 'NOT_DONE' | 'WAITING' }[] = [];
 
-    for (const p of completedPairs) {
+    for (const p of finalCompleted) {
+        const dateFormatted = formatFriendlyPair(p.date1, p.date2);
         timelineOptions.push({
             maqalId: p.maqal_id,
             mqNum: p.mq_num,
             date1: p.date1,
             date2: p.date2,
-            label: `✓ MQ#${p.mq_num} — ${p.date1} & ${p.date2} (Done)`,
+            label: `✓ MQ#${p.mq_num} — ${dateFormatted} (Done)`,
             status: 'DONE'
         });
     }
 
-    for (let i = 0; i < upcomingPairs.length; i++) {
-        const p = upcomingPairs[i];
+    for (let i = 0; i < upcomingSlice.length; i++) {
+        const p = upcomingSlice[i];
         const isCurrent = i === 0;
         const status = isCurrent ? 'CURRENT' : 'NOT_DONE';
-        const prefix = isCurrent ? '📌' : '⚠';
-        const suffix = isCurrent ? '(Current)' : '(Not Done)';
+        const prefix = isCurrent ? '📌' : (i === 1 ? '⚠️' : '⚡');
+        const suffix = isCurrent ? '(Current)' : (i === 1 ? '(Not Done)' : '(Next)');
+        const dateFormatted = formatFriendlyPair(p.date1, p.date2);
         timelineOptions.push({
             maqalId: p.maqal_id,
             mqNum: p.mq_num,
             date1: p.date1,
             date2: p.date2,
-            label: `${prefix} MQ#${p.mq_num} — ${p.date1} & ${p.date2} ${suffix}`,
+            label: `${prefix} MQ#${p.mq_num} — ${dateFormatted} ${suffix}`,
             status
         });
     }

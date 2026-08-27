@@ -1224,7 +1224,7 @@ export default function LedgerPage() {
                                                         showUnprocessedOnly && "bg-amber-500 text-yellow-950 hover:bg-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.3)] animate-pulse"
                                                     )}
                                                 >
-                                                    ⏳ Dhiman ({unprocessedCustomersCount})
+                                                    ⚠️ Dhiman ({unprocessedCustomersCount})
                                                 </Button>
 
                                             </div>
@@ -1251,6 +1251,11 @@ export default function LedgerPage() {
                                                         const isDone = c.id === lastSavedCustomerId || c.is_target_days_done;
                                                         const unfinished = Number(c.unprocessed_books_count) || 0;
 
+                                                        // Show ⚠️ icons — 1 per unfinished Maqal, max 2
+                                                        const warningIcons = !isDone && unfinished > 0
+                                                            ? '⚠️'.repeat(Math.min(unfinished, 2))
+                                                            : null;
+
                                                         return (
                                                             <div 
                                                                 key={c.id}
@@ -1274,9 +1279,9 @@ export default function LedgerPage() {
                                                                     )}
                                                                     <span className="truncate">{c.name.toUpperCase()} (ID: {c.customer_code})</span>
                                                                 </div>
-                                                                {!isDone && unfinished > 0 && (
-                                                                    <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0 ml-2">
-                                                                        DHIMAN ({unfinished})
+                                                                {warningIcons && (
+                                                                    <span className="text-sm shrink-0 ml-2" title={`${unfinished} unfinished Maqal${unfinished > 1 ? 's' : ''}`}>
+                                                                        {warningIcons}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -1317,6 +1322,30 @@ export default function LedgerPage() {
                                         </PopoverContent>
                                     </Popover>
                                 </div>
+                                {/* ── Active unfinished Maqal warning panel ───────────────────────────
+                                      Appears when a customer is selected and has unfinished Maqals.
+                                      Dates come directly from timelineOptionsList (server-authoritative).
+                                      Automatically recalculates after every save — no manual refresh needed.
+                                 ── */}
+                                 {selectedCustomerId && (() => {
+                                     const unfinishedOptions = timelineOptionsList.filter(
+                                         (o) => o.status === 'NOT_DONE' || o.status === 'CURRENT'
+                                     );
+                                     if (unfinishedOptions.length === 0) return null;
+                                     const icons = '⚠️'.repeat(Math.min(unfinishedOptions.length, 2));
+                                     return (
+                                         <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/8 border border-amber-500/20 animate-in fade-in duration-300 mt-1">
+                                             <span className="text-base leading-tight shrink-0 mt-0.5">{icons}</span>
+                                             <div className="flex flex-col gap-0.5">
+                                                 {unfinishedOptions.slice(0, 2).map((o) => (
+                                                     <span key={o.maqalId} className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-tight">
+                                                         MQ#{o.mqNum} — {format(parseISO(o.date1), 'MMM d')} &amp; {format(parseISO(o.date2), 'MMM d')}
+                                                     </span>
+                                                 ))}
+                                             </div>
+                                         </div>
+                                     );
+                                 })()}
                                 {selectedCustomerId && (
                                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
