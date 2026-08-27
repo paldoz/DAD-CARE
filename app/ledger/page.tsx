@@ -608,9 +608,10 @@ export default function LedgerPage() {
         }
     }, [dailyEntriesRaw, defaultPrice, dateSpecificPrices]);
 
-    const handleCustomerChange = async (customerId: string) => {
+    const handleCustomerChange = (customerId: string) => {
         setSelectedCustomerId(customerId);
         setSelectedMaqalId(null);
+        setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
         setShowLastMaqal(false);
@@ -620,50 +621,8 @@ export default function LedgerPage() {
         setAllUnprocessedDates([]);
         setFreshBalance(null);
         setOldMaqalDone(false);
-        setFetchingDetails(true);
-
-        try {
-            const res = await fetch(`/api/customer-daily-entries?customerId=${customerId}&_t=${Date.now()}`);
-            if (res.ok) {
-                const payload = await res.json();
-                const dailyData = Array.isArray(payload) ? payload : (payload.result || []);
-                const allUnprocessed = payload.allUnprocessedDates || [];
-                const maqalId = payload.maqalId || null;
-                const timelineOptions = payload.timelineOptions || [];
-
-                setAllUnprocessedDates(allUnprocessed);
-                setCurrentMaqalId(maqalId);
-                if (timelineOptions.length > 0) setTimelineOptionsList(timelineOptions);
-                setCustomerDailyDates(dailyData);
-
-                if (dailyData.length > 0) {
-                    const newExpandedIds = new Set<string>();
-                    const newEntries = dailyData.map((d: any, idx: number) => {
-                        const entryId = (Date.now() + idx).toString();
-                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(
-                            entryId,
-                            d,
-                            defaultPrice,
-                            dateSpecificPrices,
-                            dateSpecificOverrides,
-                            customerId
-                        );
-                        if (shouldExpandExtra) newExpandedIds.add(entryId);
-                        return entry;
-                    });
-                    setDateEntries(newEntries);
-                    setExpandedExtraEntryIds(newExpandedIds);
-                } else {
-                    setDateEntries([
-                        { id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
-                    ]);
-                }
-            }
-        } catch (e) {
-            console.error('Error fetching customer entries on select:', e);
-        } finally {
-            setFetchingDetails(false);
-        }
+        // SWR will auto-fetch via dailyEntriesUrl key change triggered by setSelectedCustomerId above.
+        // The useEffect on dailyEntriesRaw will hydrate dateEntries once the fetch completes.
     };
 
     const sortedCustomers = useMemo(() => {

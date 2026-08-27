@@ -223,25 +223,25 @@ export async function getCustomerNextMaqalState(
 
     const processedMaqalIds = new Set<number>(processedRes.rows.map((r: any) => Number(r.maqal_id)));
 
-    // 3. Get customer start date
+    // 3. Get customer start date — use LEAST across all sources (same logic as /api/customer-daily-entries)
     const startRes = await pool.query(`
-        SELECT COALESCE(
-            (SELECT MIN(db.date)::date::text
-             FROM "DailyBookItem" dbi
-             JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-             WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL),
-            (SELECT (created_at AT TIME ZONE 'Africa/Mogadishu')::date::text FROM "Customer" WHERE id = $1)
-        ) AS start_date
+        SELECT LEAST(
+            (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date,
+            COALESCE((SELECT MIN(reference_date::date) FROM "Ledger" WHERE customer_id = $1 AND deleted_at IS NULL), 'infinity'::date),
+            COALESCE((SELECT MIN(db.date::date) FROM "DailyBookItem" dbi JOIN "DailyBook" db ON dbi.daily_book_id = db.id WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL), 'infinity'::date)
+        )::text AS start_date
+        FROM "Customer" c
+        WHERE c.id = $1
     `, [customerId]);
 
     const startDate: string | null = startRes.rows[0]?.start_date || null;
 
-    // 4. Filter to eligible pairs (after customer start date) and only up to today
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-
+    // 4. Filter to eligible pairs (after customer start date)
+    // NOTE: Do NOT filter by today — the Maqal calendar is authoritative.
+    // A customer with DailyBook entries for Aug 25-26 must be able to process MQ#22
+    // even if date1 (Aug 25) has already passed or is approaching.
     const eligiblePairs = allPairs.filter((p: any) =>
-        (!startDate || p.date2 >= startDate) && p.date1 <= todayStr
+        !startDate || p.date2 >= startDate
     );
 
     const unprocessedPairs = eligiblePairs.filter((p: any) => !processedMaqalIds.has(p.maqal_id));
