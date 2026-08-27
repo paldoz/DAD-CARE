@@ -613,7 +613,7 @@ export default function LedgerPage() {
         setSelectedMaqalId(null);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
-        setShowLastMaqal(true);
+        setShowLastMaqal(false);
         setUpdateLastMaqal(false);
         setExpandedExtraEntryIds(new Set());
         setStartDate('');
