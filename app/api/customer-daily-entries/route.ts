@@ -67,11 +67,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string, targetMaqalId?:
 
         if (maqalId != null && !isNaN(Number(maqalId))) {
             processedMaqalIds.add(Number(maqalId));
-        }
-
-        const mqFromDate = dateToMaqalId.get(dateStr);
-        if (mqFromDate != null) {
-            processedMaqalIds.add(mqFromDate);
+        } else {
+            const mqFromDate = dateToMaqalId.get(dateStr);
+            if (mqFromDate != null) {
+                processedMaqalIds.add(mqFromDate);
+            }
         }
     }
 
