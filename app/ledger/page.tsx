@@ -52,7 +52,8 @@ const dailyEntriesFetcher = async (url: string) => {
     return {
         dailyData: data,
         allUnprocessedDates: JSON.parse(res.headers.get('x-all-unprocessed-dates') || '[]'),
-        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null
+        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null,
+        timelineOptions: JSON.parse(res.headers.get('x-timeline-options') || '[]')
     };
 };
 
@@ -298,7 +299,9 @@ export default function LedgerPage() {
 
     // SWR fetch for customer daily entries - must always be fresh so the correct Maqal pair is shown
     const [startDate, setStartDate] = useState<string>('');
-    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
+    const [selectedMaqalId, setSelectedMaqalId] = useState<number | null>(null);
+    const [timelineOptionsList, setTimelineOptionsList] = useState<Array<{ maqalId: number; mqNum: number; date1: string; date2: string; label: string; status: 'DONE' | 'CURRENT' | 'NOT_DONE' | 'WAITING' }>>([]);
+    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${selectedMaqalId ? `&targetMaqalId=${selectedMaqalId}` : (startDate ? `&startDate=${startDate}` : '')}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
         revalidateOnFocus: false,    // don't re-fetch on every tab-switch
         dedupingInterval: 0,         // always fetch fresh — Maqal pair MUST be correct, no stale data
@@ -547,9 +550,12 @@ export default function LedgerPage() {
 
         setFetchingDetails(true);
         try {
-            const { dailyData, allUnprocessedDates, maqalId } = dailyEntriesRaw;
+            const { dailyData, allUnprocessedDates, maqalId, timelineOptions } = dailyEntriesRaw;
             setAllUnprocessedDates(allUnprocessedDates);
             setCurrentMaqalId(maqalId);
+            if (timelineOptions) {
+                setTimelineOptionsList(timelineOptions);
+            }
             setCustomerDailyDates(dailyData || []);
             
             setDateEntries(prev => {
@@ -602,6 +608,7 @@ export default function LedgerPage() {
 
     const handleCustomerChange = (customerId: string) => {
         setSelectedCustomerId(customerId);
+        setSelectedMaqalId(null);
         setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
@@ -871,10 +878,10 @@ export default function LedgerPage() {
             ? lastReceiptGroup.receiptId
             : crypto.randomUUID();
 
-        // If editing/paying the last maqal, USE ITS MAQAL ID. Otherwise use the current unprocessed one.
+        // If editing/paying the last maqal, USE ITS MAQAL ID. Otherwise use the selected/current maqal ID.
         const targetMaqalId = (isEditingOldMaqal && lastReceiptGroup?.maqalId != null) 
             ? lastReceiptGroup.maqalId 
-            : currentMaqalId;
+            : (selectedMaqalId || currentMaqalId);
 
         // 1. Gather all items for the batch
         const items = [];
@@ -1240,23 +1247,41 @@ export default function LedgerPage() {
 
                                                     // CRITICAL: renderCustomer MUST be defined before it is called below.
                                                     // Defining it after the isSuperAdmin guard caused a Temporal Dead Zone crash.
-                                                    const renderCustomer = (c: any) => (
-                                                        <div 
-                                                            key={c.id}
-                                                            className={cn(
-                                                                "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
-                                                                selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
-                                                            )}
-                                                            onClick={() => {
-                                                                handleCustomerChange(c.id);
-                                                                setCustomerPopoverOpen(false);
-                                                                setCustomerSearch('');
-                                                            }}
-                                                        >
-                                                            {c.id === lastSavedCustomerId || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : '')}
-                                                            {c.name.toUpperCase()} (ID: {c.customer_code})
-                                                        </div>
-                                                    );
+                                                    const renderCustomer = (c: any) => {
+                                                        const isDone = c.id === lastSavedCustomerId || c.is_target_days_done;
+                                                        const unfinished = Number(c.unprocessed_books_count) || 0;
+
+                                                        return (
+                                                            <div 
+                                                                key={c.id}
+                                                                className={cn(
+                                                                    "relative flex cursor-default select-none items-center justify-between rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
+                                                                    selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
+                                                                )}
+                                                                onClick={() => {
+                                                                    handleCustomerChange(c.id);
+                                                                    setCustomerPopoverOpen(false);
+                                                                    setCustomerSearch('');
+                                                                }}
+                                                            >
+                                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                                    {isDone ? (
+                                                                        <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 shrink-0" />
+                                                                    ) : (
+                                                                        <span className="text-amber-500 font-black text-xs shrink-0">
+                                                                            ⚠️
+                                                                        </span>
+                                                                    )}
+                                                                    <span className="truncate">{c.name.toUpperCase()} (ID: {c.customer_code})</span>
+                                                                </div>
+                                                                {!isDone && unfinished > 0 && (
+                                                                    <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0 ml-2">
+                                                                        DHIMAN ({unfinished})
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    };
 
                                                     if (!isSuperAdmin) {
                                                         return (
@@ -1316,17 +1341,25 @@ export default function LedgerPage() {
                                                         </Button>
                                                     )}
                                                 </div>
-                                                {(timelineOptions.length > 0) && !updateLastMaqal && (
+                                                {(timelineOptionsList.length > 0 || timelineOptions.length > 0) && !updateLastMaqal && (
                                                     <div className="flex items-center gap-2 mt-1">
-                                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Auto (Oldest First):</Label>
+                                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground whitespace-nowrap">Maqal:</Label>
                                                         <select
-                                                            value={timelineOptions.find(o => o.includes('📌')) || timelineOptions.find(o => o.includes('⏳')) || timelineOptions[timelineOptions.length - 1]}
-                                                            onChange={() => {}}
-                                                            className="h-7 text-xs font-bold rounded-md border border-border/60 bg-muted/20 px-2 cursor-pointer focus:ring-1 focus:ring-primary"
+                                                            value={selectedMaqalId != null ? String(selectedMaqalId) : 'auto'}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                if (val === 'auto') {
+                                                                    setSelectedMaqalId(null);
+                                                                } else {
+                                                                    setSelectedMaqalId(parseInt(val, 10));
+                                                                }
+                                                            }}
+                                                            className="h-8 text-xs font-bold rounded-md border border-border/80 bg-background px-2 cursor-pointer focus:ring-1 focus:ring-primary shadow-sm"
                                                         >
-                                                            {timelineOptions.map((opt, idx) => (
-                                                                <option key={idx} value={opt}>
-                                                                    {opt}
+                                                            <option value="auto">⚡ Auto (Oldest First)</option>
+                                                            {timelineOptionsList.map((opt) => (
+                                                                <option key={opt.maqalId} value={String(opt.maqalId)}>
+                                                                    {opt.label}
                                                                 </option>
                                                             ))}
                                                         </select>

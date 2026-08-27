@@ -27,6 +27,17 @@ export function getDisplayMqFromDate(dateStr: string): number {
     return getDisplayMqFromMaqalId(getMaqalIdFromDate(dateStr));
 }
 
+export function getDatePairFromMaqalId(maqalId: number): { date1: string; date2: string } {
+    const epoch = new Date(`${MAQAL_EPOCH}T00:00:00Z`);
+    const offsetDays = (maqalId - 9) * 2;
+    const d1 = new Date(epoch.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+    const d2 = new Date(d1.getTime() + 24 * 60 * 60 * 1000);
+    return {
+        date1: d1.toISOString().split('T')[0],
+        date2: d2.toISOString().split('T')[0]
+    };
+}
+
 export const MAQAL_PAIRS_CTE = `
     WITH past_dates AS (
         SELECT DISTINCT date::date AS db_date
