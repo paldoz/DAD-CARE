@@ -76,27 +76,18 @@ const fetchCustomerDailyEntriesData = async (customerId: string, targetMaqalId?:
     }
 
     // Unprocessed pairs are all authoritative pairs not yet in processedMaqalIds
-    // Filtered by customer start date
-    const [earliestDbRes, customerRes] = await Promise.all([
-        pool.query(`
-            SELECT MIN(db.date)::date::text AS earliest_date
-            FROM "DailyBookItem" dbi
-            JOIN "DailyBook" db ON dbi.daily_book_id = db.id
-            WHERE dbi.customer_id = $1
-              AND dbi.deleted_at IS NULL
-              AND db.deleted_at IS NULL
-        `, [customerId]),
-        pool.query(`
-            SELECT (created_at AT TIME ZONE 'Africa/Mogadishu')::date::text AS created_date
-            FROM "Customer"
-            WHERE id = $1
-        `, [customerId])
-    ]);
+    // Filtered by customer start date (earliest of created_at, ledger dates, or daily book dates)
+    const { rows: startRes } = await pool.query(`
+        SELECT LEAST(
+            (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date,
+            COALESCE((SELECT MIN(reference_date::date) FROM "Ledger" WHERE customer_id = $1 AND deleted_at IS NULL), 'infinity'::date),
+            COALESCE((SELECT MIN(db.date::date) FROM "DailyBookItem" dbi JOIN "DailyBook" db ON dbi.daily_book_id = db.id WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL), 'infinity'::date)
+        )::text AS earliest_date
+        FROM "Customer" c
+        WHERE c.id = $1
+    `, [customerId]);
 
-    const earliestDate: string | null =
-        earliestDbRes.rows[0]?.earliest_date ||
-        customerRes.rows[0]?.created_date ||
-        null;
+    const earliestDate: string | null = startRes[0]?.earliest_date || null;
 
     const eligiblePairs = earliestDate 
         ? allPairs.filter(p => p.date2 >= earliestDate)
