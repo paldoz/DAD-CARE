@@ -17,6 +17,24 @@ import useSWR, { mutate } from 'swr';
 import { AnimatedBackground } from '@/components/animated-background';
 import { useSession } from '@/hooks/useSession';
 
+const safeFormatDate = (dateVal: any, fmt: string, fallback: string = ''): string => {
+    if (!dateVal) return fallback;
+    try {
+        if (typeof dateVal === 'string') {
+            const clean = dateVal.split('T')[0];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+                const parsed = parseISO(clean);
+                if (!isNaN(parsed.getTime())) return format(parsed, fmt);
+            }
+        }
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) return format(d, fmt);
+        return fallback;
+    } catch {
+        return fallback;
+    }
+};
+
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
     // Custom headers prevent Vercel CDN caching; cookies allow it.
@@ -682,9 +700,9 @@ export default function LedgerPage() {
                 const d1 = recentDates[i];
                 const d2 = recentDates[i+1];
                 if (d1 && d2) {
-                    options.push(`☑️ ${format(parseISO(d1), "MMM dd")} & ${format(parseISO(d2), "MMM dd")} (Done)`);
+                    options.push(`☑️ ${safeFormatDate(d1, "MMM dd")} & ${safeFormatDate(d2, "MMM dd")} (Done)`);
                 } else if (d1) {
-                    options.push(`☑️ ${format(parseISO(d1), "MMM dd")} (Done)`);
+                    options.push(`☑️ ${safeFormatDate(d1, "MMM dd")} (Done)`);
                 }
             }
         }
@@ -713,9 +731,9 @@ export default function LedgerPage() {
                 }
 
                 if (d1 && d2) {
-                    options.push(`${prefix} ${format(parseISO(d1), "MMM dd")} & ${format(parseISO(d2), "MMM dd")} ${suffix}`);
+                    options.push(`${prefix} ${safeFormatDate(d1, "MMM dd")} & ${safeFormatDate(d2, "MMM dd")} ${suffix}`);
                 } else if (d1) {
-                    options.push(`${prefix} ${format(parseISO(d1), "MMM dd")} ${suffix}`);
+                    options.push(`${prefix} ${safeFormatDate(d1, "MMM dd")} ${suffix}`);
                 }
             }
         } else {
@@ -832,7 +850,7 @@ export default function LedgerPage() {
 
     const activeDatesForHeader = dateEntries
         .filter(e => e.date && (parseFloat(e.kg) >= 0 || parseFloat(e.extraKg || '0') > 0))
-        .map(e => format(new Date(e.date), 'dd MMM'));
+        .map(e => safeFormatDate(e.date, 'dd MMM'));
 
     const dynamicMaqalLabel = 'Maqalka';
 
@@ -1349,7 +1367,7 @@ export default function LedgerPage() {
                                              <div className="flex flex-col gap-0.5">
                                                  {unfinishedOptions.slice(0, 2).map((o) => (
                                                      <span key={o.maqalId} className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-tight">
-                                                         MQ#{o.mqNum} — {format(parseISO(o.date1), 'MMM d')} &amp; {format(parseISO(o.date2), 'MMM d')}
+                                                         MQ#{o.mqNum} — {safeFormatDate(o.date1, 'MMM d')} &amp; {safeFormatDate(o.date2, 'MMM d')}
                                                      </span>
                                                  ))}
                                              </div>
@@ -1359,8 +1377,7 @@ export default function LedgerPage() {
                                 {selectedCustomerId && (
                                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-                                        {/* Section 1: Maqalka — HIDDEN when Read Last Maqal is active (only payments mode) */}
-                                        {!(showLastMaqal && !updateLastMaqal) && (
+                                        {/* Section 1: Maqalka — Always visible when customer selected */}
                                         <div id="maqal-form-section" className="space-y-4">
                                             <div className="flex flex-col gap-2 border-b border-border pb-2">
                                                 <div className="flex items-center justify-between">
@@ -1491,7 +1508,7 @@ export default function LedgerPage() {
                                                                                         {(() => {
                                                                                             const mainKg = parseFloat(entry.kg) || 0;
                                                                                             const extraKg = parseFloat(entry.extraKg || '0') || 0;
-                                                                                            const dateStr = format(parseISO(entry.date), "MMM dd, yyyy");
+                                                                                            const dateStr = safeFormatDate(entry.date, "MMM dd, yyyy", entry.date || '');
                                                                                             if (mainKg === 0 && extraKg === 0) {
                                                                                                 return `${dateStr} ❌ Baaqatay`;
                                                                                             }
@@ -1656,7 +1673,6 @@ export default function LedgerPage() {
                                             })}
                                             </div>
                                         </div>
-                                        )}
 
                                         {/* 3. LACAGAHA (Payment) Section */}
                                         <div className="space-y-4 pt-4 border-t border-border/50">
@@ -1856,7 +1872,7 @@ export default function LedgerPage() {
                                                             <div key={e.id} className={`flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 font-medium ${!e.kg || e.kg === 0 ? 'opacity-60' : ''}`}>
                                                                 <span>
                                                                     {(e.note && hasMain) ? '↳ ' : ''}
-                                                                    {format(new Date(e.reference_date), 'MMM dd')} · {!e.kg || e.kg === 0 ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
+                                                                    {safeFormatDate(e.reference_date, 'MMM dd')} · {!e.kg || e.kg === 0 ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
                                                                     {e.note ? ` (${e.note})` : ''}
                                                                 </span>
                                                                 <span className="font-bold">{!e.kg || e.kg === 0 ? '$0' : `$${formatMoney(e.amount)}`}</span>
@@ -1920,7 +1936,7 @@ export default function LedgerPage() {
                                                                 {lastReceiptGroup.entries.filter((e: any) => e.type === 'PAYMENT').map((e: any) => (
                                                                     <div key={e.id} className="flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-emerald-700 dark:text-emerald-500 font-bold">
                                                                         <span className="flex items-center gap-1.5">
-                                                                            {format(new Date(e.reference_date), 'MMM dd')} {e.note && e.note !== 'Lacagta' ? e.note : 'Payment'}
+                                                                            {safeFormatDate(e.reference_date, 'MMM dd')} {e.note && e.note !== 'Lacagta' ? e.note : 'Payment'}
                                                                             {lastReceiptGroup.displayMaqalId != null && (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_5px_rgba(59,130,246,0.2)]">
                                                                                     ⚡MQ#{lastReceiptGroup.displayMaqalId}
@@ -1953,7 +1969,7 @@ export default function LedgerPage() {
                                                                 }).map((pay, idx) => (
                                                                     <div key={`pay-${idx}`} className="flex justify-between py-1 border-b border-border/30 text-emerald-600 font-bold">
                                                                         <span className="flex items-center gap-1.5">
-                                                                            {format(new Date(pay.date || new Date()), 'MMM dd yyyy')} {pay.note || 'Lacagta'}
+                                                                            {safeFormatDate(pay.date || new Date(), 'MMM dd yyyy')} {pay.note || 'Lacagta'}
                                                                             {lastReceiptGroup?.displayMaqalId != null && (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse">
                                                                                     ⚡MQ#{lastReceiptGroup.displayMaqalId}
@@ -1980,6 +1996,26 @@ export default function LedgerPage() {
                                                 ) : (
                                                     <>
                                                         {/* === NORMAL MODE: Full receipt with dates/kilos === */}
+                                                        {/* Latest completed Maqal summary banner — immediately visible */}
+                                                        {lastReceiptGroup && (
+                                                            <div className="mb-3 pb-2 border-b border-dashed border-border/60 text-[10px] bg-muted/20 px-2 py-1.5 rounded-md">
+                                                                <div className="flex items-center justify-between text-muted-foreground font-bold">
+                                                                    <span className="flex items-center gap-1.5 flex-wrap">
+                                                                        <span className="text-muted-foreground/70">Maqalki Hore:</span>
+                                                                        <span className="text-foreground font-black">{lastReceiptGroup.titleString}</span>
+                                                                        {lastReceiptGroup.displayMaqalId != null && (
+                                                                            <span className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-black text-[9px]">
+                                                                                ✓ MQ#{lastReceiptGroup.displayMaqalId}
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    <span className={cn("font-black", lastReceiptGroup.closingBalance > 0 ? "text-destructive" : "text-emerald-600")}>
+                                                                        {lastReceiptGroup.closingBalance > 0 ? `Reesto: $${formatMoney(lastReceiptGroup.closingBalance)}` : 'Fully Paid ✓'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         {activeDatesForHeader.length > 0 && (
                                                             <p className="text-[9px] font-bold text-muted-foreground text-center mb-3">
                                                                 Maqalka Taariikhda {activeDatesForHeader.join(' iyo ')}
@@ -1999,13 +2035,13 @@ export default function LedgerPage() {
                                                                 <div key={`rec-${idx}`} className="space-y-1 py-1 border-b border-border/30 text-muted-foreground">
                                                                     {showMain && (
                                                                         <div className="flex justify-between">
-                                                                            <span>{format(new Date(entry.date), 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
+                                                                            <span>{safeFormatDate(entry.date, 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
                                                                             <span className="font-bold text-foreground">${formatMoney(mainKg > 0 ? calculateMaqalCharge(mainKg, entry.pricePerKg) : 0)}</span>
                                                                         </div>
                                                                     )}
                                                                     {showExtra && (
                                                                         <div className={cn("flex justify-between text-[10px] text-muted-foreground/80", (showMain && mainKg > 0) ? "pl-3" : "")}>
-                                                                            <span>{(showMain && mainKg > 0) ? '↳ ' : ''}{format(new Date(entry.date), 'MMM dd')} · {entry.extraKg}KG × ${entry.extraPricePerKg} ({entry.extraNote || 'Notebook'})</span>
+                                                                            <span>{(showMain && mainKg > 0) ? '↳ ' : ''}{safeFormatDate(entry.date, 'MMM dd')} · {entry.extraKg}KG × ${entry.extraPricePerKg} ({entry.extraNote || 'Notebook'})</span>
                                                                             <span className="font-bold text-foreground">${formatMoney(extraKg > 0 ? calculateMaqalCharge(extraKg, entry.extraPricePerKg || '0') : 0)}</span>
                                                                         </div>
                                                                     )}
@@ -2068,7 +2104,7 @@ export default function LedgerPage() {
                                                                     return !(ln.includes('heyn') || ln.includes('cafis')) && parseFloat(p.amount) > 0;
                                                                 }).map((pay, idx) => (
                                                                     <div key={`pay-${idx}`} className="flex justify-between py-1 border-b border-border/30 text-emerald-600 font-bold">
-                                                                        <span>{format(new Date(pay.date || new Date()), 'MMM dd yyyy')} {pay.note || 'Lacagta'}</span>
+                                                                        <span>{safeFormatDate(pay.date || new Date(), 'MMM dd yyyy')} {pay.note || 'Lacagta'}</span>
                                                                         <span>-${formatMoney(parseFloat(pay.amount))}</span>
                                                                     </div>
                                                                 ))}
