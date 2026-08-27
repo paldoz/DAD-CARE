@@ -283,10 +283,10 @@ export default function LedgerPage() {
     
     const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=1000` : null;
     const { data: ledgerData, isLoading: fetchingLedger, mutate: mutateLedger } = useSWR(ledgerUrl, fetcher, {
-        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
-        dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
-        keepPreviousData: true,
-        revalidateIfStale: false,
+        revalidateOnFocus: false,
+        dedupingInterval: 1000,
+        keepPreviousData: false,
+        revalidateIfStale: true,
         revalidateOnReconnect: false
     });
     
@@ -614,7 +614,7 @@ export default function LedgerPage() {
         setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
-        setShowLastMaqal(false);
+        setShowLastMaqal(true);
         setUpdateLastMaqal(false);
         setExpandedExtraEntryIds(new Set());
         setStartDate('');
