@@ -55,31 +55,40 @@ export interface ReceiptGroup {
 }
 
 export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGroup & { _sortDate: Date })[] => {
-    if (!txns || txns.length === 0) return [];
+    if (!txns || !Array.isArray(txns) || txns.length === 0) return [];
+
+    // 0. Filter valid transaction objects first (Crash Safety)
+    const validTxns = txns.filter(t => t != null && typeof t === 'object' && t.id);
+    if (validTxns.length === 0) return [];
 
     // 1. Sort EVERYTHING deterministically by time and ID descending (Newest First)
-    const sortedTxns = [...txns].sort((a, b) => {
-        const timeA = new Date(a.created_at || a.reference_date || 0).getTime();
-        const timeB = new Date(b.created_at || b.reference_date || 0).getTime();
-        if (timeA !== timeB) return timeB - timeA;
-        return a.id.localeCompare(b.id);
+    const sortedTxns = [...validTxns].sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.reference_date ? new Date(a.reference_date).getTime() : 0);
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.reference_date ? new Date(b.reference_date).getTime() : 0);
+        const safeTimeA = isNaN(timeA) ? 0 : timeA;
+        const safeTimeB = isNaN(timeB) ? 0 : timeB;
+        if (safeTimeA !== safeTimeB) return safeTimeB - safeTimeA;
+        return (a.id || '').localeCompare(b.id || '');
     });
 
-    // 2. Authoritative grouping key:
-    // Every transaction belongs strictly to its receipt_id, or maqal_id if no receipt_id, or an isolated unassigned group.
-    const normalizedTxns = sortedTxns.map(t => {
-        let key = null;
-        if (t.receipt_id) {
-            key = t.receipt_id;
-        } else if (t.maqal_id != null) {
-            key = `__MAQAL__${t.maqal_id}`;
-        } else if (t.type === 'PAYMENT') {
-            key = `__PAY__${t.id}`;
-        } else {
-            key = `__TX__${t.id}`;
-        }
-        return { ...t, _groupKey: key };
-    }) as (Transaction & { _groupKey: string })[];
+    // 2. Authoritative customer-isolated grouping key:
+    // Every transaction belongs strictly to (customer_id + receipt_id), or (customer_id + maqal_id)
+    const normalizedTxns = sortedTxns
+        .filter(t => t != null && typeof t === 'object' && t.id)
+        .map(t => {
+            const custPrefix = (t as any).customer_id ? `${(t as any).customer_id}::` : '';
+            let key = null;
+            if (t.receipt_id) {
+                key = `${custPrefix}${t.receipt_id}`;
+            } else if (t.maqal_id != null) {
+                key = `${custPrefix}__MAQAL__${t.maqal_id}`;
+            } else if (t.type === 'PAYMENT') {
+                key = `${custPrefix}__PAY__${t.id}`;
+            } else {
+                key = `${custPrefix}__TX__${t.id}`;
+            }
+            return { ...t, _groupKey: key };
+        }) as (Transaction & { _groupKey: string })[];
 
     const groupedByKey = normalizedTxns.reduce((acc, t) => {
         const key = t._groupKey;
@@ -92,20 +101,21 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
 
     // 3. Process groups and compute a stable sortDate from product reference dates
     const processedReceipts = receiptGroups.map((group, idx) => {
+        if (!group || group.length === 0) return null;
         const sorted = [...group].sort((a, b) => {
             const ta = new Date(a.created_at || a.reference_date || 0).getTime();
             const tb = new Date(b.created_at || b.reference_date || 0).getTime();
             if (ta !== tb) return tb - ta;
-            return a.id.localeCompare(b.id);
+            return (a.id || '').localeCompare(b.id || '');
         });
-        const last = sorted[0];
-        const first = sorted[sorted.length - 1];
+        const last = sorted[0] || {};
+        const first = sorted[sorted.length - 1] || {};
 
-        const totalKilos = sorted.reduce((sum, t) => sum + Number(t.kg || 0), 0);
-        const totalMaqalka = sorted.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
-        const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
-        const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + Number(t.amount || 0), 0);
-        const isAdjustmentOnly = sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
+        const totalKilos = sorted.reduce((sum, t) => sum + (Number(t.kg) || 0), 0);
+        const totalMaqalka = sorted.filter(t => t.type === 'PRODUCT').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        const totalPaid = sorted.filter(t => t.type === 'PAYMENT').reduce((sum, t) => sum + Math.abs(Number(t.amount) || 0), 0);
+        const totalAdjustment = sorted.filter(t => t.type === 'ADJUSTMENT').reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        const isAdjustmentOnly = sorted.length > 0 && sorted.length === sorted.filter(t => t.type === 'ADJUSTMENT').length;
 
         const parseSafeDate = (dStr: any): Date => {
             if (!dStr) return new Date(0);
@@ -169,8 +179,9 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
         } as ReceiptGroup & { _sortDate: Date; receiptId: string | null };
     });
 
-    // Sort chronologically newest-first
-    const sortedReceipts = [...processedReceipts].sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
+    // Filter valid groups and sort chronologically newest-first
+    const validProcessed = processedReceipts.filter(Boolean) as (ReceiptGroup & { _sortDate: Date; receiptId: string | null })[];
+    const sortedReceipts = [...validProcessed].sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
 
     // Recalculate running debt across all receipts in chronological order (oldest to newest)
     // This ensures late payments to older Maqals automatically update all subsequent Maqal running balances.

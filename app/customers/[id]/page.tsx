@@ -422,6 +422,17 @@ export default function CustomerDetailPage() {
         dedupingInterval: 60000,
     });
 
+    // Reset state instantly when navigating to a new customer ID to prevent any stale data flashing
+    useEffect(() => {
+        setTransactions([]);
+        setReceipts([]);
+        setCustomer(null);
+        setSummary({ totalKg: 0, totalPaid: 0, currentBalance: 0 });
+        setExpandedReceipts(new Set());
+        setLatePaymentMaqal(null);
+        setLoading(true);
+    }, [customerId]);
+
     // Sync SWR cache instantly to local state
     useEffect(() => {
         if (allCustomers) {
@@ -431,7 +442,14 @@ export default function CustomerDetailPage() {
 
     useEffect(() => {
         if (initialLedgerData) {
-            const allTxns = (initialLedgerData.transactions || []).map((t: any) => ({
+            // Guard: ensure the incoming data strictly belongs to the current customerId
+            if (initialLedgerData.customerId && initialLedgerData.customerId !== customerId) {
+                return; // Ignore stale response from previous customer
+            }
+            const rawTxns = initialLedgerData.transactions || [];
+            // Filter strictly by customerId for absolute isolation
+            const filteredTxns = rawTxns.filter((t: any) => !t.customer_id || t.customer_id === customerId);
+            const allTxns = filteredTxns.map((t: any) => ({
                 ...t,
                 amount: Number(t.amount || 0),
                 kg: t.kg != null ? Number(t.kg) : undefined,
@@ -450,7 +468,7 @@ export default function CustomerDetailPage() {
             setHasMore(allTxns.length === 200);
             setLoading(false);
         }
-    }, [initialLedgerData]);
+    }, [initialLedgerData, customerId]);
 
     const loadCustomerData = async (reset = false) => {
         if (reset) {

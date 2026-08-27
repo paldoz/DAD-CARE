@@ -88,18 +88,21 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             if (customers.length === 0) throw new Error('Customer not found');
             customerName = customers[0].name;
 
-            // 1b. AUTHORITATIVE MAQAL_ID RESOLUTION:
-            // If this batch uses an existing receipt_id, look up the maqal_id from the existing
-            // PRODUCT rows. The client may have sent the wrong (current) maqal_id for a late payment.
-            // The only source of truth for which Maqal a receipt belongs to is the PRODUCT row.
+            // 1b. AUTHORITATIVE MAQAL_ID & CUSTOMER ISOLATION RESOLUTION:
+            // If this batch uses an existing receipt_id, verify it belongs strictly to this customer
+            // and look up the authoritative maqal_id from the existing PRODUCT rows.
             if (receipt_id) {
                 const { rows: existingProducts } = await client.query(
-                    `SELECT maqal_id FROM "Ledger" WHERE receipt_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL LIMIT 1`,
+                    `SELECT maqal_id, customer_id FROM "Ledger" WHERE receipt_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL LIMIT 1`,
                     [receipt_id]
                 );
-                if (existingProducts.length > 0 && existingProducts[0].maqal_id != null) {
-                    // This receipt already has products — use their maqal_id as the authority.
-                    authoritative_maqal_id = existingProducts[0].maqal_id;
+                if (existingProducts.length > 0) {
+                    if (existingProducts[0].customer_id && existingProducts[0].customer_id !== customerId) {
+                        throw new Error('Customer Isolation Error: Receipt belongs to a different customer');
+                    }
+                    if (existingProducts[0].maqal_id != null) {
+                        authoritative_maqal_id = existingProducts[0].maqal_id;
+                    }
                 }
                 // else: new receipt, use client-sent maqal_id (which should be the current unprocessed maqal).
             }
@@ -321,6 +324,7 @@ const fetchLedgerData = async (customerId: string, limit: number, offset: number
     ]);
     const s = summaryResult.rows[0] || {};
     return {
+        customerId,
         transactions: txnResult.rows,
         summary: {
             totalKg:             s.total_kg || 0,
