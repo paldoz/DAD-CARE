@@ -152,7 +152,10 @@ export async function getCustomers(options: {
                    (ARRAY_AGG(p.date2::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d2,
                    ARRAY_AGG(p.date1::text || ' & ' || p.date2::text ORDER BY p.mq_num ASC) as unfinished_dates
             FROM customer_first_dates cfd
-            JOIN pairs p ON p.date2 >= cfd.earliest_date AND p.date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+            JOIN pairs p ON p.date2 >= cfd.earliest_date
+                         -- Only include pairs that are "overdue" (date2 < today) OR the current pair (date1 <= today)
+                         -- But cap at date2 <= today so we don't count future pairs as warnings
+                         AND p.date2 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
             LEFT JOIN customer_processed_maqals cpm ON cfd.customer_id = cpm.customer_id AND p.maqal_id = cpm.maqal_id
             WHERE cpm.maqal_id IS NULL
             GROUP BY cfd.customer_id
@@ -484,7 +487,8 @@ const getCachedCustomersLedger = unstable_cache(
                        (ARRAY_AGG(p.date2::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d2,
                        ARRAY_AGG(p.date1::text || ' & ' || p.date2::text ORDER BY p.mq_num ASC) as unfinished_dates
                 FROM customer_first_dates cfd
-                JOIN pairs p ON p.date2 >= cfd.earliest_date AND p.date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+                JOIN pairs p ON p.date2 >= cfd.earliest_date
+                             AND p.date2 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
                 LEFT JOIN customer_processed_maqals cpm ON cfd.customer_id = cpm.customer_id AND p.maqal_id = cpm.maqal_id
                 WHERE cpm.maqal_id IS NULL
                 GROUP BY cfd.customer_id

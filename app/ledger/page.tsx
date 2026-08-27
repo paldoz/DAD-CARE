@@ -308,7 +308,8 @@ export default function LedgerPage() {
     const [startDate, setStartDate] = useState<string>('');
     const [selectedMaqalId, setSelectedMaqalId] = useState<number | null>(null);
     const [timelineOptionsList, setTimelineOptionsList] = useState<Array<{ maqalId: number; mqNum: number; date1: string; date2: string; label: string; status: 'DONE' | 'CURRENT' | 'NOT_DONE' | 'WAITING' }>>([]);
-    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${selectedMaqalId ? `&targetMaqalId=${selectedMaqalId}` : (startDate ? `&startDate=${startDate}` : '')}` : null;
+    const [dailyRefreshKey, setDailyRefreshKey] = useState(0); // bump to force re-fetch even when selectedMaqalId stays null
+    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${selectedMaqalId ? `&targetMaqalId=${selectedMaqalId}` : (startDate ? `&startDate=${startDate}` : '')}&_r=${dailyRefreshKey}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
         revalidateOnFocus: false,    // don't re-fetch on every tab-switch
         dedupingInterval: 0,         // always fetch fresh — Maqal pair MUST be correct, no stale data
@@ -994,13 +995,11 @@ export default function LedgerPage() {
                 );
             }, { revalidate: false }); // DO NOT hit the server!
             
-            setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
+
             setPaymentEntries([{ id: (Date.now() + 1).toString(), date: '', amount: '' }]);
             setAdjustmentAmount('');
             
             // ── SERVER-AUTHORITATIVE STATE APPLICATION ────────────────────────
-            // The save response contains maqalState computed server-side inside the
-            // same transaction. Apply it directly — no secondary fetch needed.
             setSelectedMaqalId(null);
             setShowLastMaqal(false);
             setUpdateLastMaqal(false);
@@ -1008,25 +1007,30 @@ export default function LedgerPage() {
 
             const ms = data.maqalState;
             if (ms) {
-                // Apply timeline options immediately
+                // Apply timeline options immediately from server response
                 setTimelineOptionsList(ms.timelineOptions ?? []);
                 setCurrentMaqalId(ms.autoMaqalId);
                 setAllUnprocessedDates(ms.allUnprocessedDates ?? []);
 
-                // Build date entries for the next Auto-selected pair
                 const nextDate1 = ms.autoDate1;
                 const nextDate2 = ms.autoDate2;
 
-                // Fetch Daily Book items for the next pair from server
-                // (these are the kg values already entered; dates may have no DailyBook row yet)
+                // Fetch the next pair's DailyBook items fresh from server
                 try {
                     const nextEntriesRes = await fetch(
-                        `/api/customer-daily-entries?customerId=${selectedCustomerId}&targetMaqalId=${ms.autoMaqalId}`
+                        `/api/customer-daily-entries?customerId=${selectedCustomerId}&targetMaqalId=${ms.autoMaqalId}&_t=${Date.now()}`
                     );
                     if (nextEntriesRes.ok) {
                         const nextPayload = await nextEntriesRes.json();
-                        const nextPair = Array.isArray(nextPayload) ? nextPayload : (nextPayload.result || []);
-                        if (nextPair && nextPair.length > 0) {
+                        const nextPair: any[] = Array.isArray(nextPayload) ? nextPayload : (nextPayload.result || []);
+                        const nextTimeline = nextPayload.timelineOptions || ms.timelineOptions || [];
+                        const nextUnprocessed = nextPayload.allUnprocessedDates || ms.allUnprocessedDates || [];
+
+                        // Update timeline & unprocessed from fresh response
+                        if (nextTimeline.length > 0) setTimelineOptionsList(nextTimeline);
+                        setAllUnprocessedDates(nextUnprocessed);
+
+                        if (nextPair.length > 0) {
                             const newExpandedIds = new Set<string>();
                             const newEntries = nextPair.map((d: any, idx: number) => {
                                 const entryId = (Date.now() + idx).toString();
@@ -1037,26 +1041,45 @@ export default function LedgerPage() {
                             setDateEntries(newEntries);
                             setExpandedExtraEntryIds(newExpandedIds);
                             setCustomerDailyDates(nextPair);
+
+                            // Inject result into SWR cache so the useEffect doesn't overwrite us
+                            const newSWRKey = `/api/customer-daily-entries?customerId=${selectedCustomerId}&_r=${dailyRefreshKey + 1}`;
+                            mutate(newSWRKey, {
+                                dailyData: nextPair,
+                                allUnprocessedDates: nextUnprocessed,
+                                maqalId: ms.autoMaqalId,
+                                timelineOptions: nextTimeline
+                            }, false);
+                            setDailyRefreshKey(prev => prev + 1);
                         } else {
-                            // No DailyBook items yet for this pair — create empty scaffolded entries
+                            // No DailyBook items yet — scaffold empty entries with correct dates
                             setDateEntries([
-                                { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                                { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                                { id: Date.now().toString(), date: nextDate1 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                                { id: (Date.now() + 1).toString(), date: nextDate2 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
                             ]);
                             setCustomerDailyDates([]);
+                            setDailyRefreshKey(prev => prev + 1);
                         }
+                    } else {
+                        // HTTP error — scaffold from server dates
+                        setDateEntries([
+                            { id: Date.now().toString(), date: nextDate1 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                            { id: (Date.now() + 1).toString(), date: nextDate2 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                        ]);
+                        setCustomerDailyDates([]);
+                        setDailyRefreshKey(prev => prev + 1);
                     }
                 } catch (fetchErr) {
                     console.error('Error fetching next pair entries:', fetchErr);
-                    // Fallback: scaffold empty date entries from server-authoritative dates
                     setDateEntries([
-                        { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                        { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                        { id: Date.now().toString(), date: nextDate1 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                        { id: (Date.now() + 1).toString(), date: nextDate2 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
                     ]);
                     setCustomerDailyDates([]);
+                    setDailyRefreshKey(prev => prev + 1);
                 }
 
-                // Update customers sidebar optimistically using the server-authoritative counts
+                // Update customers sidebar optimistically
                 mutateCustomers((current: any) => {
                     if (!current) return current;
                     return current.map((c: any) =>
@@ -1073,38 +1096,12 @@ export default function LedgerPage() {
                     );
                 }, { revalidate: false });
             } else {
-                // maqalState not available (unlikely) — fall back to secondary fetch
-                try {
-                    const freshEntriesRes = await fetch(`/api/customer-daily-entries?customerId=${selectedCustomerId}`);
-                    if (freshEntriesRes.ok) {
-                        const nextPair = await freshEntriesRes.json();
-                        const nextTimelineHeader = freshEntriesRes.headers.get('x-timeline-options');
-                        const nextMaqalIdHeader = freshEntriesRes.headers.get('x-maqal-id');
-                        const nextUnprocessedHeader = freshEntriesRes.headers.get('x-all-unprocessed-dates');
-                        if (nextTimelineHeader) { try { setTimelineOptionsList(JSON.parse(nextTimelineHeader)); } catch(e) {} }
-                        if (nextMaqalIdHeader) { setCurrentMaqalId(parseInt(nextMaqalIdHeader, 10)); }
-                        if (nextUnprocessedHeader) { try { setAllUnprocessedDates(JSON.parse(nextUnprocessedHeader)); } catch(e) {} }
-                        if (nextPair && nextPair.length > 0) {
-                            const newExpandedIds = new Set<string>();
-                            const newEntries = nextPair.map((d: any, idx: number) => {
-                                const entryId = (Date.now() + idx).toString();
-                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
-                                if (shouldExpandExtra) newExpandedIds.add(entryId);
-                                return entry;
-                            });
-                            setDateEntries(newEntries);
-                            setExpandedExtraEntryIds(newExpandedIds);
-                            setCustomerDailyDates(nextPair);
-                        }
-                    }
-                } catch (fetchErr) {
-                    console.error('Error re-fetching next maqal pair (fallback):', fetchErr);
-                }
+                // maqalState not in response — do a full re-fetch via SWR bump
+                setDailyRefreshKey(prev => prev + 1);
             }
 
-            // Invalidate/revalidate SWR caches
+            // Revalidate ledger and customers (not daily entries — we injected that above)
             mutateLedger();
-            mutateDailyEntries();
             mutateCustomers();
             markCustomerDone(selectedCustomerId);
             setFetchingDetails(false);
@@ -1405,7 +1402,11 @@ export default function LedgerPage() {
                                                             {/* Auto (Oldest First) Radio */}
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setSelectedMaqalId(null)}
+                                                                onClick={() => {
+                                                                    // Always force a fresh re-fetch when clicking Auto (even if already null)
+                                                                    setSelectedMaqalId(null);
+                                                                    setDailyRefreshKey(prev => prev + 1);
+                                                                }}
                                                                 className={cn(
                                                                     "flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all",
                                                                     selectedMaqalId === null
