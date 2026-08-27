@@ -973,8 +973,8 @@ export default function LedgerPage() {
             window.dispatchEvent(new Event('dadwork_customers_stale'));
             mutate(key => typeof key === 'string' && key.startsWith('/api/dashboard'), undefined, { revalidate: true });
             
-            // Update the ledger transactions optimistically or defer re-fetch (Zero Bandwidth!)
-            mutateLedger((current: any) => current, { revalidate: false });
+            // Re-fetch ledger transactions from server so all running balances and receipts are 100% authoritative
+            mutateLedger(undefined, { revalidate: true });
             
             // Optimistically update the customer sidebar to show they are processed
             mutateCustomers((current: any) => {

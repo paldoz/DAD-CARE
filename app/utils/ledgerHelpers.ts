@@ -172,6 +172,20 @@ export const groupTransactionsInfoReceipts = (txns: Transaction[]): (ReceiptGrou
     // Sort chronologically newest-first
     const sortedReceipts = [...processedReceipts].sort((a, b) => b._sortDate.getTime() - a._sortDate.getTime());
 
+    // Recalculate running debt across all receipts in chronological order (oldest to newest)
+    // This ensures late payments to older Maqals automatically update all subsequent Maqal running balances.
+    if (sortedReceipts.length > 0) {
+        const earliest = sortedReceipts[sortedReceipts.length - 1];
+        let runningDebt = Number(earliest.openingBalance || 0);
+
+        for (let i = sortedReceipts.length - 1; i >= 0; i--) {
+            const m = sortedReceipts[i];
+            m.openingBalance = runningDebt;
+            m.closingBalance = Number((runningDebt + m.totalMaqalka + m.totalAdjustment - m.totalPaid).toFixed(2));
+            runningDebt = m.closingBalance;
+        }
+    }
+
     // Calculate sequential displayMaqalId fallback if maqalId was null
     let fallbackCounter = 1;
     for (let i = sortedReceipts.length - 1; i >= 0; i--) {
