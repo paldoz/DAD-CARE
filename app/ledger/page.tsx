@@ -558,35 +558,30 @@ export default function LedgerPage() {
             }
             setCustomerDailyDates(dailyData || []);
             
-            setDateEntries(prev => {
+            setDateEntries(() => {
                 const newExpandedIds = new Set<string>();
-                let newEntries;
+                let newEntries: DateEntry[];
 
-                // If no dates, or just 1 empty row, initialize sequentially with all unprocessed records
-                if (prev.length === 0 || (prev.length === 1 && !prev[0].date)) {
-                    if (dailyData && dailyData.length > 0) {
-                        newEntries = dailyData.map((d: any, idx: number) => {
-                            const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
-                            if (shouldExpandExtra) {
-                                newExpandedIds.add(entryId);
-                            }
-                            return entry;
-                        });
-                    } else {
-                        newEntries = [{ id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }];
-                    }
-                } else {
-                    // Re-sequence existing rows to strictly match unprocessed dates
-                    newEntries = prev.map((entry, idx) => {
-                        const d = dailyData[idx];
-                        if (!d) return { ...entry, date: '' };
-                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                if (dailyData && dailyData.length > 0) {
+                    newEntries = dailyData.map((d: any, idx: number) => {
+                        const entryId = (Date.now() + idx).toString();
+                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(
+                            entryId,
+                            d,
+                            defaultPrice,
+                            dateSpecificPrices,
+                            dateSpecificOverrides,
+                            selectedCustomerId
+                        );
                         if (shouldExpandExtra) {
-                            newExpandedIds.add(entry.id);
+                            newExpandedIds.add(entryId);
                         }
-                        return parsedEntry;
-                    }).filter(e => e.date !== '');
+                        return entry;
+                    });
+                } else {
+                    newEntries = [
+                        { id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                    ];
                 }
 
                 if (newExpandedIds.size > 0) {
@@ -598,7 +593,6 @@ export default function LedgerPage() {
                         });
                     }, 0);
                 }
-                console.log('[DEBUG-TRACE] setDateEntries from dailyEntriesRaw (API SWR Data):', newEntries);
                 return newEntries;
             });
         } finally {
@@ -997,96 +991,115 @@ export default function LedgerPage() {
             setPaymentEntries([{ id: (Date.now() + 1).toString(), date: '', amount: '' }]);
             setAdjustmentAmount('');
             
-            // Workflow Auto-Transition:
-            if (isReadOnlyMode) {
-                setShowLastMaqal(false);
-                setUpdateLastMaqal(false);
-                setOldMaqalDone(true);
-                setFetchingDetails(false); // End blink effect
+            // ── SERVER-AUTHORITATIVE STATE APPLICATION ────────────────────────
+            // The save response contains maqalState computed server-side inside the
+            // same transaction. Apply it directly — no secondary fetch needed.
+            setSelectedMaqalId(null);
+            setShowLastMaqal(false);
+            setUpdateLastMaqal(false);
+            setOldMaqalDone(isReadOnlyMode);
 
-                // Fetch new dates for the SAME customer since we just paid the old maqal
-                mutateDailyEntries();
-                
-                // SWR might ignore the fetch if the new pairs are identical to the cached ones (which is true when just adding a payment).
-                // So we manually repopulate the screen with the existing next pair instantly to avoid a blank screen!
-                if (dailyEntriesRaw && dailyEntriesRaw.dailyData) {
-                    const newExpandedIds = new Set<string>();
-                    const newEntries = dailyEntriesRaw.dailyData.map((d: any, idx: number) => {
-                        const entryId = (Date.now() + idx).toString();
-                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
-                        if (shouldExpandExtra) newExpandedIds.add(entryId);
-                        return entry;
-                    });
-                    setDateEntries(newEntries);
-                    setExpandedExtraEntryIds(newExpandedIds);
-                } else {
-                    setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
-                }
-            } else {
-                // Normal save completed.
-                // Check if this was an all-absent (0 KG) pair — if so, auto-skip through remaining absent pairs
-                // and land on the first real pair instead of jumping to the next customer.
-                const allAbsent = validEntries.length === 0 || validEntries.every(e => parseFloat(e.kg || '0') <= 0 && parseFloat(e.extraKg || '0') <= 0);
+            const ms = data.maqalState;
+            if (ms) {
+                // Apply timeline options immediately
+                setTimelineOptionsList(ms.timelineOptions ?? []);
+                setCurrentMaqalId(ms.autoMaqalId);
+                setAllUnprocessedDates(ms.allUnprocessedDates ?? []);
 
-                if (allAbsent) {
-                    // Stay on same customer, just fetch the next pair
-                    const url = new URL(`/api/customer-daily-entries`, window.location.origin);
-                    url.searchParams.set('customerId', selectedCustomerId);
+                // Build date entries for the next Auto-selected pair
+                const nextDate1 = ms.autoDate1;
+                const nextDate2 = ms.autoDate2;
 
-                    const res2 = await fetch(url.toString());
-                    const allDatesHeader2 = res2.headers.get('x-all-unprocessed-dates');
-                    const nextPair: any[] = await res2.json();
-                    
-                    if (allDatesHeader2) {
-                        try { setAllUnprocessedDates(JSON.parse(allDatesHeader2)); } catch(e) {}
-                    }
-
-                    if (!nextPair || nextPair.length === 0) {
-                        // No more pairs — all done for this customer
-                        setCustomerDailyDates([]);
-                        setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
-                    } else {
-                        const newExpandedIds = new Set<string>();
-                        const newEntries = nextPair.map((d: any, idx: number) => {
-                            const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
-                            if (shouldExpandExtra) newExpandedIds.add(entryId);
-                            return entry;
-                        });
-                        
-                        setDateEntries(newEntries);
-                        setExpandedExtraEntryIds(newExpandedIds);
-                        setCustomerDailyDates(nextPair);
-                        
-                        // Set maqal ID based on header
-                        const maqalIdHeader2 = res2.headers.get('x-maqal-id');
-                        if (maqalIdHeader2) {
-                            setCurrentMaqalId(parseInt(maqalIdHeader2, 10));
+                // Fetch Daily Book items for the next pair from server
+                // (these are the kg values already entered; dates may have no DailyBook row yet)
+                try {
+                    const nextEntriesRes = await fetch(
+                        `/api/customer-daily-entries?customerId=${selectedCustomerId}&targetMaqalId=${ms.autoMaqalId}`
+                    );
+                    if (nextEntriesRes.ok) {
+                        const nextPair = await nextEntriesRes.json();
+                        if (nextPair && nextPair.length > 0) {
+                            const newExpandedIds = new Set<string>();
+                            const newEntries = nextPair.map((d: any, idx: number) => {
+                                const entryId = (Date.now() + idx).toString();
+                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                                if (shouldExpandExtra) newExpandedIds.add(entryId);
+                                return entry;
+                            });
+                            setDateEntries(newEntries);
+                            setExpandedExtraEntryIds(newExpandedIds);
+                            setCustomerDailyDates(nextPair);
+                        } else {
+                            // No DailyBook items yet for this pair — create empty scaffolded entries
+                            setDateEntries([
+                                { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                                { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                            ]);
+                            setCustomerDailyDates([]);
                         }
                     }
+                } catch (fetchErr) {
+                    console.error('Error fetching next pair entries:', fetchErr);
+                    // Fallback: scaffold empty date entries from server-authoritative dates
+                    setDateEntries([
+                        { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                        { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                    ]);
+                    setCustomerDailyDates([]);
+                }
 
-                    
-                    const resData = data;
-                    
-                    setFetchingDetails(false);
-                    // Persist done state in localStorage — shows checkmark instantly on next open
-                    markCustomerDone(selectedCustomerId);
-                    // Optimistic update in SWR cache, without fetching from server again
-                    mutateCustomers(
-                        (prev: any) => prev ? prev.map((c: any) =>
-                            c.id === selectedCustomerId ? { ...c, is_target_days_done: resData.customerStatus?.is_target_days_done ?? true, unprocessed_books_count: resData.customerStatus?.unprocessed_books_count ?? 0 } : c
-                        ) : prev,
-                        { revalidate: false }
+                // Update customers sidebar optimistically using the server-authoritative counts
+                mutateCustomers((current: any) => {
+                    if (!current) return current;
+                    return current.map((c: any) =>
+                        c.id === selectedCustomerId
+                            ? {
+                                ...c,
+                                is_target_days_done: ms.warningCount === 0,
+                                unprocessed_books_count: ms.warningCount,
+                                unfinished_dates: ms.unfinishedMaqals.map((m: any) => `${m.date1} & ${m.date2}`),
+                                pair_date1: ms.unfinishedMaqals[0]?.date1 ?? ms.autoDate1,
+                                pair_date2: ms.unfinishedMaqals[0]?.date2 ?? ms.autoDate2
+                            }
+                            : c
                     );
-                } else {
-                    // Normal non-absent save → trigger a short delay, then hard refresh
-                    // This creates the permanent blue checkmark exactly as requested
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500); // Wait 1.5s so they can see the "Receipt saved successfully!" toast
-                    return;
+                }, { revalidate: false });
+            } else {
+                // maqalState not available (unlikely) — fall back to secondary fetch
+                try {
+                    const freshEntriesRes = await fetch(`/api/customer-daily-entries?customerId=${selectedCustomerId}`);
+                    if (freshEntriesRes.ok) {
+                        const nextPair = await freshEntriesRes.json();
+                        const nextTimelineHeader = freshEntriesRes.headers.get('x-timeline-options');
+                        const nextMaqalIdHeader = freshEntriesRes.headers.get('x-maqal-id');
+                        const nextUnprocessedHeader = freshEntriesRes.headers.get('x-all-unprocessed-dates');
+                        if (nextTimelineHeader) { try { setTimelineOptionsList(JSON.parse(nextTimelineHeader)); } catch(e) {} }
+                        if (nextMaqalIdHeader) { setCurrentMaqalId(parseInt(nextMaqalIdHeader, 10)); }
+                        if (nextUnprocessedHeader) { try { setAllUnprocessedDates(JSON.parse(nextUnprocessedHeader)); } catch(e) {} }
+                        if (nextPair && nextPair.length > 0) {
+                            const newExpandedIds = new Set<string>();
+                            const newEntries = nextPair.map((d: any, idx: number) => {
+                                const entryId = (Date.now() + idx).toString();
+                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                                if (shouldExpandExtra) newExpandedIds.add(entryId);
+                                return entry;
+                            });
+                            setDateEntries(newEntries);
+                            setExpandedExtraEntryIds(newExpandedIds);
+                            setCustomerDailyDates(nextPair);
+                        }
+                    }
+                } catch (fetchErr) {
+                    console.error('Error re-fetching next maqal pair (fallback):', fetchErr);
                 }
             }
+
+            // Invalidate/revalidate SWR caches
+            mutateLedger();
+            mutateDailyEntries();
+            mutateCustomers();
+            markCustomerDone(selectedCustomerId);
+            setFetchingDetails(false);
         } catch (err: any) {
             toast.error(err.message || 'Failed to save receipt');
         } finally {
@@ -1371,27 +1384,72 @@ export default function LedgerPage() {
                                                     )}
                                                 </div>
                                                 {(timelineOptionsList.length > 0 || timelineOptions.length > 0) && !updateLastMaqal && (
-                                                    <div className="flex items-center gap-2 mt-1">
-                                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground whitespace-nowrap">Maqal:</Label>
-                                                        <select
-                                                            value={selectedMaqalId != null ? String(selectedMaqalId) : 'auto'}
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
-                                                                if (val === 'auto') {
-                                                                    setSelectedMaqalId(null);
-                                                                } else {
-                                                                    setSelectedMaqalId(parseInt(val, 10));
-                                                                }
-                                                            }}
-                                                            className="h-8 text-xs font-bold rounded-md border border-border/80 bg-background px-2 cursor-pointer focus:ring-1 focus:ring-primary shadow-sm"
-                                                        >
-                                                            <option value="auto">⚡ Auto (Oldest First)</option>
-                                                            {timelineOptionsList.map((opt) => (
-                                                                <option key={opt.maqalId} value={String(opt.maqalId)}>
-                                                                    {opt.label}
-                                                                </option>
-                                                            ))}
-                                                        </select>
+                                                    <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-border/40">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">
+                                                                Select Maqal:
+                                                            </Label>
+                                                            <span className="text-[9px] font-bold text-muted-foreground/80">
+                                                                {selectedMaqalId === null ? '⚡ Auto Mode (Oldest First)' : '📌 Manual Locked'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-1.5">
+                                                            {/* Auto (Oldest First) Radio */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedMaqalId(null)}
+                                                                className={cn(
+                                                                    "flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all",
+                                                                    selectedMaqalId === null
+                                                                        ? "bg-primary/10 border-primary text-primary shadow-sm ring-1 ring-primary/30 font-black"
+                                                                        : "bg-background/60 border-border/70 hover:bg-accent/40 text-foreground font-semibold"
+                                                                )}
+                                                            >
+                                                                <div className={cn(
+                                                                    "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0",
+                                                                    selectedMaqalId === null ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"
+                                                                )}>
+                                                                    {selectedMaqalId === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                                                </div>
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <span className="text-[11px] truncate">⚡ Auto</span>
+                                                                    <span className="text-[8px] text-muted-foreground truncate">Oldest First</span>
+                                                                </div>
+                                                            </button>
+
+                                                            {/* 4 Chronological Maqal Options */}
+                                                            {timelineOptionsList.map((opt) => {
+                                                                const isSelected = selectedMaqalId === opt.maqalId;
+                                                                const labelParts = opt.label.split('—');
+                                                                const titlePart = labelParts[0]?.trim() || `MQ#${opt.mqNum}`;
+                                                                const datePart = labelParts[1]?.trim() || `${opt.date1} & ${opt.date2}`;
+
+                                                                return (
+                                                                    <button
+                                                                        key={opt.maqalId}
+                                                                        type="button"
+                                                                        onClick={() => setSelectedMaqalId(opt.maqalId)}
+                                                                        className={cn(
+                                                                            "flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all",
+                                                                            isSelected
+                                                                                ? "bg-primary/10 border-primary text-primary shadow-sm ring-1 ring-primary/30 font-black"
+                                                                                : "bg-background/60 border-border/70 hover:bg-accent/40 text-foreground font-semibold"
+                                                                        )}
+                                                                    >
+                                                                        <div className={cn(
+                                                                            "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0",
+                                                                            isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"
+                                                                        )}>
+                                                                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                                                        </div>
+                                                                        <div className="flex flex-col min-w-0">
+                                                                            <span className="text-[11px] truncate">{titlePart}</span>
+                                                                            <span className="text-[8px] text-muted-foreground truncate">{datePart}</span>
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>

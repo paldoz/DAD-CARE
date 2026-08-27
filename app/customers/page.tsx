@@ -741,11 +741,21 @@ export default function CustomersPage() {
                                                 );
                                             })()}
                                             {/* Unsolved pair reminder — pulsing amber — hide when specific maqal selected */}
-                                            {selectedMaqalPair === 'latest' && !(customer as any).is_target_days_done && (customer as any).pair_date1 && (customer as any).pair_date2 && (
-                                                <span className="reminder-pulse text-[8px] font-bold text-amber-500/90 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
-                                                    <Clock className="w-2.5 h-2.5" />
-                                                    {formatPairDate((customer as any).pair_date1)} & {formatPairDate((customer as any).pair_date2)}
-                                                </span>
+                                            {selectedMaqalPair === 'latest' && !(customer as any).is_target_days_done && ((customer as any).unfinished_dates?.length > 0 || ((customer as any).pair_date1 && (customer as any).pair_date2)) && (
+                                                <div className="flex flex-wrap items-center gap-1">
+                                                    <span className="text-[10px]">
+                                                        {'⚠️'.repeat(Math.min((customer as any).unprocessed_books_count || 1, 2))}
+                                                    </span>
+                                                    {((customer as any).unfinished_dates && (customer as any).unfinished_dates.length > 0 
+                                                        ? (customer as any).unfinished_dates.slice(0, 2)
+                                                        : [`${formatPairDate((customer as any).pair_date1)} & ${formatPairDate((customer as any).pair_date2)}`]
+                                                    ).map((dStr: string, idx: number) => (
+                                                        <span key={idx} className="reminder-pulse text-[8px] font-bold text-amber-500/90 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md flex items-center gap-1">
+                                                            <Clock className="w-2.5 h-2.5" />
+                                                            {dStr.includes('&') ? dStr.split('&').map(s => formatPairDate(s.trim())).join(' & ') : dStr}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             )}
                                             {(filterType === 'most_paid' || filterType === 'least_paid' || filterType === 'best') && (
                                                 <span className="text-[9px] font-bold text-emerald-500 bg-emerald-500/10 px-1.5 rounded">

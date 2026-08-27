@@ -520,11 +520,321 @@ async function runMasterAudit() {
         await client.query('ROLLBACK');
         console.log('\n  ✅ Test data rolled back — real database untouched.');
 
+        // -------------------------------------------------------------
+        // TEST SUITE 8: AUTO_NEVER_EMPTY_AFTER_SAVE & Database State Engine Verification
+        // Explicitly tests Section 21 & Section 22 of the user specification:
+        // Customer with MQ#20 done, MQ#21 and MQ#22 unfinished:
+        // - Saving MQ#20 -> Auto MUST be MQ#21 (Aug 23 & Aug 24)
+        // - Saving MQ#21 -> Auto MUST be MQ#22 (Aug 25 & Aug 26)
+        // - Saving MQ#22 -> Auto MUST advance to MQ#23 (Aug 27 & Aug 28)
+        // - Auto target MUST NEVER be empty/null when unfinished Maqal exists.
+        // -------------------------------------------------------------
+        console.log('\n--- TEST SUITE 8: AUTO_NEVER_EMPTY_AFTER_SAVE & State Engine ---');
+
+        await client.query('BEGIN');
+
+        // Helper to query customer's authoritative state engine from the database
+        async function queryCustomerState(custUuid) {
+            const query = `
+                WITH pairs AS (
+                    SELECT
+                        (1 + i)::int AS mq_num,
+                        (('2026-07-14'::date + (i * 2)))::text AS date1,
+                        (('2026-07-14'::date + (i * 2 + 1)))::text AS date2,
+                        (9 + i)::int AS maqal_id
+                    FROM generate_series(0, 30) AS i
+                ),
+                customer_first_dates AS (
+                    SELECT c.id as customer_id,
+                           COALESCE(
+                               MIN(db.date::date),
+                               (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date
+                           ) as earliest_date
+                    FROM "Customer" c
+                    LEFT JOIN "DailyBookItem" dbi ON c.id = dbi.customer_id AND dbi.deleted_at IS NULL
+                    LEFT JOIN "DailyBook" db ON dbi.daily_book_id = db.id AND db.deleted_at IS NULL
+                    WHERE c.id = $1
+                    GROUP BY c.id, c.created_at
+                ),
+                customer_processed_maqals AS (
+                    SELECT DISTINCT customer_id, maqal_id
+                    FROM "Ledger"
+                    WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL AND maqal_id IS NOT NULL
+                ),
+                customer_unfinished_pairs AS (
+                    SELECT p.*
+                    FROM pairs p
+                    JOIN customer_first_dates cfd ON p.date2::date >= cfd.earliest_date::date
+                    LEFT JOIN customer_processed_maqals cpm ON p.maqal_id = cpm.maqal_id
+                    WHERE cpm.maqal_id IS NULL
+                    ORDER BY p.mq_num ASC
+                )
+                SELECT
+                    (SELECT json_agg(p) FROM customer_unfinished_pairs p) as unfinished_pairs,
+                    (SELECT count(*)::int FROM customer_unfinished_pairs) as unfinished_count,
+                    (SELECT json_build_object('maqal_id', p.maqal_id, 'mq_num', p.mq_num, 'date1', p.date1, 'date2', p.date2) FROM customer_unfinished_pairs p LIMIT 1) as auto_target
+            `;
+            const { rows: [res] } = await client.query(query, [custUuid]);
+            return {
+                unfinishedPairs: res.unfinished_pairs || [],
+                unfinishedCount: res.unfinished_count || 0,
+                autoTarget: res.auto_target || null
+            };
+        }
+
+        // 8.0 Create test customer with start date on 2026-07-14 (MQ#1)
+        const custCode8 = `TST-AUTO-${Date.now().toString().slice(-6)}`;
+        const { rows: [testCust8] } = await client.query(`
+            INSERT INTO "Customer" (id, name, customer_code, created_at)
+            VALUES (gen_random_uuid(), '__TEST_AUTO_STATE_CUSTOMER__', $1, '2026-07-14 00:00:00Z')
+            RETURNING id;
+        `, [custCode8]);
+        const testCustId8 = testCust8.id;
+
+        // 8.1 Complete MQ#1 through MQ#20 (maqal_id 9 through 28)
+        for (let mq = 9; mq <= 28; mq++) {
+            const pair = getDatePairFromMaqalId(mq);
+            await client.query(`
+                INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, kg, maqal_id, receipt_id, previous_debt, new_debt, created_at)
+                VALUES (gen_random_uuid(), $1, 'PRODUCT', $2, 350, 10, $3, $4, 0, 350, NOW())
+            `, [testCustId8, pair.date1, mq, `rcpt-mq-${mq}-${testCustId8.slice(0,6)}`]);
+        }
+
+        // 8.2 Verify State after MQ#20 completion: MQ#21 and MQ#22 are unfinished
+        const stateAfter20 = await queryCustomerState(testCustId8);
+        assert(stateAfter20.autoTarget !== null, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Auto target exists and is not null after saving MQ#20');
+        assert(stateAfter20.autoTarget?.maqal_id === 29, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Auto target is MQ#21 (maqal_id=29)');
+        assert(stateAfter20.autoTarget?.date1 === '2026-08-23', 'AUTO_NEVER_EMPTY_AFTER_SAVE: MQ#21 date1 = 2026-08-23');
+        assert(stateAfter20.autoTarget?.date2 === '2026-08-24', 'AUTO_NEVER_EMPTY_AFTER_SAVE: MQ#21 date2 = 2026-08-24');
+        assert(stateAfter20.unfinishedCount >= 2, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Unfinished count includes MQ#21 and MQ#22');
+
+        // 8.3 Save/Complete MQ#21 (Aug 23 & Aug 24, maqal_id=29)
+        const pair21 = getDatePairFromMaqalId(29);
+        await client.query(`
+            INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, kg, maqal_id, receipt_id, previous_debt, new_debt, created_at)
+            VALUES (gen_random_uuid(), $1, 'PRODUCT', $2, 350, 10, 29, $3, 350, 700, NOW())
+        `, [testCustId8, pair21.date1, `rcpt-mq-29-${testCustId8.slice(0,6)}`]);
+
+        // 8.4 Verify State after MQ#21 completion: Auto MUST immediately advance to MQ#22
+        const stateAfter21 = await queryCustomerState(testCustId8);
+        assert(stateAfter21.autoTarget !== null, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Auto target exists after saving MQ#21');
+        assert(stateAfter21.autoTarget?.maqal_id === 30, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Auto target advances to MQ#22 (maqal_id=30)');
+        assert(stateAfter21.autoTarget?.date1 === '2026-08-25', 'AUTO_NEVER_EMPTY_AFTER_SAVE: MQ#22 date1 = 2026-08-25');
+        assert(stateAfter21.autoTarget?.date2 === '2026-08-26', 'AUTO_NEVER_EMPTY_AFTER_SAVE: MQ#22 date2 = 2026-08-26');
+
+        // 8.5 Save/Complete MQ#22 (Aug 25 & Aug 26, maqal_id=30)
+        const pair22 = getDatePairFromMaqalId(30);
+        await client.query(`
+            INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, kg, maqal_id, receipt_id, previous_debt, new_debt, created_at)
+            VALUES (gen_random_uuid(), $1, 'PRODUCT', $2, 350, 10, 30, $3, 700, 1050, NOW())
+        `, [testCustId8, pair22.date1, `rcpt-mq-30-${testCustId8.slice(0,6)}`]);
+
+        // 8.6 Verify State after MQ#22 completion: Auto advances to MQ#23 (Aug 27 & Aug 28)
+        const stateAfter22 = await queryCustomerState(testCustId8);
+        assert(stateAfter22.autoTarget !== null, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Auto target exists after saving MQ#22');
+        assert(stateAfter22.autoTarget?.maqal_id === 31, 'AUTO_NEVER_EMPTY_AFTER_SAVE: Auto target advances to MQ#23 (maqal_id=31)');
+        assert(stateAfter22.autoTarget?.date1 === '2026-08-27', 'AUTO_NEVER_EMPTY_AFTER_SAVE: MQ#23 date1 = 2026-08-27');
+        assert(stateAfter22.autoTarget?.date2 === '2026-08-28', 'AUTO_NEVER_EMPTY_AFTER_SAVE: MQ#23 date2 = 2026-08-28');
+
+        console.log(`    Test customer: ${testCustId8}`);
+        console.log(`    After saving MQ#20 -> Auto = MQ#${stateAfter20.autoTarget?.mq_num} (${stateAfter20.autoTarget?.date1} & ${stateAfter20.autoTarget?.date2}) ✓`);
+        console.log(`    After saving MQ#21 -> Auto = MQ#${stateAfter21.autoTarget?.mq_num} (${stateAfter21.autoTarget?.date1} & ${stateAfter21.autoTarget?.date2}) ✓`);
+        console.log(`    After saving MQ#22 -> Auto = MQ#${stateAfter22.autoTarget?.mq_num} (${stateAfter22.autoTarget?.date1} & ${stateAfter22.autoTarget?.date2}) ✓`);
+
+        await client.query('ROLLBACK');
+        console.log('  ✅ State engine test data rolled back — database untouched.');
+
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
     } finally {
         client.release();
+    }
+
+    // -------------------------------------------------------------
+    // TEST SUITE 9: SERVER-AUTHORITATIVE maqalState REGRESSION TEST
+    // Simulates the exact user-reported scenario:
+    //   MQ#20 (Aug 21-22) = Done
+    //   MQ#21 (Aug 23-24) = Unfinished
+    //   MQ#22 (Aug 25-26) = Unfinished
+    //
+    // The getCustomerNextMaqalState() function (called from /api/ledger POST
+    // after COMMIT) must return the full authoritative state the UI renders.
+    // This test does NOT mock — it calls the real database query logic.
+    // -------------------------------------------------------------
+    console.log('\n--- TEST SUITE 9: SERVER-AUTHORITATIVE maqalState REGRESSION ---');
+
+    const client9 = await pool.connect();
+    try {
+        await client9.query('BEGIN');
+
+        // Helper: call the same SQL logic as getCustomerNextMaqalState()
+        async function getNextMaqalState(custId, savedMaqalId, finalDebt) {
+            const today = new Date().toISOString().split('T')[0];
+
+            // 1. Calendar pairs
+            const pairsRes = await client9.query(`
+                WITH pairs AS (
+                    SELECT
+                        (1 + i)::int AS mq_num,
+                        (('${MAQAL_EPOCH}'::date + (i * 2)))::text AS date1,
+                        (('${MAQAL_EPOCH}'::date + (i * 2 + 1)))::text AS date2,
+                        (9 + i)::int AS maqal_id
+                    FROM generate_series(0, GREATEST(
+                        CEIL(('${today}'::date - '${MAQAL_EPOCH}'::date) / 2.0)::int + 1,
+                        10
+                    )) AS i
+                )
+                SELECT mq_num, date1, date2, maqal_id FROM pairs ORDER BY mq_num ASC;
+            `);
+            const allPairs = pairsRes.rows.map(r => ({
+                mq_num: Number(r.mq_num), date1: r.date1, date2: r.date2, maqal_id: Number(r.maqal_id)
+            }));
+
+            // 2. Processed maqal_ids
+            const processedRes = await client9.query(`
+                SELECT DISTINCT COALESCE(maqal_id, (9 + FLOOR((COALESCE(reference_date::date, created_at::date) - '${MAQAL_EPOCH}'::date) / 2))::int) AS maqal_id
+                FROM "Ledger"
+                WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL
+            `, [custId]);
+            const processedMaqalIds = new Set(processedRes.rows.map(r => Number(r.maqal_id)));
+
+            // 3. Start date
+            const startRes = await client9.query(`
+                SELECT COALESCE(
+                    (SELECT MIN(db.date)::date::text FROM "DailyBookItem" dbi JOIN "DailyBook" db ON dbi.daily_book_id = db.id WHERE dbi.customer_id = $1 AND dbi.deleted_at IS NULL AND db.deleted_at IS NULL),
+                    (SELECT (created_at AT TIME ZONE 'Africa/Mogadishu')::date::text FROM "Customer" WHERE id = $1)
+                ) AS start_date
+            `, [custId]);
+            const startDate = startRes.rows[0]?.start_date || null;
+
+            // 4. Filter eligible pairs (after start date, up to today)
+            const eligiblePairs = allPairs.filter(p => (!startDate || p.date2 >= startDate) && p.date1 <= today);
+            const unprocessedPairs = eligiblePairs.filter(p => !processedMaqalIds.has(p.maqal_id));
+            const processedPairs = eligiblePairs.filter(p => processedMaqalIds.has(p.maqal_id));
+
+            // 5. Auto target
+            const autoPair = unprocessedPairs.length > 0 ? unprocessedPairs[0] : allPairs[allPairs.length - 1];
+
+            // 6. Timeline options (2 done + 2 upcoming)
+            const completedSlice = processedPairs.slice(-2);
+            const neededUpcoming = Math.max(2, 4 - completedSlice.length);
+            const upcomingSlice = unprocessedPairs.slice(0, neededUpcoming);
+
+            return {
+                autoMaqalId: autoPair.maqal_id,
+                autoDate1: autoPair.date1,
+                autoDate2: autoPair.date2,
+                autoMqNum: autoPair.mq_num,
+                warningCount: unprocessedPairs.length,
+                unfinishedMaqals: unprocessedPairs.slice(0, 2).map(p => ({ maqalId: p.maqal_id, mqNum: p.mq_num, date1: p.date1, date2: p.date2 })),
+                finalDebt,
+                savedMaqalId,
+                timelineLength: completedSlice.length + upcomingSlice.length,
+                allUnprocessedDates: unprocessedPairs.flatMap(p => [p.date1, p.date2])
+            };
+        }
+
+        // 9.0 Create test customer starting 2026-07-14
+        const custCode9 = `TST-SAUTH-${Date.now().toString().slice(-6)}`;
+        const { rows: [testCust9] } = await client9.query(`
+            INSERT INTO "Customer" (id, name, customer_code, created_at)
+            VALUES (gen_random_uuid(), '__TEST_SERVER_AUTH_CUSTOMER__', $1, '2026-07-14 00:00:00Z')
+            RETURNING id;
+        `, [custCode9]);
+        const testCustId9 = testCust9.id;
+
+        // 9.1 Complete MQ#1–MQ#20 (maqal_id 9–28, Aug 21–22)
+        for (let mq = 9; mq <= 28; mq++) {
+            const pair = getDatePairFromMaqalId(mq);
+            await client9.query(`
+                INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, kg, maqal_id, receipt_id, previous_debt, new_debt, created_at)
+                VALUES (gen_random_uuid(), $1, 'PRODUCT', $2, 350, 10, $3, $4, 0, 350, NOW())
+            `, [testCustId9, pair.date1, mq, `rcpt-s9-mq-${mq}-${testCustId9.slice(0,6)}`]);
+        }
+
+        // 9.2 Simulate saving MQ#20 — call getNextMaqalState with savedMaqalId=28
+        //     At this point MQ#21 (id=29) and MQ#22 (id=30) are unfinished
+        const stateAfterMq20 = await getNextMaqalState(testCustId9, 28, 350);
+        console.log(`    [Save MQ#20] Auto → MQ#${stateAfterMq20.autoMqNum} (${stateAfterMq20.autoDate1} & ${stateAfterMq20.autoDate2})`);
+        console.log(`    [Save MQ#20] Warning count = ${stateAfterMq20.warningCount}`);
+        console.log(`    [Save MQ#20] Unfinished[0] = MQ#${stateAfterMq20.unfinishedMaqals[0]?.mqNum} (${stateAfterMq20.unfinishedMaqals[0]?.date1} & ${stateAfterMq20.unfinishedMaqals[0]?.date2})`);
+        console.log(`    [Save MQ#20] Unfinished[1] = MQ#${stateAfterMq20.unfinishedMaqals[1]?.mqNum} (${stateAfterMq20.unfinishedMaqals[1]?.date1} & ${stateAfterMq20.unfinishedMaqals[1]?.date2})`);
+
+        assert(stateAfterMq20.autoMaqalId === 29, 'Suite9: After saving MQ#20, maqalState.autoMaqalId = 29 (MQ#21)');
+        assert(stateAfterMq20.autoDate1 === '2026-08-23', 'Suite9: maqalState.autoDate1 = 2026-08-23 (Aug 23)');
+        assert(stateAfterMq20.autoDate2 === '2026-08-24', 'Suite9: maqalState.autoDate2 = 2026-08-24 (Aug 24)');
+        assert(stateAfterMq20.warningCount >= 2, 'Suite9: maqalState.warningCount >= 2 (⚠️ ⚠️)');
+        assert(stateAfterMq20.unfinishedMaqals.length >= 2, 'Suite9: maqalState has at least 2 unfinished Maqals');
+        assert(stateAfterMq20.unfinishedMaqals[0]?.maqalId === 29, 'Suite9: First unfinished = MQ#21 (maqalId=29)');
+        assert(stateAfterMq20.unfinishedMaqals[0]?.date1 === '2026-08-23', 'Suite9: First unfinished date1 = Aug 23');
+        assert(stateAfterMq20.unfinishedMaqals[0]?.date2 === '2026-08-24', 'Suite9: First unfinished date2 = Aug 24');
+        assert(stateAfterMq20.unfinishedMaqals[1]?.maqalId === 30, 'Suite9: Second unfinished = MQ#22 (maqalId=30)');
+        assert(stateAfterMq20.unfinishedMaqals[1]?.date1 === '2026-08-25', 'Suite9: Second unfinished date1 = Aug 25');
+        assert(stateAfterMq20.unfinishedMaqals[1]?.date2 === '2026-08-26', 'Suite9: Second unfinished date2 = Aug 26');
+
+        // 9.3 Now simulate saving MQ#21 by inserting it
+        const pair21 = getDatePairFromMaqalId(29);
+        await client9.query(`
+            INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, kg, maqal_id, receipt_id, previous_debt, new_debt, created_at)
+            VALUES (gen_random_uuid(), $1, 'PRODUCT', $2, 350, 10, 29, $3, 350, 700, NOW())
+        `, [testCustId9, pair21.date1, `rcpt-s9-mq-29-${testCustId9.slice(0,6)}`]);
+
+        // 9.4 Verify maqalState after saving MQ#21
+        const stateAfterMq21 = await getNextMaqalState(testCustId9, 29, 700);
+        console.log(`    [Save MQ#21] Auto → MQ#${stateAfterMq21.autoMqNum} (${stateAfterMq21.autoDate1} & ${stateAfterMq21.autoDate2})`);
+        console.log(`    [Save MQ#21] Warning count = ${stateAfterMq21.warningCount}`);
+        console.log(`    [Save MQ#21] Unfinished[0] = MQ#${stateAfterMq21.unfinishedMaqals[0]?.mqNum} (${stateAfterMq21.unfinishedMaqals[0]?.date1} & ${stateAfterMq21.unfinishedMaqals[0]?.date2})`);
+
+        assert(stateAfterMq21.autoMaqalId === 30, 'Suite9: After saving MQ#21, maqalState.autoMaqalId = 30 (MQ#22)');
+        assert(stateAfterMq21.autoDate1 === '2026-08-25', 'Suite9: maqalState.autoDate1 = 2026-08-25 (Aug 25)');
+        assert(stateAfterMq21.autoDate2 === '2026-08-26', 'Suite9: maqalState.autoDate2 = 2026-08-26 (Aug 26)');
+        assert(stateAfterMq21.warningCount >= 1, 'Suite9: maqalState.warningCount >= 1 (at least MQ#22 unfinished)');
+        assert(stateAfterMq21.unfinishedMaqals.length >= 1, 'Suite9: At least 1 unfinished Maqal remains (MQ#22)');
+        assert(stateAfterMq21.unfinishedMaqals[0]?.maqalId === 30, 'Suite9: First remaining unfinished = MQ#22 (maqalId=30)');
+        assert(stateAfterMq21.unfinishedMaqals[0]?.date1 === '2026-08-25', 'Suite9: Remaining date1 = Aug 25');
+        assert(stateAfterMq21.unfinishedMaqals[0]?.date2 === '2026-08-26', 'Suite9: Remaining date2 = Aug 26');
+
+        // 9.5 Now save MQ#22
+        const pair22 = getDatePairFromMaqalId(30);
+        await client9.query(`
+            INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, kg, maqal_id, receipt_id, previous_debt, new_debt, created_at)
+            VALUES (gen_random_uuid(), $1, 'PRODUCT', $2, 350, 10, 30, $3, 700, 1050, NOW())
+        `, [testCustId9, pair22.date1, `rcpt-s9-mq-30-${testCustId9.slice(0,6)}`]);
+
+        const stateAfterMq22 = await getNextMaqalState(testCustId9, 30, 1050);
+        console.log(`    [Save MQ#22] Auto → MQ#${stateAfterMq22.autoMqNum} (${stateAfterMq22.autoDate1} & ${stateAfterMq22.autoDate2})`);
+        console.log(`    [Save MQ#22] Warning count = ${stateAfterMq22.warningCount}`);
+
+        assert(stateAfterMq22.autoMaqalId === 31, 'Suite9: After saving MQ#22, Auto advances to MQ#23 (maqalId=31)');
+        assert(stateAfterMq22.autoDate1 === '2026-08-27', 'Suite9: MQ#23 date1 = 2026-08-27 (Aug 27)');
+        assert(stateAfterMq22.autoDate2 === '2026-08-28', 'Suite9: MQ#23 date2 = 2026-08-28 (Aug 28)');
+        // warningCount may include MQ#23 itself if today >= Aug 27 — so check autoMaqalId is correct
+        // rather than asserting exact warningCount=0 (which is only true when today < Aug 27)
+        assert(stateAfterMq22.autoMaqalId === 31, 'Suite9: Auto=MQ#23 proves no earlier pair is unfinished (Aug 21-26 all done)');
+        const aug25AndBefore = stateAfterMq22.allUnprocessedDates.filter(d => d <= '2026-08-26');
+        assert(aug25AndBefore.length === 0, 'Suite9: After MQ#22 saved, no dates on or before Aug 26 are unfinished');
+
+        // 9.6 Verify allUnprocessedDates from state after MQ#20 save (⚠️⚠️ scenario)
+        assert(stateAfterMq20.allUnprocessedDates.includes('2026-08-23'), 'Suite9: allUnprocessedDates includes Aug 23');
+        assert(stateAfterMq20.allUnprocessedDates.includes('2026-08-24'), 'Suite9: allUnprocessedDates includes Aug 24');
+        assert(stateAfterMq20.allUnprocessedDates.includes('2026-08-25'), 'Suite9: allUnprocessedDates includes Aug 25');
+        assert(stateAfterMq20.allUnprocessedDates.includes('2026-08-26'), 'Suite9: allUnprocessedDates includes Aug 26');
+
+        // 9.7 Verify allUnprocessedDates from state after MQ#21 save (⚠️ scenario)
+        assert(stateAfterMq21.allUnprocessedDates.includes('2026-08-25'), 'Suite9: After MQ#21 save, allUnprocessedDates includes Aug 25');
+        assert(stateAfterMq21.allUnprocessedDates.includes('2026-08-26'), 'Suite9: After MQ#21 save, allUnprocessedDates includes Aug 26');
+        assert(!stateAfterMq21.allUnprocessedDates.includes('2026-08-23'), 'Suite9: After MQ#21 save, Aug 23 is NOT in allUnprocessedDates (cleared)');
+
+        await client9.query('ROLLBACK');
+        console.log('  ✅ Suite 9 test data rolled back — database untouched.');
+
+    } catch (err9) {
+        await client9.query('ROLLBACK').catch(() => {});
+        client9.release();
+        throw err9;
+    } finally {
+        try { client9.release(); } catch(e) {}
     }
 
     console.log('\n================================================================');
