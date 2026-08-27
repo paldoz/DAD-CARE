@@ -1000,6 +1000,9 @@ export default function LedgerPage() {
             setAdjustmentAmount('');
             
             // ── SERVER-AUTHORITATIVE STATE APPLICATION ────────────────────────
+            // CRITICAL: Do NOT bump dailyRefreshKey here — that changes the SWR URL
+            // which triggers a re-fetch, which calls useEffect, which overwrites dateEntries.
+            // Set state directly. SWR stays on its current key and does not interfere.
             setSelectedMaqalId(null);
             setShowLastMaqal(false);
             setUpdateLastMaqal(false);
@@ -1007,15 +1010,15 @@ export default function LedgerPage() {
 
             const ms = data.maqalState;
             if (ms) {
-                // Apply timeline options immediately from server response
+                // Apply server-authoritative state immediately
                 setTimelineOptionsList(ms.timelineOptions ?? []);
                 setCurrentMaqalId(ms.autoMaqalId);
                 setAllUnprocessedDates(ms.allUnprocessedDates ?? []);
 
-                const nextDate1 = ms.autoDate1;
-                const nextDate2 = ms.autoDate2;
+                const nextDate1: string = ms.autoDate1 || '';
+                const nextDate2: string = ms.autoDate2 || '';
 
-                // Fetch the next pair's DailyBook items fresh from server
+                // Fetch the DailyBook items for the next pair fresh from server
                 try {
                     const nextEntriesRes = await fetch(
                         `/api/customer-daily-entries?customerId=${selectedCustomerId}&targetMaqalId=${ms.autoMaqalId}&_t=${Date.now()}`
@@ -1026,7 +1029,7 @@ export default function LedgerPage() {
                         const nextTimeline = nextPayload.timelineOptions || ms.timelineOptions || [];
                         const nextUnprocessed = nextPayload.allUnprocessedDates || ms.allUnprocessedDates || [];
 
-                        // Update timeline & unprocessed from fresh response
+                        // Update state from fresh server data
                         if (nextTimeline.length > 0) setTimelineOptionsList(nextTimeline);
                         setAllUnprocessedDates(nextUnprocessed);
 
@@ -1038,45 +1041,34 @@ export default function LedgerPage() {
                                 if (shouldExpandExtra) newExpandedIds.add(entryId);
                                 return entry;
                             });
+                            // Set state directly — NO SWR key bump to avoid re-fetch race
                             setDateEntries(newEntries);
                             setExpandedExtraEntryIds(newExpandedIds);
                             setCustomerDailyDates(nextPair);
-
-                            // Inject result into SWR cache so the useEffect doesn't overwrite us
-                            const newSWRKey = `/api/customer-daily-entries?customerId=${selectedCustomerId}&_r=${dailyRefreshKey + 1}`;
-                            mutate(newSWRKey, {
-                                dailyData: nextPair,
-                                allUnprocessedDates: nextUnprocessed,
-                                maqalId: ms.autoMaqalId,
-                                timelineOptions: nextTimeline
-                            }, false);
-                            setDailyRefreshKey(prev => prev + 1);
                         } else {
-                            // No DailyBook items yet — scaffold empty entries with correct dates
+                            // No DailyBook items yet for this pair — scaffold with correct dates
                             setDateEntries([
-                                { id: Date.now().toString(), date: nextDate1 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                                { id: (Date.now() + 1).toString(), date: nextDate2 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                                { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                                { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
                             ]);
                             setCustomerDailyDates([]);
-                            setDailyRefreshKey(prev => prev + 1);
                         }
                     } else {
-                        // HTTP error — scaffold from server dates
+                        // HTTP error — scaffold with server-authoritative dates
                         setDateEntries([
-                            { id: Date.now().toString(), date: nextDate1 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                            { id: (Date.now() + 1).toString(), date: nextDate2 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                            { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                            { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
                         ]);
                         setCustomerDailyDates([]);
-                        setDailyRefreshKey(prev => prev + 1);
                     }
                 } catch (fetchErr) {
                     console.error('Error fetching next pair entries:', fetchErr);
+                    // Scaffold with server-authoritative dates as fallback
                     setDateEntries([
-                        { id: Date.now().toString(), date: nextDate1 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                        { id: (Date.now() + 1).toString(), date: nextDate2 || '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
+                        { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
+                        { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
                     ]);
                     setCustomerDailyDates([]);
-                    setDailyRefreshKey(prev => prev + 1);
                 }
 
                 // Update customers sidebar optimistically
@@ -1096,11 +1088,11 @@ export default function LedgerPage() {
                     );
                 }, { revalidate: false });
             } else {
-                // maqalState not in response — do a full re-fetch via SWR bump
+                // No maqalState in response — bump key to force SWR re-fetch (only safe fallback)
                 setDailyRefreshKey(prev => prev + 1);
             }
 
-            // Revalidate ledger and customers (not daily entries — we injected that above)
+            // Revalidate ledger and customers only (NOT daily entries — state already set above)
             mutateLedger();
             mutateCustomers();
             markCustomerDone(selectedCustomerId);
