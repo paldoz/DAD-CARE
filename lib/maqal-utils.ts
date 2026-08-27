@@ -9,23 +9,20 @@
  * 4. Automatic validation: every date must appear at most once across all pairs.
  */
 
+export const MAQAL_EPOCH = '2026-07-14';
+
 export const MAQAL_PAIRS_CTE = `
-    WITH past_dates AS (
-        SELECT DISTINCT date::date AS db_date
-        FROM "DailyBook"
-        WHERE deleted_at IS NULL
-    ),
-    numbered_dates AS (
-        SELECT db_date,
-               ROW_NUMBER() OVER (ORDER BY db_date ASC) as rn
-        FROM past_dates
-    ),
-    pairs AS (
-        SELECT n1.db_date::date AS date1, n2.db_date::date AS date2,
-               ((n1.rn + 1) / 2)::int AS mq_num
-        FROM numbered_dates n1
-        JOIN numbered_dates n2 ON n2.rn = n1.rn + 1
-        WHERE n1.rn % 2 = 1
+    WITH pairs AS (
+        SELECT
+            (1 + i)::int AS mq_num,
+            (('${MAQAL_EPOCH}'::date + (i * 2)))::date AS date1,
+            (('${MAQAL_EPOCH}'::date + (i * 2 + 1)))::date AS date2,
+            (9 + i)::int AS maqal_id
+        FROM generate_series(0, GREATEST(
+            CEIL(((CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date - '${MAQAL_EPOCH}'::date) / 2.0)::int + 1,
+            COALESCE((SELECT CEIL((MAX(date) - '${MAQAL_EPOCH}'::date) / 2.0)::int FROM "DailyBook" WHERE deleted_at IS NULL), 0),
+            COALESCE((SELECT CEIL((MAX(reference_date) - '${MAQAL_EPOCH}'::date) / 2.0)::int FROM "Ledger" WHERE deleted_at IS NULL), 0)
+        )) AS i
     )
 `;
 
