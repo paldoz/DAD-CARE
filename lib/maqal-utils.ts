@@ -42,8 +42,8 @@ export const MAQAL_PAIRS_CTE = `
     WITH pairs AS (
         SELECT
             (1 + i)::int AS mq_num,
-            (('${MAQAL_EPOCH}'::date + (i * 2)))::text AS date1,
-            (('${MAQAL_EPOCH}'::date + (i * 2 + 1)))::text AS date2,
+            (('${MAQAL_EPOCH}'::date + (i * 2)))::date AS date1,
+            (('${MAQAL_EPOCH}'::date + (i * 2 + 1)))::date AS date2,
             (9 + i)::int AS maqal_id
         FROM generate_series(0, GREATEST(
             CEIL(((CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date - '${MAQAL_EPOCH}'::date) / 2.0)::int + 1,

@@ -150,7 +150,7 @@ export async function getCustomers(options: {
                    COUNT(p.maqal_id)::int as unfinished_count,
                    (ARRAY_AGG(p.date1::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d1,
                    (ARRAY_AGG(p.date2::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d2,
-                   ARRAY_AGG(p.date1 || ' & ' || p.date2 ORDER BY p.mq_num ASC) as unfinished_dates
+                   ARRAY_AGG(p.date1::text || ' & ' || p.date2::text ORDER BY p.mq_num ASC) as unfinished_dates
             FROM customer_first_dates cfd
             JOIN pairs p ON p.date2 >= cfd.earliest_date AND p.date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
             LEFT JOIN customer_processed_maqals cpm ON cfd.customer_id = cpm.customer_id AND p.maqal_id = cpm.maqal_id
@@ -482,7 +482,7 @@ const getCachedCustomersLedger = unstable_cache(
                        COUNT(p.maqal_id)::int as unfinished_count,
                        (ARRAY_AGG(p.date1::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d1,
                        (ARRAY_AGG(p.date2::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d2,
-                       ARRAY_AGG(p.date1 || ' & ' || p.date2 ORDER BY p.mq_num ASC) as unfinished_dates
+                       ARRAY_AGG(p.date1::text || ' & ' || p.date2::text ORDER BY p.mq_num ASC) as unfinished_dates
                 FROM customer_first_dates cfd
                 JOIN pairs p ON p.date2 >= cfd.earliest_date AND p.date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
                 LEFT JOIN customer_processed_maqals cpm ON cfd.customer_id = cpm.customer_id AND p.maqal_id = cpm.maqal_id
@@ -495,8 +495,8 @@ const getCachedCustomersLedger = unstable_cache(
                 COALESCE(dbk.total_books_count, 0) as total_books_count,
                 COALESCE(cuc.unfinished_count, 0) as unprocessed_books_count,
                 COALESCE(cuc.unfinished_dates, ARRAY[]::text[]) as unfinished_dates,
-                COALESCE(cuc.earliest_unfinished_d1, (SELECT date1 FROM pairs WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date ORDER BY mq_num DESC LIMIT 1)) as pair_date1,
-                COALESCE(cuc.earliest_unfinished_d2, (SELECT date2 FROM pairs WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date ORDER BY mq_num DESC LIMIT 1)) as pair_date2,
+                COALESCE(cuc.earliest_unfinished_d1, (SELECT date1::text FROM pairs WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date ORDER BY mq_num DESC LIMIT 1)) as pair_date1,
+                COALESCE(cuc.earliest_unfinished_d2, (SELECT date2::text FROM pairs WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date ORDER BY mq_num DESC LIMIT 1)) as pair_date2,
                 CASE
                     WHEN COALESCE(cuc.unfinished_count, 0) = 0 THEN true
                     ELSE false
