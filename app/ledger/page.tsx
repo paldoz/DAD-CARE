@@ -1371,17 +1371,14 @@ export default function LedgerPage() {
                                                                                             const mainKg = parseFloat(entry.kg) || 0;
                                                                                             const extraKg = parseFloat(entry.extraKg || '0') || 0;
                                                                                             const dateStr = format(parseISO(entry.date), "MMM dd, yyyy");
-                                                                                            if (mainKg === 0 && extraKg === 0) {
-                                                                                                return `${dateStr} ❌ Baaqatay`;
-                                                                                            }
                                                                                             const parts = [];
                                                                                             if (mainKg > 0) parts.push(`📦 ${mainKg} KG${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`);
                                                                                             if (extraKg > 0) parts.push(`📔 ${extraKg} KG (${entry.extraNote || 'Notebook'})`);
-                                                                                            return `${dateStr} - ${parts.join(' + ')}`;
+                                                                                            return parts.length > 0 ? `${dateStr} - ${parts.join(' + ')}` : dateStr;
                                                                                         })()}
                                                                                     </option>
                                                                                 ) : (
-                                                                                    <option value="" disabled>No unprocessed dates</option>
+                                                                                    <option value="" disabled>Select Date</option>
                                                                                 )}
                                                                             </select>
                                                                         )}
@@ -1878,7 +1875,7 @@ export default function LedgerPage() {
                                                                 <div key={`rec-${idx}`} className="space-y-1 py-1 border-b border-border/30 text-muted-foreground">
                                                                     {showMain && (
                                                                         <div className="flex justify-between">
-                                                                            <span>{format(new Date(entry.date), 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
+                                                                            <span>{format(new Date(entry.date), 'MMM dd')} · {mainKg > 0 ? `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}` : `0KG × $${entry.pricePerKg}`}</span>
                                                                             <span className="font-bold text-foreground">${formatMoney(mainKg > 0 ? calculateMaqalCharge(mainKg, entry.pricePerKg) : 0)}</span>
                                                                         </div>
                                                                     )}
