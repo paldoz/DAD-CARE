@@ -1501,25 +1501,21 @@ export default function LedgerPage() {
                                                                                 className={cn(
                                                                                     "w-full h-11 md:h-12 pl-10 pr-8 font-bold text-sm md:text-base rounded-xl border border-border/80 bg-muted/30 appearance-none cursor-not-allowed focus:ring-0",
                                                                                     !entry.date && "text-muted-foreground"
-                                                                                )}
-                                                                            >
+                                                                                )}>
                                                                                 {entry.date ? (
                                                                                     <option value={entry.date}>
                                                                                         {(() => {
                                                                                             const mainKg = parseFloat(entry.kg) || 0;
                                                                                             const extraKg = parseFloat(entry.extraKg || '0') || 0;
                                                                                             const dateStr = safeFormatDate(entry.date, "MMM dd, yyyy", entry.date || '');
-                                                                                            if (mainKg === 0 && extraKg === 0) {
-                                                                                                return `${dateStr} ❌ Baaqatay`;
-                                                                                            }
                                                                                             const parts = [];
                                                                                             if (mainKg > 0) parts.push(`📦 ${mainKg} KG${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`);
                                                                                             if (extraKg > 0) parts.push(`📔 ${extraKg} KG (${entry.extraNote || 'Notebook'})`);
-                                                                                            return `${dateStr} - ${parts.join(' + ')}`;
+                                                                                            return parts.length > 0 ? `${dateStr} - ${parts.join(' + ')}` : dateStr;
                                                                                         })()}
                                                                                     </option>
                                                                                 ) : (
-                                                                                    <option value="" disabled>No unprocessed dates</option>
+                                                                                    <option value="" disabled>Select Date</option>
                                                                                 )}
                                                                             </select>
                                                                         )}
@@ -2035,7 +2031,7 @@ export default function LedgerPage() {
                                                                 <div key={`rec-${idx}`} className="space-y-1 py-1 border-b border-border/30 text-muted-foreground">
                                                                     {showMain && (
                                                                         <div className="flex justify-between">
-                                                                            <span>{safeFormatDate(entry.date, 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
+                                                                            <span>{safeFormatDate(entry.date, 'MMM dd')} · {mainKg > 0 ? `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}` : `0KG × $${entry.pricePerKg}`}</span>
                                                                             <span className="font-bold text-foreground">${formatMoney(mainKg > 0 ? calculateMaqalCharge(mainKg, entry.pricePerKg) : 0)}</span>
                                                                         </div>
                                                                     )}
