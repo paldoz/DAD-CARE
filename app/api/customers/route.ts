@@ -10,7 +10,6 @@ import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
 
 import { getAllCustomerStats, getCachedAllCustomerStats } from '@/app/utils/rankHelpers';
-import { MAQAL_PAIRS_CTE, MAQAL_EPOCH } from '@/lib/maqal-utils';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -113,52 +112,24 @@ export async function getCustomers(options: {
     else if (sort === 'least_kg') orderClause = "ORDER BY total_kg ASC NULLS LAST";
 
     const query = `
-        ${MAQAL_PAIRS_CTE},
-        target_pair AS (
-            SELECT date1::date AS date1, date2::date AS date2
-            FROM pairs
-            WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
-            ORDER BY mq_num DESC
-            LIMIT 1
+        -- ── PAIR EPOCH = 2026-06-28. offset = CURRENT_DATE - epoch ─────────────────
+        WITH target_pair AS (
+            SELECT
+                ('2026-06-28'::date + (
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
+                )::int * '1 day'::interval)::date AS date1,
+                ('2026-06-28'::date + (
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
+                )::int * '1 day'::interval)::date AS date2
         ),
         prev_pair AS (
-            SELECT date1::date AS date1, date2::date AS date2
-            FROM pairs
-            WHERE date1 < (SELECT date1 FROM target_pair)
-            ORDER BY mq_num DESC
-            LIMIT 1
-        ),
-        customer_first_dates AS (
-            SELECT c.id as customer_id,
-                   COALESCE(
-                       MIN(db.date::date),
-                       (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date
-                   ) as earliest_date
-            FROM "Customer" c
-            LEFT JOIN "DailyBookItem" dbi ON c.id = dbi.customer_id AND dbi.deleted_at IS NULL
-            LEFT JOIN "DailyBook" db ON dbi.daily_book_id = db.id AND db.deleted_at IS NULL
-            GROUP BY c.id, c.created_at
-        ),
-        customer_processed_maqals AS (
-            SELECT DISTINCT customer_id, 
-                   COALESCE(maqal_id, (9 + FLOOR((COALESCE(reference_date::date, created_at::date) - '${MAQAL_EPOCH}'::date) / 2))::int) as maqal_id
-            FROM "Ledger"
-            WHERE type = 'PRODUCT' AND deleted_at IS NULL
-        ),
-        customer_unfinished_counts AS (
-            SELECT cfd.customer_id,
-                   COUNT(p.maqal_id)::int as unfinished_count,
-                   (ARRAY_AGG(p.date1::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d1,
-                   (ARRAY_AGG(p.date2::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d2,
-                   ARRAY_AGG(p.date1::text || ' & ' || p.date2::text ORDER BY p.mq_num ASC) as unfinished_dates
-            FROM customer_first_dates cfd
-            JOIN pairs p ON p.date2 >= cfd.earliest_date
-                         -- Only include pairs that are "overdue" (date2 < today) OR the current pair (date1 <= today)
-                         -- But cap at date2 <= today so we don't count future pairs as warnings
-                         AND p.date2 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
-            LEFT JOIN customer_processed_maqals cpm ON cfd.customer_id = cpm.customer_id AND p.maqal_id = cpm.maqal_id
-            WHERE cpm.maqal_id IS NULL
-            GROUP BY cfd.customer_id
+            SELECT
+                ('2026-06-28'::date + (
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2
+                )::int * '1 day'::interval)::date AS date1,
+                ('2026-06-28'::date + (
+                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
+                )::int * '1 day'::interval)::date AS date2
         ),
         latest_product_receipt_raw AS (
             SELECT 
@@ -237,22 +208,22 @@ export async function getCustomers(options: {
         ),
         selected_maqal_stats AS (
             SELECT 
-                lpr.customer_id,
-                SUM(l.amount)::float as maqal_total
-            FROM selected_product_receipt lpr
-            JOIN "Ledger" l ON l.customer_id = lpr.customer_id 
-                AND l.type = 'PRODUCT' 
+                spr.customer_id,
+                SUM(CASE WHEN l.type = 'PRODUCT' THEN l.amount ELSE 0 END)::float as maqal_total
+            FROM selected_product_receipt spr
+            JOIN "Ledger" l ON l.customer_id = spr.customer_id 
+                AND l.type IN ('PRODUCT', 'ADJUSTMENT') 
                 AND l.deleted_at IS NULL
                 ${maqalD1 && maqalD2 ? `AND COALESCE(l.reference_date::date, l.created_at::date) IN ('${maqalD1}', '${maqalD2}')` : `AND 1=0`}
-            GROUP BY lpr.customer_id
+            GROUP BY spr.customer_id
         ),
         selected_prev_debt AS (
             SELECT
                 customer_id,
                 SUM(amount)::float as prev_debt
             FROM "Ledger"
-            WHERE type = 'PRODUCT' AND deleted_at IS NULL
-            ${maqalD1 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
+            WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
+            ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
             GROUP BY customer_id
         ),
 
@@ -261,7 +232,7 @@ export async function getCustomers(options: {
                 customer_id,
                 new_debt,
                 type,
-                created_at,
+                receipt_id,
                 id
             FROM "Ledger"
             WHERE deleted_at IS NULL
@@ -289,14 +260,14 @@ export async function getCustomers(options: {
             COALESCE(dbk.total_daily_kg, 0)::float as total_kg,
             COALESCE(l.last_receipt_has_payment, false) as last_receipt_has_payment,
             COALESCE(dbk.total_books_count, 0) as total_books_count,
-            COALESCE(cuc.unfinished_count, 0) as unprocessed_books_count,
-            COALESCE(cuc.unfinished_dates, ARRAY[]::text[]) as unfinished_dates,
+            CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
             CASE
-                WHEN COALESCE(cuc.unfinished_count, 0) = 0 THEN true
+                WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
+                WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
                 ELSE false
             END as is_target_days_done,
-            COALESCE(cuc.earliest_unfinished_d1, tp.date1::text) as pair_date1,
-            COALESCE(cuc.earliest_unfinished_d2, tp.date2::text) as pair_date2,
+            tp.date1::text as pair_date1,
+            tp.date2::text as pair_date2,
             CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
             
             -- Priority 3: Last Completed Reesto (from new reliability logic)
@@ -327,7 +298,6 @@ export async function getCustomers(options: {
             END as selected_maqal_pct
         FROM base_customers c
         LEFT JOIN latest_ledger_with_payment_check l ON c.id = l.customer_id
-        LEFT JOIN customer_unfinished_counts cuc ON c.id = cuc.customer_id
         LEFT JOIN (
             SELECT customer_id, SUM(amount) as total_paid
             FROM "Ledger"
@@ -462,62 +432,50 @@ const getCachedCustomersLite = unstable_cache(
 const getCachedCustomersLedger = unstable_cache(
     async () => {
         const query = `
-            ${MAQAL_PAIRS_CTE},
-            customer_first_dates AS (
-                SELECT c.id as customer_id,
-                       COALESCE(
-                           MIN(db.date::date),
-                           (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date
-                       ) as earliest_date
-                FROM "Customer" c
-                LEFT JOIN "DailyBookItem" dbi ON c.id = dbi.customer_id AND dbi.deleted_at IS NULL
-                LEFT JOIN "DailyBook" db ON dbi.daily_book_id = db.id AND db.deleted_at IS NULL
-                GROUP BY c.id, c.created_at
-            ),
-            customer_processed_maqals AS (
-                SELECT DISTINCT customer_id, 
-                       COALESCE(maqal_id, (9 + FLOOR((COALESCE(reference_date::date, created_at::date) - '${MAQAL_EPOCH}'::date) / 2))::int) as maqal_id
-                FROM "Ledger"
-                WHERE type = 'PRODUCT' AND deleted_at IS NULL
-            ),
-            customer_unfinished_counts AS (
-                SELECT cfd.customer_id,
-                       COUNT(p.maqal_id)::int as unfinished_count,
-                       (ARRAY_AGG(p.date1::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d1,
-                       (ARRAY_AGG(p.date2::text ORDER BY p.mq_num ASC))[1] as earliest_unfinished_d2,
-                       ARRAY_AGG(p.date1::text || ' & ' || p.date2::text ORDER BY p.mq_num ASC) as unfinished_dates
-                FROM customer_first_dates cfd
-                JOIN pairs p ON p.date2 >= cfd.earliest_date
-                             AND p.date2 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
-                LEFT JOIN customer_processed_maqals cpm ON cfd.customer_id = cpm.customer_id AND p.maqal_id = cpm.maqal_id
-                WHERE cpm.maqal_id IS NULL
-                GROUP BY cfd.customer_id
+            WITH target_pair AS (
+                SELECT
+                    ('2026-06-28'::date + (
+                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
+                    )::int * '1 day'::interval)::date AS date1,
+                    ('2026-06-28'::date + (
+                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
+                    )::int * '1 day'::interval)::date AS date2
             )
             SELECT
                 c.id, c.name, c.customer_code, c.is_kabarka, c.is_unassignable,
                 CASE WHEN c.deleted_at IS NOT NULL THEN true ELSE false END as is_inactive,
                 COALESCE(dbk.total_books_count, 0) as total_books_count,
-                COALESCE(cuc.unfinished_count, 0) as unprocessed_books_count,
-                COALESCE(cuc.unfinished_dates, ARRAY[]::text[]) as unfinished_dates,
-                COALESCE(cuc.earliest_unfinished_d1, (SELECT date1::text FROM pairs WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date ORDER BY mq_num DESC LIMIT 1)) as pair_date1,
-                COALESCE(cuc.earliest_unfinished_d2, (SELECT date2::text FROM pairs WHERE date1 <= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date ORDER BY mq_num DESC LIMIT 1)) as pair_date2,
+                CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
                 CASE
-                    WHEN COALESCE(cuc.unfinished_count, 0) = 0 THEN true
+                    WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
+                    WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
                     ELSE false
                 END as is_target_days_done
             FROM "Customer" c
             LEFT JOIN (
-                SELECT customer_id, COUNT(DISTINCT id) as total_books_count
+                SELECT customer_id, COUNT(DISTINCT id) as total_books_count, SUM(kg) as total_daily_kg
                 FROM "DailyBookItem" WHERE kg > 0 AND deleted_at IS NULL GROUP BY customer_id
             ) dbk ON c.id = dbk.customer_id
-            LEFT JOIN customer_unfinished_counts cuc ON c.id = cuc.customer_id
+            LEFT JOIN (
+                SELECT customer_id, SUM(kg) as total_ledger_kg
+                FROM "Ledger" WHERE type = 'PRODUCT' AND deleted_at IS NULL GROUP BY customer_id
+            ) lk ON c.id = lk.customer_id
+            LEFT JOIN (
+                SELECT customer_id,
+                    COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as target_pair_ledger_count
+                FROM "Ledger"
+                WHERE type = 'PRODUCT' AND deleted_at IS NULL
+                  AND COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)
+                        IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
+                GROUP BY customer_id
+            ) td ON c.id = td.customer_id
             ORDER BY c.name ASC;
         `;
         const { rows } = await pool.query(query);
         return rows;
     },
-    ['customers-ledger-data-v4'],
-    { revalidate: 2, tags: ['customers', 'max'] }
+    ['customers-ledger-data-v2'],
+    { revalidate: 5, tags: ['customers', 'max'] }
 );
 
 // Dynamic paginated/sorted data should not be cached on the server, SWR handles it on the client.

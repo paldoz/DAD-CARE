@@ -6,7 +6,6 @@ import pool from '@/lib/db';
 import { calculateMaqalCharge } from '@/lib/ledger-utils';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
-import { getCustomerNextMaqalState } from '@/lib/maqal-utils';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -222,26 +221,53 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             console.error('Failed to revalidate cache:', cacheErr);
         }
 
-        // ── SERVER-AUTHORITATIVE MAQAL STATE ─────────────────────────────────
-        // Compute the full next Maqal state in-process (no round-trip needed by client)
-        let maqalState = null;
+        let customerStatus = { unprocessed_books_count: 0, is_target_days_done: true };
         try {
-            maqalState = await getCustomerNextMaqalState(pool, customerId, maqal_id || 0, runningDebt);
-        } catch (stateErr) {
-            console.error('Failed to compute next maqal state:', stateErr);
+            const { rows: statusRows } = await pool.query(`
+                WITH prev_pair AS (
+                    SELECT
+                        ('2026-06-28'::date + (
+                            ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 2
+                        )::int * '1 day'::interval)::date AS date1,
+                        ('2026-06-28'::date + (
+                            ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 1
+                        )::int * '1 day'::interval)::date AS date2
+                )
+                SELECT
+                    CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
+                    CASE
+                        WHEN COALESCE(td.prev_pair_ledger_count, 0) >= 2 THEN true
+                        WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM prev_pair) THEN true
+                        ELSE false
+                    END as is_target_days_done
+                FROM "Customer" c
+                LEFT JOIN (
+                    SELECT customer_id, SUM(kg) as total_daily_kg
+                    FROM "DailyBookItem" WHERE customer_id = $1 AND kg > 0 AND deleted_at IS NULL GROUP BY customer_id
+                ) dbk ON c.id = dbk.customer_id
+                LEFT JOIN (
+                    SELECT customer_id, SUM(kg) as total_ledger_kg
+                    FROM "Ledger" WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL GROUP BY customer_id
+                ) lk ON c.id = lk.customer_id
+                LEFT JOIN (
+                    SELECT customer_id,
+                        COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as prev_pair_ledger_count
+                    FROM "Ledger"
+                    WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL
+                      AND COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)
+                            IN (SELECT date1 FROM prev_pair UNION SELECT date2 FROM prev_pair)
+                    GROUP BY customer_id
+                ) td ON c.id = td.customer_id
+                WHERE c.id = $1
+            `, [customerId]);
+            if (statusRows.length > 0) {
+                customerStatus = statusRows[0];
+            }
+        } catch (statusErr) {
+            console.error('Failed to fetch updated customer status:', statusErr);
         }
 
-        return NextResponse.json({
-            success: true,
-            finalDebt: runningDebt,
-            count: entriesToInsert.length,
-            maqalState,
-            // Legacy field kept for backwards-compat:
-            customerStatus: {
-                unprocessed_books_count: maqalState?.warningCount ?? 0,
-                is_target_days_done: (maqalState?.warningCount ?? 1) === 0
-            }
-        });
+        return NextResponse.json({ success: true, finalDebt: runningDebt, count: entriesToInsert.length, customerStatus });
     } catch (error: any) {
         console.error('Ledger Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to add entry' }, { status: 500 });
@@ -252,7 +278,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 const fetchLedgerData = async (customerId: string, limit: number, offset: number) => {
     const [txnResult, summaryResult] = await Promise.all([
         pool.query(
-            `SELECT id, customer_id, type, TO_CHAR(reference_date AT TIME ZONE 'Africa/Nairobi', 'YYYY-MM-DD') as reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at, maqal_id FROM "Ledger"
+            `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger"
              WHERE customer_id = $1 AND deleted_at IS NULL
              ORDER BY created_at DESC, id DESC
              LIMIT ${limit} OFFSET ${offset}`,

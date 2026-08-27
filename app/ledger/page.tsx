@@ -17,24 +17,6 @@ import useSWR, { mutate } from 'swr';
 import { AnimatedBackground } from '@/components/animated-background';
 import { useSession } from '@/hooks/useSession';
 
-const safeFormatDate = (dateVal: any, fmt: string, fallback: string = ''): string => {
-    if (!dateVal) return fallback;
-    try {
-        if (typeof dateVal === 'string') {
-            const clean = dateVal.split('T')[0];
-            if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
-                const parsed = parseISO(clean);
-                if (!isNaN(parsed.getTime())) return format(parsed, fmt);
-            }
-        }
-        const d = new Date(dateVal);
-        if (!isNaN(d.getTime())) return format(d, fmt);
-        return fallback;
-    } catch {
-        return fallback;
-    }
-};
-
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
     // Custom headers prevent Vercel CDN caching; cookies allow it.
@@ -65,20 +47,12 @@ const dailyEntriesFetcher = async (url: string) => {
     }
     if (!res.ok) throw new Error('Fetch error');
     const data = await res.json();
-    if (data && typeof data === 'object' && !Array.isArray(data) && data.result) {
-        return {
-            dailyData: data.result,
-            allUnprocessedDates: data.allUnprocessedDates || [],
-            maqalId: data.maqalId,
-            timelineOptions: data.timelineOptions || []
-        };
-    }
+    console.log('[DEBUG-TRACE] SWR API Response Data:', data);
     
     return {
-        dailyData: Array.isArray(data) ? data : [],
+        dailyData: data,
         allUnprocessedDates: JSON.parse(res.headers.get('x-all-unprocessed-dates') || '[]'),
-        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null,
-        timelineOptions: JSON.parse(res.headers.get('x-timeline-options') || '[]')
+        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null
     };
 };
 
@@ -301,10 +275,10 @@ export default function LedgerPage() {
     
     const ledgerUrl = selectedCustomerId ? `/api/ledger?customerId=${selectedCustomerId}&limit=1000` : null;
     const { data: ledgerData, isLoading: fetchingLedger, mutate: mutateLedger } = useSWR(ledgerUrl, fetcher, {
-        revalidateOnFocus: false,
-        dedupingInterval: 1000,
-        keepPreviousData: false,
-        revalidateIfStale: true,
+        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
+        dedupingInterval: 30000,      // ⚡ 1 req per 30s — was 2s (saves ~93% of calls)
+        keepPreviousData: true,
+        revalidateIfStale: false,
         revalidateOnReconnect: false
     });
     
@@ -324,10 +298,7 @@ export default function LedgerPage() {
 
     // SWR fetch for customer daily entries - must always be fresh so the correct Maqal pair is shown
     const [startDate, setStartDate] = useState<string>('');
-    const [selectedMaqalId, setSelectedMaqalId] = useState<number | null>(null);
-    const [timelineOptionsList, setTimelineOptionsList] = useState<Array<{ maqalId: number; mqNum: number; date1: string; date2: string; label: string; status: 'DONE' | 'CURRENT' | 'NOT_DONE' | 'WAITING' }>>([]);
-    const [dailyRefreshKey, setDailyRefreshKey] = useState(0); // bump to force re-fetch even when selectedMaqalId stays null
-    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${selectedMaqalId ? `&targetMaqalId=${selectedMaqalId}` : (startDate ? `&startDate=${startDate}` : '')}&_r=${dailyRefreshKey}` : null;
+    const dailyEntriesUrl = selectedCustomerId ? `/api/customer-daily-entries?customerId=${selectedCustomerId}${startDate ? `&startDate=${startDate}` : ''}` : null;
     const { data: dailyEntriesRaw, isLoading: fetchingDaily, mutate: mutateDailyEntries } = useSWR(dailyEntriesUrl, dailyEntriesFetcher, {
         revalidateOnFocus: false,    // don't re-fetch on every tab-switch
         dedupingInterval: 0,         // always fetch fresh — Maqal pair MUST be correct, no stale data
@@ -576,38 +547,40 @@ export default function LedgerPage() {
 
         setFetchingDetails(true);
         try {
-            const { dailyData, allUnprocessedDates, maqalId, timelineOptions } = dailyEntriesRaw;
+            const { dailyData, allUnprocessedDates, maqalId } = dailyEntriesRaw;
             setAllUnprocessedDates(allUnprocessedDates);
             setCurrentMaqalId(maqalId);
-            if (timelineOptions) {
-                setTimelineOptionsList(timelineOptions);
-            }
             setCustomerDailyDates(dailyData || []);
             
-            setDateEntries(() => {
+            setDateEntries(prev => {
                 const newExpandedIds = new Set<string>();
-                let newEntries: DateEntry[];
+                let newEntries;
 
-                if (dailyData && dailyData.length > 0) {
-                    newEntries = dailyData.map((d: any, idx: number) => {
-                        const entryId = (Date.now() + idx).toString();
-                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(
-                            entryId,
-                            d,
-                            defaultPrice,
-                            dateSpecificPrices,
-                            dateSpecificOverrides,
-                            selectedCustomerId
-                        );
-                        if (shouldExpandExtra) {
-                            newExpandedIds.add(entryId);
-                        }
-                        return entry;
-                    });
+                // If no dates, or just 1 empty row, initialize sequentially with all unprocessed records
+                if (prev.length === 0 || (prev.length === 1 && !prev[0].date)) {
+                    if (dailyData && dailyData.length > 0) {
+                        newEntries = dailyData.map((d: any, idx: number) => {
+                            const entryId = (Date.now() + idx).toString();
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                            if (shouldExpandExtra) {
+                                newExpandedIds.add(entryId);
+                            }
+                            return entry;
+                        });
+                    } else {
+                        newEntries = [{ id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }];
+                    }
                 } else {
-                    newEntries = [
-                        { id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
-                    ];
+                    // Re-sequence existing rows to strictly match unprocessed dates
+                    newEntries = prev.map((entry, idx) => {
+                        const d = dailyData[idx];
+                        if (!d) return { ...entry, date: '' };
+                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                        if (shouldExpandExtra) {
+                            newExpandedIds.add(entry.id);
+                        }
+                        return parsedEntry;
+                    }).filter(e => e.date !== '');
                 }
 
                 if (newExpandedIds.size > 0) {
@@ -619,6 +592,7 @@ export default function LedgerPage() {
                         });
                     }, 0);
                 }
+                console.log('[DEBUG-TRACE] setDateEntries from dailyEntriesRaw (API SWR Data):', newEntries);
                 return newEntries;
             });
         } finally {
@@ -628,19 +602,18 @@ export default function LedgerPage() {
 
     const handleCustomerChange = (customerId: string) => {
         setSelectedCustomerId(customerId);
-        setSelectedMaqalId(null);
         setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
-        setShowLastMaqal(false);
+        setShowLastMaqal(true);
         setUpdateLastMaqal(false);
         setExpandedExtraEntryIds(new Set());
         setStartDate('');
         setAllUnprocessedDates([]);
         setFreshBalance(null);
         setOldMaqalDone(false);
-        // SWR will auto-fetch via dailyEntriesUrl key change triggered by setSelectedCustomerId above.
-        // The useEffect on dailyEntriesRaw will hydrate dateEntries once the fetch completes.
+
+        // (Removed auto-unstar logic that was dropping priority on selection)
     };
 
     const sortedCustomers = useMemo(() => {
@@ -700,9 +673,9 @@ export default function LedgerPage() {
                 const d1 = recentDates[i];
                 const d2 = recentDates[i+1];
                 if (d1 && d2) {
-                    options.push(`☑️ ${safeFormatDate(d1, "MMM dd")} & ${safeFormatDate(d2, "MMM dd")} (Done)`);
+                    options.push(`☑️ ${format(parseISO(d1), "MMM dd")} & ${format(parseISO(d2), "MMM dd")} (Done)`);
                 } else if (d1) {
-                    options.push(`☑️ ${safeFormatDate(d1, "MMM dd")} (Done)`);
+                    options.push(`☑️ ${format(parseISO(d1), "MMM dd")} (Done)`);
                 }
             }
         }
@@ -731,9 +704,9 @@ export default function LedgerPage() {
                 }
 
                 if (d1 && d2) {
-                    options.push(`${prefix} ${safeFormatDate(d1, "MMM dd")} & ${safeFormatDate(d2, "MMM dd")} ${suffix}`);
+                    options.push(`${prefix} ${format(parseISO(d1), "MMM dd")} & ${format(parseISO(d2), "MMM dd")} ${suffix}`);
                 } else if (d1) {
-                    options.push(`${prefix} ${safeFormatDate(d1, "MMM dd")} ${suffix}`);
+                    options.push(`${prefix} ${format(parseISO(d1), "MMM dd")} ${suffix}`);
                 }
             }
         } else {
@@ -850,7 +823,7 @@ export default function LedgerPage() {
 
     const activeDatesForHeader = dateEntries
         .filter(e => e.date && (parseFloat(e.kg) >= 0 || parseFloat(e.extraKg || '0') > 0))
-        .map(e => safeFormatDate(e.date, 'dd MMM'));
+        .map(e => format(new Date(e.date), 'dd MMM'));
 
     const dynamicMaqalLabel = 'Maqalka';
 
@@ -898,10 +871,10 @@ export default function LedgerPage() {
             ? lastReceiptGroup.receiptId
             : crypto.randomUUID();
 
-        // If editing/paying the last maqal, USE ITS MAQAL ID. Otherwise use the selected/current maqal ID.
+        // If editing/paying the last maqal, USE ITS MAQAL ID. Otherwise use the current unprocessed one.
         const targetMaqalId = (isEditingOldMaqal && lastReceiptGroup?.maqalId != null) 
             ? lastReceiptGroup.maqalId 
-            : (selectedMaqalId || currentMaqalId);
+            : currentMaqalId;
 
         // 1. Gather all items for the batch
         const items = [];
@@ -1013,108 +986,100 @@ export default function LedgerPage() {
                 );
             }, { revalidate: false }); // DO NOT hit the server!
             
-
+            setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
             setPaymentEntries([{ id: (Date.now() + 1).toString(), date: '', amount: '' }]);
             setAdjustmentAmount('');
             
-            // ── SERVER-AUTHORITATIVE STATE APPLICATION ────────────────────────
-            // CRITICAL: Do NOT bump dailyRefreshKey here — that changes the SWR URL
-            // which triggers a re-fetch, which calls useEffect, which overwrites dateEntries.
-            // Set state directly. SWR stays on its current key and does not interfere.
-            setSelectedMaqalId(null);
-            setShowLastMaqal(false);
-            setUpdateLastMaqal(false);
-            setOldMaqalDone(isReadOnlyMode);
+            // Workflow Auto-Transition:
+            if (isReadOnlyMode) {
+                setShowLastMaqal(false);
+                setUpdateLastMaqal(false);
+                setOldMaqalDone(true);
+                setFetchingDetails(false); // End blink effect
 
-            const ms = data.maqalState;
-            if (ms) {
-                // Apply server-authoritative state immediately
-                setTimelineOptionsList(ms.timelineOptions ?? []);
-                setCurrentMaqalId(ms.autoMaqalId);
-                setAllUnprocessedDates(ms.allUnprocessedDates ?? []);
-
-                const nextDate1: string = ms.autoDate1 || '';
-                const nextDate2: string = ms.autoDate2 || '';
-
-                // Fetch the DailyBook items for the next pair fresh from server
-                try {
-                    const nextEntriesRes = await fetch(
-                        `/api/customer-daily-entries?customerId=${selectedCustomerId}&targetMaqalId=${ms.autoMaqalId}&_t=${Date.now()}`
-                    );
-                    if (nextEntriesRes.ok) {
-                        const nextPayload = await nextEntriesRes.json();
-                        const nextPair: any[] = Array.isArray(nextPayload) ? nextPayload : (nextPayload.result || []);
-                        const nextTimeline = nextPayload.timelineOptions || ms.timelineOptions || [];
-                        const nextUnprocessed = nextPayload.allUnprocessedDates || ms.allUnprocessedDates || [];
-
-                        // Update state from fresh server data
-                        if (nextTimeline.length > 0) setTimelineOptionsList(nextTimeline);
-                        setAllUnprocessedDates(nextUnprocessed);
-
-                        if (nextPair.length > 0) {
-                            const newExpandedIds = new Set<string>();
-                            const newEntries = nextPair.map((d: any, idx: number) => {
-                                const entryId = (Date.now() + idx).toString();
-                                const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
-                                if (shouldExpandExtra) newExpandedIds.add(entryId);
-                                return entry;
-                            });
-                            // Set state directly — NO SWR key bump to avoid re-fetch race
-                            setDateEntries(newEntries);
-                            setExpandedExtraEntryIds(newExpandedIds);
-                            setCustomerDailyDates(nextPair);
-                        } else {
-                            // No DailyBook items yet for this pair — scaffold with correct dates
-                            setDateEntries([
-                                { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                                { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
-                            ]);
-                            setCustomerDailyDates([]);
-                        }
-                    } else {
-                        // HTTP error — scaffold with server-authoritative dates
-                        setDateEntries([
-                            { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                            { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
-                        ]);
-                        setCustomerDailyDates([]);
-                    }
-                } catch (fetchErr) {
-                    console.error('Error fetching next pair entries:', fetchErr);
-                    // Scaffold with server-authoritative dates as fallback
-                    setDateEntries([
-                        { id: Date.now().toString(), date: nextDate1, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' },
-                        { id: (Date.now() + 1).toString(), date: nextDate2, kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }
-                    ]);
-                    setCustomerDailyDates([]);
+                // Fetch new dates for the SAME customer since we just paid the old maqal
+                mutateDailyEntries();
+                
+                // SWR might ignore the fetch if the new pairs are identical to the cached ones (which is true when just adding a payment).
+                // So we manually repopulate the screen with the existing next pair instantly to avoid a blank screen!
+                if (dailyEntriesRaw && dailyEntriesRaw.dailyData) {
+                    const newExpandedIds = new Set<string>();
+                    const newEntries = dailyEntriesRaw.dailyData.map((d: any, idx: number) => {
+                        const entryId = (Date.now() + idx).toString();
+                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                        if (shouldExpandExtra) newExpandedIds.add(entryId);
+                        return entry;
+                    });
+                    setDateEntries(newEntries);
+                    setExpandedExtraEntryIds(newExpandedIds);
+                } else {
+                    setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
                 }
-
-                // Update customers sidebar optimistically
-                mutateCustomers((current: any) => {
-                    if (!current) return current;
-                    return current.map((c: any) =>
-                        c.id === selectedCustomerId
-                            ? {
-                                ...c,
-                                is_target_days_done: ms.warningCount === 0,
-                                unprocessed_books_count: ms.warningCount,
-                                unfinished_dates: ms.unfinishedMaqals.map((m: any) => `${m.date1} & ${m.date2}`),
-                                pair_date1: ms.unfinishedMaqals[0]?.date1 ?? ms.autoDate1,
-                                pair_date2: ms.unfinishedMaqals[0]?.date2 ?? ms.autoDate2
-                            }
-                            : c
-                    );
-                }, { revalidate: false });
             } else {
-                // No maqalState in response — bump key to force SWR re-fetch (only safe fallback)
-                setDailyRefreshKey(prev => prev + 1);
-            }
+                // Normal save completed.
+                // Check if this was an all-absent (0 KG) pair — if so, auto-skip through remaining absent pairs
+                // and land on the first real pair instead of jumping to the next customer.
+                const allAbsent = validEntries.length === 0 || validEntries.every(e => parseFloat(e.kg || '0') <= 0 && parseFloat(e.extraKg || '0') <= 0);
 
-            // Revalidate ledger and customers only (NOT daily entries — state already set above)
-            mutateLedger();
-            mutateCustomers();
-            markCustomerDone(selectedCustomerId);
-            setFetchingDetails(false);
+                if (allAbsent) {
+                    // Stay on same customer, just fetch the next pair
+                    const url = new URL(`/api/customer-daily-entries`, window.location.origin);
+                    url.searchParams.set('customerId', selectedCustomerId);
+
+                    const res2 = await fetch(url.toString());
+                    const allDatesHeader2 = res2.headers.get('x-all-unprocessed-dates');
+                    const nextPair: any[] = await res2.json();
+                    
+                    if (allDatesHeader2) {
+                        try { setAllUnprocessedDates(JSON.parse(allDatesHeader2)); } catch(e) {}
+                    }
+
+                    if (!nextPair || nextPair.length === 0) {
+                        // No more pairs — all done for this customer
+                        setCustomerDailyDates([]);
+                        setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
+                    } else {
+                        const newExpandedIds = new Set<string>();
+                        const newEntries = nextPair.map((d: any, idx: number) => {
+                            const entryId = (Date.now() + idx).toString();
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                            if (shouldExpandExtra) newExpandedIds.add(entryId);
+                            return entry;
+                        });
+                        
+                        setDateEntries(newEntries);
+                        setExpandedExtraEntryIds(newExpandedIds);
+                        setCustomerDailyDates(nextPair);
+                        
+                        // Set maqal ID based on header
+                        const maqalIdHeader2 = res2.headers.get('x-maqal-id');
+                        if (maqalIdHeader2) {
+                            setCurrentMaqalId(parseInt(maqalIdHeader2, 10));
+                        }
+                    }
+
+                    
+                    const resData = data;
+                    
+                    setFetchingDetails(false);
+                    // Persist done state in localStorage — shows checkmark instantly on next open
+                    markCustomerDone(selectedCustomerId);
+                    // Optimistic update in SWR cache, without fetching from server again
+                    mutateCustomers(
+                        (prev: any) => prev ? prev.map((c: any) =>
+                            c.id === selectedCustomerId ? { ...c, is_target_days_done: resData.customerStatus?.is_target_days_done ?? true, unprocessed_books_count: resData.customerStatus?.unprocessed_books_count ?? 0 } : c
+                        ) : prev,
+                        { revalidate: false }
+                    );
+                } else {
+                    // Normal non-absent save → trigger a short delay, then hard refresh
+                    // This creates the permanent blue checkmark exactly as requested
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500); // Wait 1.5s so they can see the "Receipt saved successfully!" toast
+                    return;
+                }
+            }
         } catch (err: any) {
             toast.error(err.message || 'Failed to save receipt');
         } finally {
@@ -1252,7 +1217,7 @@ export default function LedgerPage() {
                                                         showUnprocessedOnly && "bg-amber-500 text-yellow-950 hover:bg-amber-600 shadow-[0_0_10px_rgba(245,158,11,0.3)] animate-pulse"
                                                     )}
                                                 >
-                                                    ⚠️ Dhiman ({unprocessedCustomersCount})
+                                                    ⏳ Dhiman ({unprocessedCustomersCount})
                                                 </Button>
 
                                             </div>
@@ -1275,46 +1240,23 @@ export default function LedgerPage() {
 
                                                     // CRITICAL: renderCustomer MUST be defined before it is called below.
                                                     // Defining it after the isSuperAdmin guard caused a Temporal Dead Zone crash.
-                                                    const renderCustomer = (c: any) => {
-                                                        const isDone = c.id === lastSavedCustomerId || c.is_target_days_done;
-                                                        const unfinished = Number(c.unprocessed_books_count) || 0;
-
-                                                        // Show ⚠️ icons — 1 per unfinished Maqal, max 2
-                                                        const warningIcons = !isDone && unfinished > 0
-                                                            ? '⚠️'.repeat(Math.min(unfinished, 2))
-                                                            : null;
-
-                                                        return (
-                                                            <div 
-                                                                key={c.id}
-                                                                className={cn(
-                                                                    "relative flex cursor-default select-none items-center justify-between rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
-                                                                    selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
-                                                                )}
-                                                                onClick={() => {
-                                                                    handleCustomerChange(c.id);
-                                                                    setCustomerPopoverOpen(false);
-                                                                    setCustomerSearch('');
-                                                                }}
-                                                            >
-                                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                                    {isDone ? (
-                                                                        <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 shrink-0" />
-                                                                    ) : (
-                                                                        <span className="text-amber-500 font-black text-xs shrink-0">
-                                                                            ⚠️
-                                                                        </span>
-                                                                    )}
-                                                                    <span className="truncate">{c.name.toUpperCase()} (ID: {c.customer_code})</span>
-                                                                </div>
-                                                                {warningIcons && (
-                                                                    <span className="text-sm shrink-0 ml-2" title={`${unfinished} unfinished Maqal${unfinished > 1 ? 's' : ''}`}>
-                                                                        {warningIcons}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    };
+                                                    const renderCustomer = (c: any) => (
+                                                        <div 
+                                                            key={c.id}
+                                                            className={cn(
+                                                                "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
+                                                                selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
+                                                            )}
+                                                            onClick={() => {
+                                                                handleCustomerChange(c.id);
+                                                                setCustomerPopoverOpen(false);
+                                                                setCustomerSearch('');
+                                                            }}
+                                                        >
+                                                            {c.id === lastSavedCustomerId || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : '')}
+                                                            {c.name.toUpperCase()} (ID: {c.customer_code})
+                                                        </div>
+                                                    );
 
                                                     if (!isSuperAdmin) {
                                                         return (
@@ -1350,34 +1292,11 @@ export default function LedgerPage() {
                                         </PopoverContent>
                                     </Popover>
                                 </div>
-                                {/* ── Active unfinished Maqal warning panel ───────────────────────────
-                                      Appears when a customer is selected and has unfinished Maqals.
-                                      Dates come directly from timelineOptionsList (server-authoritative).
-                                      Automatically recalculates after every save — no manual refresh needed.
-                                 ── */}
-                                 {selectedCustomerId && (() => {
-                                     const unfinishedOptions = timelineOptionsList.filter(
-                                         (o) => o.status === 'NOT_DONE' || o.status === 'CURRENT'
-                                     );
-                                     if (unfinishedOptions.length === 0) return null;
-                                     const icons = '⚠️'.repeat(Math.min(unfinishedOptions.length, 2));
-                                     return (
-                                         <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/8 border border-amber-500/20 animate-in fade-in duration-300 mt-1">
-                                             <span className="text-base leading-tight shrink-0 mt-0.5">{icons}</span>
-                                             <div className="flex flex-col gap-0.5">
-                                                 {unfinishedOptions.slice(0, 2).map((o) => (
-                                                     <span key={o.maqalId} className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-tight">
-                                                         MQ#{o.mqNum} — {safeFormatDate(o.date1, 'MMM d')} &amp; {safeFormatDate(o.date2, 'MMM d')}
-                                                     </span>
-                                                 ))}
-                                             </div>
-                                         </div>
-                                     );
-                                 })()}
                                 {selectedCustomerId && (
                                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
 
-                                        {/* Section 1: Maqalka — Always visible when customer selected */}
+                                        {/* Section 1: Maqalka — HIDDEN when Read Last Maqal is active (only payments mode) */}
+                                        {!(showLastMaqal && !updateLastMaqal) && (
                                         <div id="maqal-form-section" className="space-y-4">
                                             <div className="flex flex-col gap-2 border-b border-border pb-2">
                                                 <div className="flex items-center justify-between">
@@ -1397,77 +1316,20 @@ export default function LedgerPage() {
                                                         </Button>
                                                     )}
                                                 </div>
-                                                {(timelineOptionsList.length > 0 || timelineOptions.length > 0) && !updateLastMaqal && (
-                                                    <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-border/40">
-                                                        <div className="flex items-center justify-between">
-                                                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-wider">
-                                                                Select Maqal:
-                                                            </Label>
-                                                            <span className="text-[9px] font-bold text-muted-foreground/80">
-                                                                {selectedMaqalId === null ? '⚡ Auto Mode (Oldest First)' : '📌 Manual Locked'}
-                                                            </span>
-                                                        </div>
-                                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-1.5">
-                                                            {/* Auto (Oldest First) Radio */}
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    // Always force a fresh re-fetch when clicking Auto (even if already null)
-                                                                    setSelectedMaqalId(null);
-                                                                    setDailyRefreshKey(prev => prev + 1);
-                                                                }}
-                                                                className={cn(
-                                                                    "flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all",
-                                                                    selectedMaqalId === null
-                                                                        ? "bg-primary/10 border-primary text-primary shadow-sm ring-1 ring-primary/30 font-black"
-                                                                        : "bg-background/60 border-border/70 hover:bg-accent/40 text-foreground font-semibold"
-                                                                )}
-                                                            >
-                                                                <div className={cn(
-                                                                    "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0",
-                                                                    selectedMaqalId === null ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"
-                                                                )}>
-                                                                    {selectedMaqalId === null && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                                                                </div>
-                                                                <div className="flex flex-col min-w-0">
-                                                                    <span className="text-[11px] truncate">⚡ Auto</span>
-                                                                    <span className="text-[8px] text-muted-foreground truncate">Oldest First</span>
-                                                                </div>
-                                                            </button>
-
-                                                            {/* 4 Chronological Maqal Options */}
-                                                            {timelineOptionsList.map((opt) => {
-                                                                const isSelected = selectedMaqalId === opt.maqalId;
-                                                                const labelParts = opt.label.split('—');
-                                                                const titlePart = labelParts[0]?.trim() || `MQ#${opt.mqNum}`;
-                                                                const datePart = labelParts[1]?.trim() || `${opt.date1} & ${opt.date2}`;
-
-                                                                return (
-                                                                    <button
-                                                                        key={opt.maqalId}
-                                                                        type="button"
-                                                                        onClick={() => setSelectedMaqalId(opt.maqalId)}
-                                                                        className={cn(
-                                                                            "flex items-center gap-2 px-2.5 py-2 rounded-xl border text-left transition-all",
-                                                                            isSelected
-                                                                                ? "bg-primary/10 border-primary text-primary shadow-sm ring-1 ring-primary/30 font-black"
-                                                                                : "bg-background/60 border-border/70 hover:bg-accent/40 text-foreground font-semibold"
-                                                                        )}
-                                                                    >
-                                                                        <div className={cn(
-                                                                            "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0",
-                                                                            isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50"
-                                                                        )}>
-                                                                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                                                                        </div>
-                                                                        <div className="flex flex-col min-w-0">
-                                                                            <span className="text-[11px] truncate">{titlePart}</span>
-                                                                            <span className="text-[8px] text-muted-foreground truncate">{datePart}</span>
-                                                                        </div>
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                {(timelineOptions.length > 0) && !updateLastMaqal && (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Label className="text-[10px] font-bold uppercase text-muted-foreground">Auto (Oldest First):</Label>
+                                                        <select
+                                                            value={timelineOptions.find(o => o.includes('📌')) || timelineOptions.find(o => o.includes('⏳')) || timelineOptions[timelineOptions.length - 1]}
+                                                            onChange={() => {}}
+                                                            className="h-7 text-xs font-bold rounded-md border border-border/60 bg-muted/20 px-2 cursor-pointer focus:ring-1 focus:ring-primary"
+                                                        >
+                                                            {timelineOptions.map((opt, idx) => (
+                                                                <option key={idx} value={opt}>
+                                                                    {opt}
+                                                                </option>
+                                                            ))}
+                                                        </select>
                                                     </div>
                                                 )}
                                             </div>
@@ -1501,21 +1363,25 @@ export default function LedgerPage() {
                                                                                 className={cn(
                                                                                     "w-full h-11 md:h-12 pl-10 pr-8 font-bold text-sm md:text-base rounded-xl border border-border/80 bg-muted/30 appearance-none cursor-not-allowed focus:ring-0",
                                                                                     !entry.date && "text-muted-foreground"
-                                                                                )}>
+                                                                                )}
+                                                                            >
                                                                                 {entry.date ? (
                                                                                     <option value={entry.date}>
                                                                                         {(() => {
                                                                                             const mainKg = parseFloat(entry.kg) || 0;
                                                                                             const extraKg = parseFloat(entry.extraKg || '0') || 0;
-                                                                                            const dateStr = safeFormatDate(entry.date, "MMM dd, yyyy", entry.date || '');
+                                                                                            const dateStr = format(parseISO(entry.date), "MMM dd, yyyy");
+                                                                                            if (mainKg === 0 && extraKg === 0) {
+                                                                                                return `${dateStr} ❌ Baaqatay`;
+                                                                                            }
                                                                                             const parts = [];
                                                                                             if (mainKg > 0) parts.push(`📦 ${mainKg} KG${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`);
                                                                                             if (extraKg > 0) parts.push(`📔 ${extraKg} KG (${entry.extraNote || 'Notebook'})`);
-                                                                                            return parts.length > 0 ? `${dateStr} - ${parts.join(' + ')}` : dateStr;
+                                                                                            return `${dateStr} - ${parts.join(' + ')}`;
                                                                                         })()}
                                                                                     </option>
                                                                                 ) : (
-                                                                                    <option value="" disabled>Select Date</option>
+                                                                                    <option value="" disabled>No unprocessed dates</option>
                                                                                 )}
                                                                             </select>
                                                                         )}
@@ -1669,6 +1535,7 @@ export default function LedgerPage() {
                                             })}
                                             </div>
                                         </div>
+                                        )}
 
                                         {/* 3. LACAGAHA (Payment) Section */}
                                         <div className="space-y-4 pt-4 border-t border-border/50">
@@ -1868,7 +1735,7 @@ export default function LedgerPage() {
                                                             <div key={e.id} className={`flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 font-medium ${!e.kg || e.kg === 0 ? 'opacity-60' : ''}`}>
                                                                 <span>
                                                                     {(e.note && hasMain) ? '↳ ' : ''}
-                                                                    {safeFormatDate(e.reference_date, 'MMM dd')} · {!e.kg || e.kg === 0 ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
+                                                                    {format(new Date(e.reference_date), 'MMM dd')} · {!e.kg || e.kg === 0 ? '❌ Baaqatay' : `${formatKg(e.kg || 0)}KG @ $${e.price_per_kg}`}
                                                                     {e.note ? ` (${e.note})` : ''}
                                                                 </span>
                                                                 <span className="font-bold">{!e.kg || e.kg === 0 ? '$0' : `$${formatMoney(e.amount)}`}</span>
@@ -1932,7 +1799,7 @@ export default function LedgerPage() {
                                                                 {lastReceiptGroup.entries.filter((e: any) => e.type === 'PAYMENT').map((e: any) => (
                                                                     <div key={e.id} className="flex justify-between py-1.5 border-b border-blue-200 dark:border-blue-900/40 text-emerald-700 dark:text-emerald-500 font-bold">
                                                                         <span className="flex items-center gap-1.5">
-                                                                            {safeFormatDate(e.reference_date, 'MMM dd')} {e.note && e.note !== 'Lacagta' ? e.note : 'Payment'}
+                                                                            {format(new Date(e.reference_date), 'MMM dd')} {e.note && e.note !== 'Lacagta' ? e.note : 'Payment'}
                                                                             {lastReceiptGroup.displayMaqalId != null && (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse shadow-[0_0_5px_rgba(59,130,246,0.2)]">
                                                                                     ⚡MQ#{lastReceiptGroup.displayMaqalId}
@@ -1965,7 +1832,7 @@ export default function LedgerPage() {
                                                                 }).map((pay, idx) => (
                                                                     <div key={`pay-${idx}`} className="flex justify-between py-1 border-b border-border/30 text-emerald-600 font-bold">
                                                                         <span className="flex items-center gap-1.5">
-                                                                            {safeFormatDate(pay.date || new Date(), 'MMM dd yyyy')} {pay.note || 'Lacagta'}
+                                                                            {format(new Date(pay.date || new Date()), 'MMM dd yyyy')} {pay.note || 'Lacagta'}
                                                                             {lastReceiptGroup?.displayMaqalId != null && (
                                                                                 <span className="inline-flex items-center gap-0.5 text-[8px] font-black px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30 shrink-0 tracking-wider uppercase animate-mq-pulse">
                                                                                     ⚡MQ#{lastReceiptGroup.displayMaqalId}
@@ -1992,26 +1859,6 @@ export default function LedgerPage() {
                                                 ) : (
                                                     <>
                                                         {/* === NORMAL MODE: Full receipt with dates/kilos === */}
-                                                        {/* Latest completed Maqal summary banner — immediately visible */}
-                                                        {lastReceiptGroup && (
-                                                            <div className="mb-3 pb-2 border-b border-dashed border-border/60 text-[10px] bg-muted/20 px-2 py-1.5 rounded-md">
-                                                                <div className="flex items-center justify-between text-muted-foreground font-bold">
-                                                                    <span className="flex items-center gap-1.5 flex-wrap">
-                                                                        <span className="text-muted-foreground/70">Maqalki Hore:</span>
-                                                                        <span className="text-foreground font-black">{lastReceiptGroup.titleString}</span>
-                                                                        {lastReceiptGroup.displayMaqalId != null && (
-                                                                            <span className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-600 dark:text-blue-400 font-black text-[9px]">
-                                                                                ✓ MQ#{lastReceiptGroup.displayMaqalId}
-                                                                            </span>
-                                                                        )}
-                                                                    </span>
-                                                                    <span className={cn("font-black", lastReceiptGroup.closingBalance > 0 ? "text-destructive" : "text-emerald-600")}>
-                                                                        {lastReceiptGroup.closingBalance > 0 ? `Reesto: $${formatMoney(lastReceiptGroup.closingBalance)}` : 'Fully Paid ✓'}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
                                                         {activeDatesForHeader.length > 0 && (
                                                             <p className="text-[9px] font-bold text-muted-foreground text-center mb-3">
                                                                 Maqalka Taariikhda {activeDatesForHeader.join(' iyo ')}
@@ -2031,13 +1878,13 @@ export default function LedgerPage() {
                                                                 <div key={`rec-${idx}`} className="space-y-1 py-1 border-b border-border/30 text-muted-foreground">
                                                                     {showMain && (
                                                                         <div className="flex justify-between">
-                                                                            <span>{safeFormatDate(entry.date, 'MMM dd')} · {mainKg > 0 ? `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}` : `0KG × $${entry.pricePerKg}`}</span>
+                                                                            <span>{format(new Date(entry.date), 'MMM dd')} · {mainKg === 0 ? '❌ Baaqatay' : `${entry.kg}KG × $${entry.pricePerKg}${entry.mainNote === 'VIP' ? ' (VIP)' : ''}`}</span>
                                                                             <span className="font-bold text-foreground">${formatMoney(mainKg > 0 ? calculateMaqalCharge(mainKg, entry.pricePerKg) : 0)}</span>
                                                                         </div>
                                                                     )}
                                                                     {showExtra && (
                                                                         <div className={cn("flex justify-between text-[10px] text-muted-foreground/80", (showMain && mainKg > 0) ? "pl-3" : "")}>
-                                                                            <span>{(showMain && mainKg > 0) ? '↳ ' : ''}{safeFormatDate(entry.date, 'MMM dd')} · {entry.extraKg}KG × ${entry.extraPricePerKg} ({entry.extraNote || 'Notebook'})</span>
+                                                                            <span>{(showMain && mainKg > 0) ? '↳ ' : ''}{format(new Date(entry.date), 'MMM dd')} · {entry.extraKg}KG × ${entry.extraPricePerKg} ({entry.extraNote || 'Notebook'})</span>
                                                                             <span className="font-bold text-foreground">${formatMoney(extraKg > 0 ? calculateMaqalCharge(extraKg, entry.extraPricePerKg || '0') : 0)}</span>
                                                                         </div>
                                                                     )}
@@ -2100,7 +1947,7 @@ export default function LedgerPage() {
                                                                     return !(ln.includes('heyn') || ln.includes('cafis')) && parseFloat(p.amount) > 0;
                                                                 }).map((pay, idx) => (
                                                                     <div key={`pay-${idx}`} className="flex justify-between py-1 border-b border-border/30 text-emerald-600 font-bold">
-                                                                        <span>{safeFormatDate(pay.date || new Date(), 'MMM dd yyyy')} {pay.note || 'Lacagta'}</span>
+                                                                        <span>{format(new Date(pay.date || new Date()), 'MMM dd yyyy')} {pay.note || 'Lacagta'}</span>
                                                                         <span>-${formatMoney(parseFloat(pay.amount))}</span>
                                                                     </div>
                                                                 ))}
