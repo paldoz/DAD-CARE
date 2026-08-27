@@ -47,10 +47,17 @@ const dailyEntriesFetcher = async (url: string) => {
     }
     if (!res.ok) throw new Error('Fetch error');
     const data = await res.json();
-    console.log('[DEBUG-TRACE] SWR API Response Data:', data);
+    if (data && typeof data === 'object' && !Array.isArray(data) && data.result) {
+        return {
+            dailyData: data.result,
+            allUnprocessedDates: data.allUnprocessedDates || [],
+            maqalId: data.maqalId,
+            timelineOptions: data.timelineOptions || []
+        };
+    }
     
     return {
-        dailyData: data,
+        dailyData: Array.isArray(data) ? data : [],
         allUnprocessedDates: JSON.parse(res.headers.get('x-all-unprocessed-dates') || '[]'),
         maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null,
         timelineOptions: JSON.parse(res.headers.get('x-timeline-options') || '[]')
@@ -1017,7 +1024,8 @@ export default function LedgerPage() {
                         `/api/customer-daily-entries?customerId=${selectedCustomerId}&targetMaqalId=${ms.autoMaqalId}`
                     );
                     if (nextEntriesRes.ok) {
-                        const nextPair = await nextEntriesRes.json();
+                        const nextPayload = await nextEntriesRes.json();
+                        const nextPair = Array.isArray(nextPayload) ? nextPayload : (nextPayload.result || []);
                         if (nextPair && nextPair.length > 0) {
                             const newExpandedIds = new Set<string>();
                             const newEntries = nextPair.map((d: any, idx: number) => {

@@ -244,15 +244,21 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
     try {
         const data = await fetchCustomerDailyEntriesData(customerId, targetMaqalId);
 
-        const res = NextResponse.json(data.result, {
+        const res = NextResponse.json({
+            result: data.result,
+            allUnprocessedDates: data.allUnprocessedDates,
+            maqalId: data.maqalId,
+            timelineOptions: data.timelineOptions
+        }, {
             headers: {
                 'x-all-unprocessed-dates': JSON.stringify(data.allUnprocessedDates),
                 'x-maqal-id': String(data.maqalId),
-                'x-timeline-options': JSON.stringify(data.timelineOptions)
+                'x-timeline-options': JSON.stringify(data.timelineOptions),
+                'Access-Control-Expose-Headers': 'x-all-unprocessed-dates, x-maqal-id, x-timeline-options'
             }
         });
 
-        res.headers.set('Cache-Control', 'no-store');
+        res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         return res;
     } catch (error: any) {
         console.error('Fetch Customer Daily Entries Error:', error);
