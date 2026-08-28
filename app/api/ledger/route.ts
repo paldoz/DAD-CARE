@@ -297,15 +297,49 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
     }
 });
 
-// ── Cached ledger fetch per customer ──────────────────────────────────────
-const fetchLedgerData = async (customerId: string, limit: number, offset: number) => {
-    const [txnResult, summaryResult] = await Promise.all([
+// ── Cached ledger fetch per customer with deterministic cursor pagination ──
+const fetchLedgerData = async (
+    customerId: string,
+    limit: number,
+    offset: number,
+    cursor?: string | null,
+    startDate?: string | null,
+    endDate?: string | null
+) => {
+    let whereClause = `customer_id = $1 AND deleted_at IS NULL`;
+    const params: any[] = [customerId];
+
+    if (startDate) {
+        params.push(startDate);
+        whereClause += ` AND reference_date >= $${params.length}`;
+    }
+    if (endDate) {
+        params.push(endDate);
+        whereClause += ` AND reference_date <= $${params.length}`;
+    }
+
+    let paginationClause = '';
+    if (cursor) {
+        const [cursorTime, cursorId] = cursor.split('|');
+        if (cursorTime && cursorId) {
+            params.push(cursorTime, cursorId);
+            const timeParam = `$${params.length - 1}`;
+            const idParam = `$${params.length}`;
+            whereClause += ` AND (created_at < ${timeParam}::timestamptz OR (created_at = ${timeParam}::timestamptz AND id < ${idParam}))`;
+        }
+        params.push(limit);
+        paginationClause = `ORDER BY created_at DESC, id DESC LIMIT $${params.length}`;
+    } else {
+        params.push(limit, offset);
+        paginationClause = `ORDER BY created_at DESC, id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    }
+
+    const [txnResult, summaryResult, countResult] = await Promise.all([
         pool.query(
-            `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, edit_count, created_at FROM "Ledger"
-             WHERE customer_id = $1 AND deleted_at IS NULL
-             ORDER BY created_at DESC, id DESC
-             LIMIT ${limit} OFFSET ${offset}`,
-            [customerId]
+            `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, maqal_id, edit_count, created_at FROM "Ledger"
+             WHERE ${whereClause}
+             ${paginationClause}`,
+            params
         ),
         pool.query(
             `SELECT
@@ -320,12 +354,41 @@ const fetchLedgerData = async (customerId: string, limit: number, offset: number
              FROM "Ledger"
              WHERE customer_id = $1 AND deleted_at IS NULL`,
             [customerId]
+        ),
+        pool.query(
+            `SELECT COUNT(*)::int as total_count FROM "Ledger"
+             WHERE customer_id = $1 AND deleted_at IS NULL`,
+            [customerId]
         )
     ]);
+
     const s = summaryResult.rows[0] || {};
+    const totalCount = countResult.rows[0]?.total_count || 0;
+    const txns = txnResult.rows;
+
+    let hasMore = false;
+    let nextCursor: string | null = null;
+    if (txns.length > 0) {
+        const lastTx = txns[txns.length - 1];
+        nextCursor = `${new Date(lastTx.created_at).toISOString()}|${lastTx.id}`;
+        if (cursor) {
+            const { rows: moreRows } = await pool.query(
+                `SELECT 1 FROM "Ledger" WHERE customer_id = $1 AND deleted_at IS NULL
+                 AND (created_at < $2::timestamptz OR (created_at = $2::timestamptz AND id < $3)) LIMIT 1`,
+                [customerId, lastTx.created_at, lastTx.id]
+            );
+            hasMore = moreRows.length > 0;
+        } else {
+            hasMore = (offset + txns.length) < totalCount;
+        }
+    }
+
     return {
         customerId,
-        transactions: txnResult.rows,
+        transactions: txns,
+        totalCount,
+        hasMore,
+        nextCursor: hasMore ? nextCursor : null,
         summary: {
             totalKg:             s.total_kg || 0,
             totalPaid:           s.total_paid || 0,
@@ -335,23 +398,32 @@ const fetchLedgerData = async (customerId: string, limit: number, offset: number
     };
 };
 
-const getCachedLedger = (customerId: string, limit: number, offset: number) =>
-    fetchLedgerData(customerId, limit, offset);
+const getCachedLedger = (
+    customerId: string,
+    limit: number,
+    offset: number,
+    cursor?: string | null,
+    startDate?: string | null,
+    endDate?: string | null
+) => fetchLedgerData(customerId, limit, offset, cursor, startDate, endDate);
 
 export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     const { errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
     const { searchParams } = new URL(request.url);
     const customerId = searchParams.get('customerId');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500);
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100'), 1), 1000);
     const offset = parseInt(searchParams.get('offset') || '0');
+    const cursor = searchParams.get('cursor');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
 
     if (!customerId) {
         return NextResponse.json({ error: 'Customer ID required' }, { status: 400 });
     }
 
     try {
-        const data = await getCachedLedger(customerId, limit, offset);
+        const data = await getCachedLedger(customerId, limit, offset, cursor, startDate, endDate);
         const response = NextResponse.json(data);
         response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
         return response;
@@ -364,49 +436,83 @@ export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
 export const DELETE = trackApiRoute('/api/ledger', async (request: Request) => {
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const customerId = searchParams.get('customerId');
 
     if (!id && !customerId) return NextResponse.json({ error: 'ID or Customer ID required' }, { status: 400 });
 
+    // Customer-wide history clear MUST strictly require SUPER_ADMIN role
+    if (customerId && session?.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Security: Only Super Admins can clear customer history.' }, { status: 403 });
+    }
+
     try {
-        let query = `UPDATE "Ledger" SET deleted_at = NOW(), deleted_by = $1`;
-        const params: any[] = [session?.username || 'unknown'];
-
-        if (id) {
-            query += ` WHERE id = $2`;
-            params.push(id);
-        } else if (customerId) {
-            query += ` WHERE customer_id = $2`;
-            params.push(customerId);
-        }
-
-        const result = await pool.query(query, params);
-
-        // Fire-and-forget audit log — don't block the response
-        logAudit(request, 'DELETE_LEDGER_ENTRIES', `Soft deleted ledger entry (ID: ${id || 'ALL'}, Customer: ${customerId || 'UNKNOWN'})`).catch(() => {});
+        const client = await pool.connect();
         try {
-            // @ts-ignore
-            revalidateTag('customers');
-            // @ts-ignore
-            revalidateTag('maqal-latest');   // bust maqal cache on undo too
-            // @ts-ignore
-            revalidateTag('customer-daily-entries'); // bust pair progression cache so new pairs reload after undo
-            // @ts-ignore
-            revalidateTag('dashboard'); // MUST BUST DASHBOARD SO TOTAL DEBT UPDATES
-            if (customerId) {
-                // @ts-ignore
-                revalidateTag(`ledger-${customerId}`);
-                // @ts-ignore
-                revalidateTag(`daily-entries-${customerId}`);
-            }
-            revalidatePath('/api/ledger-by-date');
-        } catch (cacheErr) {
-            console.error('Failed to revalidate tags:', cacheErr);
-        }
+            await client.query('BEGIN');
 
-        return NextResponse.json({ success: true, count: result.rowCount });
+            let affectedCustomerId: string | null = customerId;
+
+            if (id) {
+                const { rows } = await client.query(
+                    `SELECT customer_id FROM "Ledger" WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+                    [id]
+                );
+                if (rows.length > 0) {
+                    affectedCustomerId = rows[0].customer_id;
+                    await client.query(
+                        `UPDATE "Ledger" SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2`,
+                        [session?.username || 'unknown', id]
+                    );
+                }
+            } else if (customerId) {
+                await client.query(
+                    `UPDATE "Ledger" SET deleted_at = NOW(), deleted_by = $1 WHERE customer_id = $2 AND deleted_at IS NULL`,
+                    [session?.username || 'unknown', customerId]
+                );
+            }
+
+            if (affectedCustomerId) {
+                const { recalculateCustomerLedger } = await import('@/lib/ledger-utils');
+                await recalculateCustomerLedger(affectedCustomerId, client);
+            }
+
+            await client.query('COMMIT');
+
+            // Fire-and-forget audit log — don't block the response
+            logAudit(request, 'DELETE_LEDGER_ENTRIES', `Soft deleted ledger entries (ID: ${id || 'ALL'}, Customer: ${affectedCustomerId || 'UNKNOWN'})`).catch(() => {});
+
+            try {
+                // @ts-ignore
+                revalidateTag('customers');
+                // @ts-ignore
+                revalidateTag('ledger');
+                // @ts-ignore
+                revalidateTag('maqal-latest');
+                // @ts-ignore
+                revalidateTag('customer-daily-entries');
+                // @ts-ignore
+                revalidateTag('dashboard');
+                if (affectedCustomerId) {
+                    // @ts-ignore
+                    revalidateTag(`ledger-${affectedCustomerId}`);
+                    // @ts-ignore
+                    revalidateTag(`daily-entries-${affectedCustomerId}`);
+                }
+                revalidatePath('/api/ledger-by-date');
+            } catch (cacheErr) {
+                console.error('Failed to revalidate tags:', cacheErr);
+            }
+
+            return NextResponse.json({ success: true, message: 'Ledger entries successfully deleted and balance recalculated.' });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

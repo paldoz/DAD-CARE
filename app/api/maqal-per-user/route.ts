@@ -2,13 +2,14 @@ import { NextResponse, NextRequest } from 'next/server';
 import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { MAQAL_EPOCH } from '@/lib/maqal-utils';
 
 export const dynamic = 'force-dynamic'; // Always fetch fresh — no caching
 
 // Returns per-user maqal progress based on assigned_customer_ids.
 //
 // PAIR LOGIC (updated):
-//   EPOCH = 2026-06-28. Each pair is 2 days.
+//   Uses authoritative MAQAL_EPOCH ('2026-07-14'). Each pair is 2 days.
 //   offset = days since epoch in Africa/Mogadishu time.
 //
 //   current pair = floor(offset / 2) * 2   → pair that INCLUDES today
@@ -18,12 +19,6 @@ export const dynamic = 'force-dynamic'; // Always fetch fresh — no caching
 //   AUTO-ADVANCE: The active pair advances from (ACTIVE→WAITING) only when
 //   a DailyBook entry exists for (waitingPairDay2 + 1 day), i.e. the day AFTER
 //   the waiting pair ends. Until then the tracker stays locked on the ACTIVE pair.
-//
-//   Example (today = Jul 5, offset=7):
-//     currentPairOffset = 6  → Jul 4 & Jul 5
-//     ACTIVE pair offset = 4  → Jul 2 & Jul 3  ← tracker focuses here
-//     WAITING pair offset = 6 → Jul 4 & Jul 5  ← shown as "coming next"
-//     Auto-advance fires when DailyBook has a Jul 6 entry (offset 8)
 
 async function getMaqalData() {
         // 1. Get all users with assigned_customer_ids
@@ -44,8 +39,7 @@ async function getMaqalData() {
             year: 'numeric', month: '2-digit', day: '2-digit'
         });
         const todayStr = formatter.format(new Date());
-        const EPOCH = '2026-06-28';
-        const epochMs = new Date(`${EPOCH}T00:00:00Z`).getTime();
+        const epochMs = new Date(`${MAQAL_EPOCH}T00:00:00Z`).getTime();
         const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
         const diffDaysToday = Math.floor((todayMs - epochMs) / 86400000);
 

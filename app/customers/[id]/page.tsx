@@ -179,6 +179,8 @@ export default function CustomerDetailPage() {
 
     // Pagination & Filter State
     const [hasMore, setHasMore] = useState(true);
+    const [nextCursor, setNextCursor] = useState<string | null>(null);
+    const [totalCount, setTotalCount] = useState<number>(0);
     const [loadingMore, setLoadingMore] = useState(false);
     const [searchTitle, setSearchTitle] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -405,8 +407,12 @@ export default function CustomerDetailPage() {
         revalidateOnReconnect: false,
     });
     
-    // Construct the base URL for the full ledger data - FIFO requires ALL transactions
-    let baseLedgerUrl = `/api/ledger?customerId=${customerId}`;
+    // Construct the base URL for the full ledger data - FIFO requires ALL transactions.
+    // Use explicit limit=500 (max supported by API) so that customers with deep history
+    // (e.g. >100 rows) receive their complete ledger including the oldest Maqals.
+    // Forensic investigation confirmed the API default of 100 was silently truncating
+    // old rows (e.g. Sacdiyo's July 14 MQ#1 PRODUCT was row #101 and was never fetched).
+    let baseLedgerUrl = `/api/ledger?customerId=${customerId}&limit=500`;
     if (startDate) baseLedgerUrl += `&startDate=${startDate}`;
     if (endDate) baseLedgerUrl += `&endDate=${endDate}`;
     
@@ -430,6 +436,9 @@ export default function CustomerDetailPage() {
         setSummary({ totalKg: 0, totalPaid: 0, currentBalance: 0 });
         setExpandedReceipts(new Set());
         setLatePaymentMaqal(null);
+        setNextCursor(null);
+        setTotalCount(0);
+        setHasMore(true);
         setLoading(true);
     }, [customerId]);
 
@@ -465,7 +474,9 @@ export default function CustomerDetailPage() {
                 currentBalance: Number(initialLedgerData.summary?.currentBalance || 0),
                 lastTransactionType: initialLedgerData.summary?.lastTransactionType
             });
-            setHasMore(allTxns.length === 200);
+            setHasMore(initialLedgerData.hasMore ?? (allTxns.length >= 500));
+            setNextCursor(initialLedgerData.nextCursor ?? null);
+            setTotalCount(initialLedgerData.totalCount ?? allTxns.length);
             setLoading(false);
         }
     }, [initialLedgerData, customerId]);
@@ -474,6 +485,8 @@ export default function CustomerDetailPage() {
         if (reset) {
             setTransactions([]);
             setReceipts([]);
+            setNextCursor(null);
+            setTotalCount(0);
             setHasMore(true);
             setLoading(true);
         }
@@ -490,31 +503,51 @@ export default function CustomerDetailPage() {
     };
 
     const loadMore = async () => {
+        if (loadingMore || !hasMore) return;
         setLoadingMore(true);
         try {
-            const nextOffset = transactions.length;
-            let url = `/api/ledger?customerId=${customerId}&limit=200&offset=${nextOffset}`;
+            let url = `/api/ledger?customerId=${customerId}&limit=500`;
+            if (nextCursor) {
+                url += `&cursor=${encodeURIComponent(nextCursor)}`;
+            } else {
+                url += `&offset=${transactions.length}`;
+            }
             if (startDate) url += `&startDate=${startDate}`;
             if (endDate) url += `&endDate=${endDate}`;
 
-            const ledgerRes = await fetch(url);
+            const ledgerRes = await fetch(url, { credentials: 'include' });
             const ledgerData = await ledgerRes.json();
 
+            // Guard: ensure response belongs to current customerId
+            if (ledgerData.customerId && ledgerData.customerId !== customerId) {
+                return;
+            }
+
             if (ledgerData.transactions && ledgerData.transactions.length > 0) {
-                const fetchedTxns = ledgerData.transactions.map((t: any) => ({
-                    ...t,
-                    amount: Number(t.amount || 0),
-                    kg: t.kg != null ? Number(t.kg) : undefined,
-                    price_per_kg: t.price_per_kg != null ? Number(t.price_per_kg) : undefined,
-                    previous_debt: Number(t.previous_debt || 0),
-                    new_debt: Number(t.new_debt || 0)
-                }));
-                const newTxns = [...transactions, ...fetchedTxns];
+                const fetchedTxns = ledgerData.transactions
+                    .filter((t: any) => !t.customer_id || t.customer_id === customerId)
+                    .map((t: any) => ({
+                        ...t,
+                        amount: Number(t.amount || 0),
+                        kg: t.kg != null ? Number(t.kg) : undefined,
+                        price_per_kg: t.price_per_kg != null ? Number(t.price_per_kg) : undefined,
+                        previous_debt: Number(t.previous_debt || 0),
+                        new_debt: Number(t.new_debt || 0)
+                    }));
+                
+                // Deduplicate by ID to guarantee stability
+                const existingIds = new Set(transactions.map(t => t.id));
+                const uniqueNewTxns = fetchedTxns.filter((t: any) => !existingIds.has(t.id));
+                const newTxns = [...transactions, ...uniqueNewTxns];
+                
                 setTransactions(newTxns);
                 setReceipts(groupTransactionsInfoReceipts(newTxns));
-                setHasMore(fetchedTxns.length === 200);
+                setHasMore(ledgerData.hasMore ?? (fetchedTxns.length >= 500));
+                setNextCursor(ledgerData.nextCursor ?? null);
+                if (ledgerData.totalCount) setTotalCount(ledgerData.totalCount);
             } else {
                 setHasMore(false);
+                setNextCursor(null);
             }
         } catch (error) {
             toast.error('Failed to load more history');
@@ -1637,17 +1670,26 @@ export default function CustomerDetailPage() {
                 )}
             </div>
 
-            {/* Pagination Load More Button */}
-            {hasMore && finalReceipts.length > 0 && !searchTitle && (
-                <Button 
-                    variant="outline" 
-                    onClick={loadMore} 
-                    disabled={loadingMore} 
-                    className="w-full mt-6 h-12 font-black uppercase tracking-widest text-xs border-dashed border-2 hover:bg-muted shadow-sm text-muted-foreground hover:text-foreground"
-                >
-                    {loadingMore ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ChevronDown className="w-4 h-4 mr-2" />}
-                    Load Older History
-                </Button>
+            {/* Pagination Load More Button or End of History Indicator */}
+            {finalReceipts.length > 0 && !searchTitle && (
+                hasMore ? (
+                    <Button 
+                        variant="outline" 
+                        onClick={loadMore} 
+                        disabled={loadingMore} 
+                        className="w-full mt-6 h-12 font-black uppercase tracking-widest text-xs border-dashed border-2 hover:bg-muted shadow-sm text-muted-foreground hover:text-foreground flex items-center justify-center gap-2"
+                    >
+                        {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+                        {loadingMore ? 'Loading Older History...' : `Load Older History (${transactions.length} of ${totalCount || transactions.length} loaded)`}
+                    </Button>
+                ) : (
+                    totalCount > 0 && transactions.length >= totalCount && (
+                        <div className="w-full mt-6 py-3 text-center text-xs font-semibold text-muted-foreground/60 border border-border/40 rounded-lg bg-muted/20 flex items-center justify-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            Dhammaan diiwaanka taariikhda wuu dhammaystiran yahay ({transactions.length} qoraal)
+                        </div>
+                    )
+                )
             )}
         </div>
     );

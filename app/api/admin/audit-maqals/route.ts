@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
+import { requireSession } from '@/lib/require-session';
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -8,6 +9,13 @@ const pool = new Pool({
 import { MAQAL_PAIRS_CTE, validateMaqalPairs } from '@/lib/maqal-utils';
 
 export async function GET(req: NextRequest) {
+    const { errorResponse, session } = await requireSession(req);
+    if (errorResponse) return errorResponse;
+
+    if (session?.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Unauthorized: Super Admin access required' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const mode = searchParams.get('mode');
 

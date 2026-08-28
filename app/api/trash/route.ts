@@ -81,6 +81,11 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
     const { errorResponse, session } = await requireSession(request);
     if (errorResponse) return errorResponse;
+
+    if (session?.role !== 'SUPER_ADMIN') {
+        return NextResponse.json({ error: 'Unauthorized: Only Super Admins can permanently purge or empty trash.' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const forceAll = searchParams.get('all') === 'true';
 
