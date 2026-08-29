@@ -22,6 +22,9 @@ async function runMasterAudit() {
         console.log('🔍 MASTER SYSTEM-WIDE 15-POINT DATA INTEGRITY & INVARIANT AUDIT');
         console.log('================================================================\n');
 
+        const { rows: [startRow] } = await client.query('SELECT COUNT(*) as total FROM "Ledger"');
+        const initialRowCount = Number(startRow.total);
+
         // -------------------------------------------------------------
         // POINT 1 & 2: RECEIPT-CUSTOMER 1-TO-1 STRICT ISOLATION
         // -------------------------------------------------------------
@@ -242,7 +245,7 @@ async function runMasterAudit() {
         const { rows: [finalStats] } = await client.query(`
             SELECT COUNT(*) as total FROM "Ledger"
         `);
-        assert(Number(finalStats.total) === 4997, `Live database ledger count unchanged (exactly 4,997 rows)`);
+        assert(Number(finalStats.total) === initialRowCount, `Live database ledger count unchanged (${finalStats.total} rows)`);
 
         console.log('\n================================================================');
         console.log(`MASTER AUDIT COMPLETE: ${passed} PASSED, ${failed} FAILED`);

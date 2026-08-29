@@ -6,6 +6,7 @@ import pool from '@/lib/db';
 import { calculateMaqalCharge } from '@/lib/ledger-utils';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
+import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -297,6 +298,98 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
     }
 });
 
+// ── Authoritative Maqal-level pagination for Customer Profile ──
+const fetchMaqalData = async (
+    customerId: string,
+    limit: number,
+    offset: number,
+    startDate?: string | null,
+    endDate?: string | null
+) => {
+    let whereClause = `customer_id = $1 AND deleted_at IS NULL`;
+    const params: any[] = [customerId];
+
+    if (startDate) {
+        params.push(startDate);
+        whereClause += ` AND reference_date >= $${params.length}`;
+    }
+    if (endDate) {
+        params.push(endDate);
+        whereClause += ` AND reference_date <= $${params.length}`;
+    }
+
+    const [txnResult, summaryResult] = await Promise.all([
+        pool.query(
+            `SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, receipt_id, maqal_id, created_at FROM "Ledger"
+             WHERE ${whereClause}
+             ORDER BY created_at ASC, id ASC`,
+            params
+        ),
+        pool.query(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type = 'PRODUCT' THEN kg    ELSE 0 END), 0)::float as total_kg,
+                COALESCE(SUM(CASE WHEN type = 'PAYMENT' THEN amount ELSE 0 END), 0)::float as total_paid,
+                (SELECT new_debt FROM "Ledger"
+                 WHERE customer_id = $1 AND deleted_at IS NULL
+                 ORDER BY created_at DESC, id DESC LIMIT 1)::float as current_balance,
+                (SELECT type FROM "Ledger"
+                 WHERE customer_id = $1 AND deleted_at IS NULL
+                 ORDER BY created_at DESC, id DESC LIMIT 1) as last_transaction_type
+             FROM "Ledger"
+             WHERE customer_id = $1 AND deleted_at IS NULL`,
+            [customerId]
+        )
+    ]);
+
+    const s = summaryResult.rows[0] || {};
+    const allTxns = txnResult.rows;
+    const allReceipts = groupTransactionsInfoReceipts(allTxns);
+    const totalMaqals = allReceipts.length;
+
+    const pagedMaqals = allReceipts.slice(offset, offset + limit).map(m => ({
+        titleString: m.titleString,
+        displayMaqalId: m.displayMaqalId,
+        totalKilos: m.totalKilos,
+        totalMaqalka: m.totalMaqalka,
+        totalPaid: m.totalPaid,
+        totalAdjustment: m.totalAdjustment,
+        openingBalance: m.openingBalance,
+        closingBalance: m.closingBalance,
+        percentage: m.percentage,
+        note: m.note,
+        entries: (m.entries || []).map(e => ({
+            id: e.id,
+            type: e.type,
+            amount: Number(e.amount || 0),
+            kg: e.kg != null ? Number(e.kg) : undefined,
+            price_per_kg: e.price_per_kg != null ? Number(e.price_per_kg) : undefined,
+            reference_date: e.reference_date,
+            created_at: e.created_at,
+            note: e.note,
+            maqal_id: e.maqal_id,
+            receipt_id: e.receipt_id
+        }))
+    }));
+
+    const hasMore = (offset + pagedMaqals.length) < totalMaqals;
+    const nextOffset = hasMore ? (offset + pagedMaqals.length) : null;
+
+    return {
+        customerId,
+        maqals: pagedMaqals,
+        totalMaqals,
+        totalCount: allTxns.length,
+        hasMore,
+        nextOffset,
+        summary: {
+            totalKg:             s.total_kg || 0,
+            totalPaid:           s.total_paid || 0,
+            currentBalance:      s.current_balance || 0,
+            lastTransactionType: s.last_transaction_type || null,
+        }
+    };
+};
+
 // ── Cached ledger fetch per customer with deterministic cursor pagination ──
 const fetchLedgerData = async (
     customerId: string,
@@ -412,7 +505,8 @@ export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     if (errorResponse) return errorResponse;
     const { searchParams } = new URL(request.url);
     const customerId = searchParams.get('customerId');
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100'), 1), 1000);
+    const mode = searchParams.get('mode');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || (mode === 'maqals' ? '7' : '100')), 1), 1000);
     const offset = parseInt(searchParams.get('offset') || '0');
     const cursor = searchParams.get('cursor');
     const startDate = searchParams.get('startDate');
@@ -423,6 +517,13 @@ export const GET = trackApiRoute('/api/ledger', async (request: Request) => {
     }
 
     try {
+        if (mode === 'maqals') {
+            const data = await fetchMaqalData(customerId, limit, offset, startDate, endDate);
+            const response = NextResponse.json(data);
+            response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
+            return response;
+        }
+
         const data = await getCachedLedger(customerId, limit, offset, cursor, startDate, endDate);
         const response = NextResponse.json(data);
         response.headers.set('Cache-Control', 'private, max-age=0, must-revalidate');
