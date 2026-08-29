@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { format, isToday, isThisMonth, isThisYear, isThisWeek } from 'date-fns';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { format } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -25,8 +25,6 @@ import useSWR from 'swr';
 import { AnimatedBackground } from '@/components/animated-background';
 
 const fetcher = async (url: string) => {
-    // Cookie-only auth (credentials: include) — NO x-session-token header.
-    // Custom headers prevent Vercel CDN caching; cookies allow it.
     const res = await fetch(url, { credentials: 'include' });
     if (res.status === 401) {
         if (typeof window !== 'undefined') {
@@ -50,14 +48,19 @@ interface Payment {
     reference_date: string;
     previous_debt: number;
     new_debt: number;
+    maqal_id: number | null;
     customer: { id: string; name: string; customer_code: string } | null;
 }
 
 interface PaymentData {
     payments: Payment[];
-    todayTotal: number;
+    totalCount: number;
+    periodTotal: number;
     totalAllTime: number;
-    count: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+    todayTotal?: number;
+    count?: number;
 }
 
 type PeriodFilter = 'today' | 'week' | 'month' | 'year' | 'all';
@@ -70,6 +73,8 @@ const PERIOD_OPTIONS: { value: PeriodFilter; label: string }[] = [
     { value: 'year',  label: 'This Year' },
 ];
 
+const PAGE_SIZE = 50;
+
 export default function PaymentsPage() {
     const { data: rawCustomers } = useSWR<{ id: string; name: string; customer_code: string }[]>('/api/customers?lite=true', fetcher, {
         revalidateOnFocus: false,
@@ -78,47 +83,79 @@ export default function PaymentsPage() {
         revalidateIfStale: false,
     });
     const customers = rawCustomers || [];
-    
-    const { data: rawData, isLoading: loading } = useSWR<PaymentData>('/api/payments?limit=200', fetcher, {
-        revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
-        dedupingInterval: 60000,      // ⚡ 1 req per min — was 10s (saves ~83% of calls)
-        keepPreviousData: true,
-        revalidateIfStale: false,
-        revalidateOnReconnect: false,
-    });
-    const data = rawData || { payments: [], todayTotal: 0, totalAllTime: 0, count: 0 };
 
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCustomerId, setFilterCustomerId] = useState('all');
     const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
     const [filterOpen, setFilterOpen] = useState(false);
-    const [visibleCount, setVisibleCount] = useState(10);
 
-    // Reset Load More pagination whenever filters change
-    useEffect(() => {
-        setVisibleCount(10);
+    // Accumulated list for infinite/append pagination
+    const [payments, setPayments] = useState<Payment[]>([]);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+    // Build URL for initial page
+    const apiUrl = useMemo(() => {
+        const params = new URLSearchParams();
+        params.set('limit', PAGE_SIZE.toString());
+        params.set('offset', '0');
+        params.set('period', periodFilter);
+        if (filterCustomerId !== 'all') {
+            params.set('customerId', filterCustomerId);
+        }
+        if (searchTerm.trim()) {
+            params.set('search', searchTerm.trim());
+        }
+        return `/api/payments?${params.toString()}`;
     }, [periodFilter, filterCustomerId, searchTerm]);
 
-    const filteredPayments = useMemo(() => {
-        let list = data?.payments || [];
-        if (periodFilter === 'today') list = list.filter(p => isToday(new Date(p.reference_date || p.created_at)));
-        else if (periodFilter === 'week')  list = list.filter(p => isThisWeek(new Date(p.reference_date || p.created_at)));
-        else if (periodFilter === 'month') list = list.filter(p => isThisMonth(new Date(p.reference_date || p.created_at)));
-        else if (periodFilter === 'year')  list = list.filter(p => isThisYear(new Date(p.reference_date || p.created_at)));
-        if (filterCustomerId !== 'all') list = list.filter(p => p.customer_id === filterCustomerId);
-        if (searchTerm) {
-            const q = searchTerm.toLowerCase();
-            list = list.filter(p =>
-                p.customer?.name?.toLowerCase().includes(q) ||
-                p.customer?.customer_code?.toLowerCase().includes(q) ||
-                p.note?.toLowerCase().includes(q)
-            );
-        }
-        return list;
-    }, [data, periodFilter, filterCustomerId, searchTerm]);
+    const { data, isLoading: initialLoading, mutate } = useSWR<PaymentData>(apiUrl, fetcher, {
+        revalidateOnFocus: false,
+        dedupingInterval: 60000,
+        keepPreviousData: false,
+        revalidateIfStale: false,
+        revalidateOnReconnect: false,
+    });
 
-    const filteredTotal = useMemo(() =>
-        filteredPayments.reduce((s, p) => s + (p.amount || 0), 0), [filteredPayments]);
+    // Reset accumulated list when first page loads or filters change
+    useEffect(() => {
+        if (data?.payments) {
+            setPayments(data.payments);
+        }
+    }, [data]);
+
+    const totalCount = data?.totalCount ?? 0;
+    const periodTotal = data?.periodTotal ?? 0;
+    const totalAllTime = data?.totalAllTime ?? 0;
+    const hasMore = payments.length < totalCount;
+
+    const handleLoadMore = useCallback(async () => {
+        if (isLoadingMore || !hasMore) return;
+        setIsLoadingMore(true);
+        try {
+            const params = new URLSearchParams();
+            params.set('limit', PAGE_SIZE.toString());
+            params.set('offset', payments.length.toString());
+            params.set('period', periodFilter);
+            if (filterCustomerId !== 'all') {
+                params.set('customerId', filterCustomerId);
+            }
+            if (searchTerm.trim()) {
+                params.set('search', searchTerm.trim());
+            }
+            const res = await fetcher(`/api/payments?${params.toString()}`);
+            if (res.payments && res.payments.length > 0) {
+                setPayments(prev => {
+                    const existingIds = new Set(prev.map(p => p.id));
+                    const newRows = res.payments.filter((p: Payment) => !existingIds.has(p.id));
+                    return [...prev, ...newRows];
+                });
+            }
+        } catch (err) {
+            console.error('Failed to load more payments:', err);
+        } finally {
+            setIsLoadingMore(false);
+        }
+    }, [isLoadingMore, hasMore, payments.length, periodFilter, filterCustomerId, searchTerm]);
 
     const hasActiveFilter = periodFilter !== 'all' || filterCustomerId !== 'all' || !!searchTerm;
     const clearAll = () => { setPeriodFilter('all'); setFilterCustomerId('all'); setSearchTerm(''); };
@@ -195,7 +232,7 @@ export default function PaymentsPage() {
                                         key={opt.value}
                                         onClick={() => setPeriodFilter(opt.value)}
                                         className={cn(
-                                            'px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all',
+                                             'px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all',
                                             periodFilter === opt.value
                                                 ? 'bg-primary text-primary-foreground border-primary shadow-sm'
                                                 : 'bg-background text-muted-foreground border-border/50 hover:border-primary/40 hover:text-foreground'
@@ -251,7 +288,7 @@ export default function PaymentsPage() {
                         </div>
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5 truncate">{selectedPeriodLabel}</p>
                         <p className="text-base md:text-xl font-black text-foreground tabular-nums">
-                            ${filteredTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            ${periodTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </p>
                     </CardContent>
                 </Card>
@@ -262,7 +299,7 @@ export default function PaymentsPage() {
                         </div>
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">All Time</p>
                         <p className="text-base md:text-xl font-black text-foreground tabular-nums">
-                            ${(data?.totalAllTime || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            ${totalAllTime.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </p>
                     </CardContent>
                 </Card>
@@ -272,7 +309,7 @@ export default function PaymentsPage() {
                             <TrendingUp className="h-3.5 w-3.5 md:h-4 md:w-4 text-purple-500" />
                         </div>
                         <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Payments</p>
-                        <p className="text-base md:text-xl font-black text-foreground tabular-nums">{filteredPayments.length}</p>
+                        <p className="text-base md:text-xl font-black text-foreground tabular-nums">{totalCount}</p>
                     </CardContent>
                 </Card>
             </div>
@@ -285,15 +322,15 @@ export default function PaymentsPage() {
                             <Calendar className="h-3.5 w-3.5 text-primary" />
                         </div>
                         Payment History
-                        <span className="ml-auto text-[10px] font-black text-muted-foreground">{filteredPayments.length} records</span>
+                        <span className="ml-auto text-[10px] font-black text-muted-foreground">{totalCount} records</span>
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    {loading ? (
+                    {initialLoading && payments.length === 0 ? (
                         <div className="flex items-center justify-center py-12">
                             <Loader2 className="h-6 w-6 animate-spin text-primary" />
                         </div>
-                    ) : filteredPayments.length === 0 ? (
+                    ) : payments.length === 0 ? (
                         <div className="text-center py-12">
                             <div className="p-3 rounded-full bg-muted w-fit mx-auto mb-3">
                                 <DollarSign className="h-6 w-6 text-muted-foreground/40" />
@@ -310,40 +347,57 @@ export default function PaymentsPage() {
                         </div>
                     ) : (
                         <div className="divide-y divide-border/50">
-                            {filteredPayments.slice(0, visibleCount).map((payment) => (
-                                <div key={payment.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-all group">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded-xl bg-emerald-500/10 group-hover:bg-emerald-500/15 transition-colors shrink-0">
-                                            <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+                            {payments.map((payment) => {
+                                const mqLabel = payment.maqal_id ? `MQ#${payment.maqal_id}` : null;
+                                return (
+                                    <div key={payment.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-all group">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="p-2 rounded-xl bg-emerald-500/10 group-hover:bg-emerald-500/15 transition-colors shrink-0">
+                                                <ArrowUpRight className="h-4 w-4 text-emerald-500" />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <p className="text-[13px] font-bold text-foreground truncate">{payment.customer?.name || 'Unknown'}</p>
+                                                    {mqLabel && (
+                                                        <span className="text-[8px] font-black text-primary bg-primary/10 rounded px-1.5 py-0.5">
+                                                            {mqLabel}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-muted-foreground font-medium">
+                                                    {format(new Date(payment.reference_date || payment.created_at), 'MMM dd, yyyy · h:mm a')}
+                                                </p>
+                                                {payment.note && (
+                                                    <p className="text-[10px] text-muted-foreground/70 italic mt-0.5 truncate">{payment.note}</p>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-[13px] font-bold text-foreground">{payment.customer?.name || 'Unknown'}</p>
-                                            <p className="text-[10px] text-muted-foreground font-medium">
-                                                {format(new Date(payment.reference_date || payment.created_at), 'MMM dd, yyyy · h:mm a')}
+                                        <div className="text-right shrink-0 ml-3">
+                                            <p className="text-[13px] font-black text-emerald-500 tabular-nums">
+                                                +${payment.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </p>
-                                            {payment.note && (
-                                                <p className="text-[10px] text-muted-foreground/70 italic mt-0.5">{payment.note}</p>
-                                            )}
+                                            <p className="text-[10px] text-muted-foreground font-medium tabular-nums">
+                                                Bal: ${payment.new_debt.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className="text-right shrink-0">
-                                        <p className="text-[13px] font-black text-emerald-500 tabular-nums">
-                                            +${payment.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                        </p>
-                                        <p className="text-[10px] text-muted-foreground font-medium tabular-nums">
-                                            Bal: ${payment.new_debt.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))}
-                            {filteredPayments.length > visibleCount && (
+                                );
+                            })}
+                            {hasMore && (
                                 <div className="p-4">
                                     <Button 
-                                        onClick={() => setVisibleCount(prev => prev + 10)}
+                                        onClick={handleLoadMore}
+                                        disabled={isLoadingMore}
                                         variant="secondary" 
                                         className="w-full text-xs font-bold bg-muted/50 hover:bg-muted"
                                     >
-                                        Load More ({filteredPayments.length - visibleCount} remaining)
+                                        {isLoadingMore ? (
+                                            <span className="flex items-center gap-2">
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading more...
+                                            </span>
+                                        ) : (
+                                            `Load More (${totalCount - payments.length} remaining)`
+                                        )}
                                     </Button>
                                 </div>
                             )}

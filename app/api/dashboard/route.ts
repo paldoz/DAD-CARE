@@ -82,17 +82,18 @@ const getDashboardData = async (today: string) => {
                 rp.created_at,
                 rp.reference_date,
                 COALESCE(
-                    CASE WHEN np_direct.mq_num IS NOT NULL THEN np_direct.mq_num ELSE NULL END,
+                    np_direct.mq_num,
                     np_receipt.mq_num
                 ) as maqal_id,
                 rp.receipt_id,
                 rp.customer_name
             FROM recent_payments rp
-            LEFT JOIN pairs np_direct ON np_direct.mq_num = rp.direct_maqal_id
+            LEFT JOIN pairs np_direct ON np_direct.maqal_id = rp.direct_maqal_id
             LEFT JOIN LATERAL (
                 SELECT np.mq_num
                 FROM "Ledger" prod
-                JOIN pairs np ON COALESCE(prod.reference_date::date, prod.created_at::date) IN (np.date1, np.date2)
+                LEFT JOIN pairs np ON (prod.maqal_id IS NOT NULL AND np.maqal_id = prod.maqal_id)
+                                   OR (prod.maqal_id IS NULL AND COALESCE(prod.reference_date::date, prod.created_at::date) IN (np.date1, np.date2))
                 WHERE prod.customer_id = rp.customer_id
                   AND prod.type = 'PRODUCT'
                   AND prod.deleted_at IS NULL
