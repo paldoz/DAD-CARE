@@ -365,7 +365,7 @@ export default function PaymentsPage() {
                                                     )}
                                                 </div>
                                                 <p className="text-[10px] text-muted-foreground font-medium">
-                                                    {format(new Date(payment.reference_date || payment.created_at), 'MMM dd, yyyy · h:mm a')}
+                                                    {format(new Date(payment.created_at || payment.reference_date), 'MMM dd, yyyy · h:mm a')}
                                                 </p>
                                                 {payment.note && (
                                                     <p className="text-[10px] text-muted-foreground/70 italic mt-0.5 truncate">{payment.note}</p>

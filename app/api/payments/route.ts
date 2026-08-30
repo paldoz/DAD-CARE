@@ -88,7 +88,7 @@ export const GET = trackApiRoute('/api/payments', async (request: Request) => {
                 (SELECT total_all_time FROM stats) AS _total_all_time,
                 fp.*
             FROM filtered_payments fp
-            ORDER BY COALESCE(fp.reference_date::date, fp.created_at::date) DESC, fp.created_at DESC, fp.id DESC
+            ORDER BY fp.created_at DESC, fp.id DESC
             LIMIT ${limitParam} OFFSET ${offsetParam}
         `;
 
