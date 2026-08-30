@@ -15,7 +15,7 @@ const formatKg = (val: number | string): string => {
     return Number(num.toFixed(2)).toString();
 };
 
-import { groupTransactionsInfoReceipts, type Transaction, type ReceiptGroup } from '@/app/utils/ledgerHelpers';
+import { groupTransactionsInfoReceipts, type Transaction, type ReceiptGroup } from '../app/utils/ledgerHelpers';
 
 export { groupTransactionsInfoReceipts };
 

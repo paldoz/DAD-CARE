@@ -166,10 +166,11 @@ export default function SettingsPage() {
     const [expandedOverrideDates, setExpandedOverrideDates] = useState<string[]>([]);
     
     // Type Pricing feature state
-    const [typeFilter, setTypeFilter] = useState<'VIP' | 'Heshiish' | null>(null);
+    const [typeFilter, setTypeFilter] = useState<string | null>(null);
+    const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
     const [typePrice, setTypePrice] = useState<string>('');
     const { data: dailyBookData, isValidating: isDailyBookLoading } = useSWR(
-        typeFilter && newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
+        (isOverridesOpen || typeFilter) && newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
         (url) => fetch(url).then(res => res.json()),
         { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
@@ -912,17 +913,60 @@ export default function SettingsPage() {
         handleSaveDateOverrides(updated, `delete-override-${date}-${customerId}`);
     };
 
+    // Dynamically discover all unique types from the relevant Daily Book items on the selected date
+    const availableTypes = useMemo(() => {
+        const typeMap = new Map<string, string>();
+        // Default standard types
+        typeMap.set('vip', 'VIP');
+        typeMap.set('heshiish', 'Heshiish');
+
+        if (dailyBookData?.items && Array.isArray(dailyBookData.items)) {
+            for (const item of dailyBookData.items) {
+                if (!item?.note) continue;
+                const parts = item.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+                for (const part of parts) {
+                    const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                    if (match && match[2]) {
+                        const raw = match[2].trim();
+                        const key = raw.toLowerCase();
+                        if (!typeMap.has(key)) {
+                            const display = key === 'vip' ? 'VIP' : (key.charAt(0).toUpperCase() + key.slice(1).toLowerCase());
+                            typeMap.set(key, display);
+                        }
+                    }
+                }
+            }
+        }
+        return Array.from(typeMap.values());
+    }, [dailyBookData]);
+
     const filteredTypeCustomers = useMemo(() => {
         if (!typeFilter || !dailyBookData?.items) return [];
         return dailyBookData.items
-            .filter((i: any) => i.note && i.note.toLowerCase().includes(typeFilter.toLowerCase()))
+            .filter((i: any) => {
+                if (!i.note) return false;
+                const parts = i.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+                return parts.some((p: string) => {
+                    const match = p.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                    if (match && match[2]) {
+                        return match[2].trim().toLowerCase() === typeFilter.toLowerCase();
+                    }
+                    return p.toLowerCase().includes(typeFilter.toLowerCase());
+                });
+            })
             .map((i: any) => {
                 const cust = allCustomers.find(c => c.id === i.customer_id);
                 let price: string | null = null;
                 let isMultiple = false;
                 
                 const parts = i.note.split(',').map((s: string) => s.trim()).filter(Boolean);
-                const matchingParts = parts.filter((p: string) => p.toLowerCase().includes(typeFilter.toLowerCase()));
+                const matchingParts = parts.filter((p: string) => {
+                    const match = p.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                    if (match && match[2]) {
+                        return match[2].trim().toLowerCase() === typeFilter.toLowerCase();
+                    }
+                    return p.toLowerCase().includes(typeFilter.toLowerCase());
+                });
                 
                 if (matchingParts.length > 1) {
                     isMultiple = true;
@@ -952,7 +996,7 @@ export default function SettingsPage() {
             return;
         }
 
-        if (!dailyBookData || !dailyBookData.items) return;
+        if (!dailyBookData || !dailyBookData.items || !typeFilter) return;
 
         setDateActionLoading('type-apply');
         
@@ -972,7 +1016,7 @@ export default function SettingsPage() {
                             const kg = match[1];
                             const label = match[2];
                             const price = match[3] || null;
-                            if (label.toLowerCase() === typeFilter?.toLowerCase() && !price) {
+                            if (label.trim().toLowerCase() === typeFilter?.toLowerCase() && !price) {
                                 return `${kg} ${label} ${typePrice}`; // Apply price
                             }
                         }
@@ -1044,7 +1088,7 @@ export default function SettingsPage() {
     };
 
     const handleTypeClear = async (customerId: string) => {
-        if (!dailyBookData || !dailyBookData.items) return;
+        if (!dailyBookData || !dailyBookData.items || !typeFilter) return;
         
         setDateActionLoading(`clear-type-${customerId}`);
         
@@ -1059,7 +1103,7 @@ export default function SettingsPage() {
                     const kg = match[1];
                     const label = match[2];
                     const price = match[3] || null;
-                    if (label.toLowerCase() === typeFilter?.toLowerCase() && price) {
+                    if (label.trim().toLowerCase() === typeFilter?.toLowerCase() && price) {
                         return `${kg} ${label}`; // Strip the price
                     }
                 }
@@ -1793,17 +1837,60 @@ export default function SettingsPage() {
                                                         )}
                                                     </div>
                                                     
-                                                    {/* Glassmorphism Type button */}
-                                                    <div className="relative group shrink-0">
+                                                    {/* Glassmorphism Dynamic Type Dropdown */}
+                                                    <div className="relative shrink-0">
                                                         <div 
                                                             className={cn(
-                                                                "flex h-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur-md px-3 text-xs font-semibold cursor-pointer transition-all select-none shadow-sm",
+                                                                "flex h-10 items-center justify-between gap-1.5 rounded-xl border border-white/20 bg-white/10 backdrop-blur-md px-3 text-xs font-semibold cursor-pointer transition-all select-none shadow-sm min-w-[100px]",
                                                                 typeFilter ? "text-blue-500 border-blue-500/30 bg-blue-500/10" : "text-foreground hover:bg-white/20"
                                                             )}
-                                                            onClick={() => setTypeFilter(prev => prev === 'VIP' ? 'Heshiish' : prev === 'Heshiish' ? null : 'VIP')}
+                                                            onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
                                                         >
-                                                            {typeFilter ? typeFilter : 'Type'}
+                                                            <span className="truncate max-w-[80px]">{typeFilter ? typeFilter : 'Type'}</span>
+                                                            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200 opacity-60 shrink-0", isTypeDropdownOpen ? "rotate-180" : "")} />
                                                         </div>
+
+                                                        {isTypeDropdownOpen && (
+                                                            <div className="absolute top-full right-0 mt-1 w-44 bg-card border border-border/50 rounded-xl shadow-xl z-50 p-1.5 space-y-0.5 animate-in fade-in slide-in-from-top-1 backdrop-blur-2xl">
+                                                                {typeFilter && (
+                                                                    <div 
+                                                                        className="flex items-center justify-between px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg cursor-pointer transition-colors font-medium border-b border-border/40 mb-1 pb-1"
+                                                                        onClick={() => {
+                                                                            setTypeFilter(null);
+                                                                            setIsTypeDropdownOpen(false);
+                                                                        }}
+                                                                    >
+                                                                        <span>Clear Filter</span>
+                                                                        <span className="text-[10px] opacity-60">✕</span>
+                                                                    </div>
+                                                                )}
+                                                                {availableTypes.length === 0 ? (
+                                                                    <div className="text-[11px] text-muted-foreground p-2 text-center">
+                                                                        No customer labels found
+                                                                    </div>
+                                                                ) : (
+                                                                    availableTypes.map((type) => {
+                                                                        const isSelected = typeFilter?.toLowerCase() === type.toLowerCase();
+                                                                        return (
+                                                                            <div
+                                                                                key={type}
+                                                                                className={cn(
+                                                                                    "flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg cursor-pointer transition-colors font-medium",
+                                                                                    isSelected ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold" : "hover:bg-muted/50 text-foreground"
+                                                                                )}
+                                                                                onClick={() => {
+                                                                                    setTypeFilter(isSelected ? null : type);
+                                                                                    setIsTypeDropdownOpen(false);
+                                                                                }}
+                                                                            >
+                                                                                <span>{type}</span>
+                                                                                {isSelected && <span className="text-blue-500 text-xs">✓</span>}
+                                                                            </div>
+                                                                        );
+                                                                    })
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
 

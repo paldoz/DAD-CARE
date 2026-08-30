@@ -1,8 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { groupTransactionsInfoReceipts, calculateMaqalCharge } from '../app/utils/ledgerHelpers.js';
-import { groupTransactionsInfoReceipts as exportPdfGrouping } from '../lib/export-pdf.js';
-import { MAQAL_EPOCH, computePairsFromDates, validateMaqalPairs } from '../lib/maqal-utils.js';
+import { groupTransactionsInfoReceipts, calculateMaqalCharge } from '../app/utils/ledgerHelpers';
+import { groupTransactionsInfoReceipts as exportPdfGrouping } from '../lib/export-pdf';
+import { MAQAL_EPOCH, computePairsFromDates, validateMaqalPairs } from '../lib/maqal-utils';
 
 describe('Security & Integrity Remediation Verification', () => {
     test('P1 Fix Verification: PDF Export uses authoritative grouping engine', () => {
