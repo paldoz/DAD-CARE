@@ -176,7 +176,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 entriesToInsert.push({
                     customer_id: customerId,
                     type: type,
-                    reference_date: date || new Date().toISOString().split('T')[0],
+                    reference_date: date || item.reference_date || new Date().toISOString().split('T')[0],
                     kg: type === 'PRODUCT' ? parseFloat(kg) : null,
                     price_per_kg: type === 'PRODUCT' ? parseFloat(price) : null,
                     amount: entryAmount,
@@ -347,6 +347,12 @@ const fetchMaqalData = async (
     const totalMaqals = allReceipts.length;
 
     const pagedMaqals = allReceipts.slice(offset, offset + limit).map(m => ({
+        id: m.id,
+        kind: m.kind,
+        mainDate: m.mainDate,
+        receiptId: m.receiptId,
+        maqalId: m.maqalId,
+        diff: m.diff,
         titleString: m.titleString,
         displayMaqalId: m.displayMaqalId,
         totalKilos: m.totalKilos,

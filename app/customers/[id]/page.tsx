@@ -929,7 +929,7 @@ export default function CustomerDetailPage() {
                                 <Label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground ml-1">Date</Label>
                                 <Input
                                     type="date"
-                                    value={latePaymentDate || (latePaymentMaqal?.receiptId ? latePaymentMaqal.receiptId.substring(0, 10) : '')}
+                                    value={latePaymentDate || (latePaymentMaqal?.mainDate ? latePaymentMaqal.mainDate : '')}
                                     onChange={e => setLatePaymentDate(e.target.value)}
                                     className="h-10 font-bold text-xs bg-background/50 border-border/50 rounded-xl shadow-inner"
                                 />
