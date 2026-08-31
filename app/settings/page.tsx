@@ -169,6 +169,7 @@ export default function SettingsPage() {
     const [typeFilter, setTypeFilter] = useState<string | null>(null);
     const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
     const [typePrice, setTypePrice] = useState<string>('');
+    const [individualTypePrices, setIndividualTypePrices] = useState<Record<string, string>>({});
     const { data: dailyBookData, isValidating: isDailyBookLoading } = useSWR(
         (isOverridesOpen || typeFilter) && newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
         (url) => fetch(url).then(res => res.json()),
@@ -916,7 +917,7 @@ export default function SettingsPage() {
     // Dynamically discover all unique types from the relevant Daily Book items on the selected date
     const availableTypes = useMemo(() => {
         const typeMap = new Map<string, string>();
-        // Default standard types
+        // Standard baseline types
         typeMap.set('vip', 'VIP');
         typeMap.set('heshiish', 'Heshiish');
 
@@ -925,12 +926,19 @@ export default function SettingsPage() {
                 if (!item?.note) continue;
                 const parts = item.note.split(',').map((s: string) => s.trim()).filter(Boolean);
                 for (const part of parts) {
-                    const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                    const match = part.match(/^(?:(\d+(?:\.\d+)?)\s+)?([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
                     if (match && match[2]) {
                         const raw = match[2].trim();
                         const key = raw.toLowerCase();
                         if (!typeMap.has(key)) {
-                            const display = key === 'vip' ? 'VIP' : (key.charAt(0).toUpperCase() + key.slice(1).toLowerCase());
+                            let display = raw;
+                            if (key === 'vip') {
+                                display = 'VIP';
+                            } else if (raw === raw.toUpperCase() && raw.length > 1) {
+                                display = raw;
+                            } else {
+                                display = key.charAt(0).toUpperCase() + key.slice(1).toLowerCase();
+                            }
                             typeMap.set(key, display);
                         }
                     }
@@ -958,6 +966,8 @@ export default function SettingsPage() {
                 const cust = allCustomers.find(c => c.id === i.customer_id);
                 let price: string | null = null;
                 let isMultiple = false;
+                let calculatedKg = 0;
+                let hasMatchedParts = false;
                 
                 const parts = i.note.split(',').map((s: string) => s.trim()).filter(Boolean);
                 const matchingParts = parts.filter((p: string) => {
@@ -968,6 +978,17 @@ export default function SettingsPage() {
                     return p.toLowerCase().includes(typeFilter.toLowerCase());
                 });
                 
+                matchingParts.forEach((p: string) => {
+                    const match = p.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                    if (match) {
+                        hasMatchedParts = true;
+                        calculatedKg += parseFloat(match[1]) || 0;
+                        if (match[3]) {
+                            price = match[3];
+                        }
+                    }
+                });
+
                 if (matchingParts.length > 1) {
                     isMultiple = true;
                     const prices = matchingParts.map((p: string) => {
@@ -977,17 +998,19 @@ export default function SettingsPage() {
                     if (prices.length > 0) {
                         price = prices.join(' / ');
                     }
-                } else if (matchingParts.length === 1) {
-                    const match = matchingParts[0].match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
-                    if (match && match[3]) {
-                        price = match[3];
-                    }
                 }
+
+                // If no specific kg found in note pattern, fallback to i.kg
+                const effectiveKg = hasMatchedParts && calculatedKg > 0 ? calculatedKg : (parseFloat(i.kg) || 0);
                 
-                return { ...i, customer: cust, basePrice: price, isMultiple };
+                return { ...i, customer: cust, basePrice: price, isMultiple, matchingKg: effectiveKg };
             })
             .filter((i: any) => i.customer);
     }, [typeFilter, dailyBookData, allCustomers]);
+
+    const totalTypeKg = useMemo(() => {
+        return filteredTypeCustomers.reduce((sum: number, c: any) => sum + (c.matchingKg || 0), 0);
+    }, [filteredTypeCustomers]);
 
     const handleTypeApply = async () => {
         const numericPrice = parseFloat(typePrice);
@@ -1079,10 +1102,79 @@ export default function SettingsPage() {
             localStorage.setItem('dadwork_ledger_stale', Date.now().toString());
 
             setTypePrice('');
-            toast.success(`Applied $${typePrice} to ${appliedCount} customers`);
+            toast.success(`Applied $${typePrice} to all ${appliedCount} customers`);
         } catch (error: any) {
             toast.error(error.message || 'Error updating daily book');
         } finally {
+            setDateActionLoading(null);
+        }
+    };
+
+    const handleIndividualTypeApply = async (customerId: string, priceVal: string) => {
+        const numericPrice = parseFloat(priceVal);
+        if (isNaN(numericPrice) || numericPrice > 100 || numericPrice <= 0) {
+            toast.error('Please enter a valid price (1-100)');
+            return;
+        }
+
+        if (!dailyBookData || !dailyBookData.items || !typeFilter) return;
+
+        setDateActionLoading(`apply-type-${customerId}`);
+        const newItems = JSON.parse(JSON.stringify(dailyBookData.items));
+        const itemToUpdate = newItems.find((i: any) => i.customer_id === customerId);
+
+        if (itemToUpdate && itemToUpdate.note) {
+            const parts = itemToUpdate.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+            const updatedParts = parts.map((part: string) => {
+                const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                if (match) {
+                    const kg = match[1];
+                    const label = match[2];
+                    if (label.trim().toLowerCase() === typeFilter?.toLowerCase()) {
+                        return `${kg} ${label} ${priceVal}`;
+                    }
+                }
+                return part;
+            });
+            itemToUpdate.note = updatedParts.join(', ');
+
+            try {
+                const res = await fetch('/api/daily-book', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date: newOverride.date,
+                        items: newItems
+                    })
+                });
+
+                if (!res.ok) throw new Error('Failed to save price override');
+
+                await mutate(`/api/daily-book?date=${newOverride.date}`);
+                mutate('/api/customers?mode=ledger');
+                mutate((key) => typeof key === 'string' && key.startsWith(`/api/ledger?customerId=${customerId}`));
+                mutate((key) => typeof key === 'string' && key.startsWith(`/api/customer-daily-entries?customerId=${customerId}`));
+
+                const draftRaw = localStorage.getItem('dadwork_ledger_draft');
+                if (draftRaw) {
+                    try {
+                        const draft = JSON.parse(draftRaw);
+                        if (draft && draft.selectedCustomerId === customerId) {
+                            draft.dateEntries = [];
+                            localStorage.setItem('dadwork_ledger_draft', JSON.stringify(draft));
+                        }
+                    } catch (e) {}
+                }
+                localStorage.setItem('dadwork_ledger_stale', Date.now().toString());
+
+                setIndividualTypePrices(prev => ({ ...prev, [customerId]: '' }));
+                toast.success(`Applied $${priceVal}`);
+            } catch (error: any) {
+                toast.error(error.message || 'Error updating price');
+            } finally {
+                setDateActionLoading(null);
+            }
+        } else {
             setDateActionLoading(null);
         }
     };
@@ -1148,6 +1240,85 @@ export default function SettingsPage() {
             }
         }
         setDateActionLoading(null);
+    };
+
+    const handleTypeClearAll = async () => {
+        if (!dailyBookData || !dailyBookData.items || !typeFilter) return;
+
+        setDateActionLoading('type-clear-all');
+        const newItems = JSON.parse(JSON.stringify(dailyBookData.items));
+        let clearedCount = 0;
+
+        filteredTypeCustomers.forEach((c: any) => {
+            if (c.basePrice) {
+                const itemToUpdate = newItems.find((i: any) => i.id === c.id);
+                if (itemToUpdate && itemToUpdate.note) {
+                    const parts = itemToUpdate.note.split(',').map((s: string) => s.trim()).filter(Boolean);
+                    const updatedParts = parts.map((part: string) => {
+                        const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                        if (match) {
+                            const kg = match[1];
+                            const label = match[2];
+                            const price = match[3] || null;
+                            if (label.trim().toLowerCase() === typeFilter?.toLowerCase() && price) {
+                                return `${kg} ${label}`; // Strip price, preserve kg and label
+                            }
+                        }
+                        return part;
+                    });
+                    itemToUpdate.note = updatedParts.join(', ');
+                    clearedCount++;
+                }
+            }
+        });
+
+        if (clearedCount === 0) {
+            toast.info('No price overrides to clear.');
+            setDateActionLoading(null);
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/daily-book', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: newOverride.date,
+                    items: newItems
+                })
+            });
+
+            if (!res.ok) throw new Error('Failed to clear prices');
+
+            await mutate(`/api/daily-book?date=${newOverride.date}`);
+            mutate('/api/customers?mode=ledger');
+
+            const draftRaw = localStorage.getItem('dadwork_ledger_draft');
+            let draft: any = null;
+            if (draftRaw) {
+                try { draft = JSON.parse(draftRaw); } catch (e) {}
+            }
+
+            filteredTypeCustomers.forEach((c: any) => {
+                mutate((key) => typeof key === 'string' && key.startsWith(`/api/ledger?customerId=${c.customer_id}`));
+                mutate((key) => typeof key === 'string' && key.startsWith(`/api/customer-daily-entries?customerId=${c.customer_id}`));
+
+                if (draft && draft.selectedCustomerId === c.customer_id) {
+                    draft.dateEntries = [];
+                }
+            });
+
+            if (draft) {
+                localStorage.setItem('dadwork_ledger_draft', JSON.stringify(draft));
+            }
+            localStorage.setItem('dadwork_ledger_stale', Date.now().toString());
+
+            toast.success(`Cleared price overrides for ${clearedCount} customers`);
+        } catch (error: any) {
+            toast.error(error.message || 'Error clearing prices');
+        } finally {
+            setDateActionLoading(null);
+        }
     };
 
     // Backup/Export
@@ -1915,73 +2086,133 @@ export default function SettingsPage() {
 
                                             {/* Type Filter Panel */}
                                             {typeFilter && (
-                                                <div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 animate-in fade-in slide-in-from-top-2">
-                                                    <div className="flex items-center justify-between mb-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="text-xs font-bold text-blue-600">
-                                                                {typeFilter} Customers ({newOverride.date})
+                                                <div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3.5 animate-in fade-in slide-in-from-top-2">
+                                                    {/* Header Summary & Batch Controls */}
+                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-blue-500/20">
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="text-xs font-black text-blue-600 dark:text-blue-400 tracking-wider uppercase">
+                                                                    {typeFilter} CUSTOMERS ({newOverride.date})
+                                                                </h4>
+                                                                {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
                                                             </div>
-                                                            {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+                                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                                                <span className="font-bold text-foreground">{filteredTypeCustomers.length} Customer{filteredTypeCustomers.length !== 1 ? 's' : ''}</span>
+                                                                <span className="opacity-40">•</span>
+                                                                <span className="font-bold text-blue-600 dark:text-blue-400">{totalTypeKg} KG Total</span>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="relative w-20">
+
+                                                        {/* Batch Price for All & Clear All */}
+                                                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                                                            <div className="relative w-24">
                                                                 <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-xs">$</div>
                                                                 <Input 
                                                                     type="number" 
                                                                     value={typePrice} 
-                                                                    onChange={e => setTypePrice(e.target.value)}
-                                                                    placeholder="Price"
+                                                                    onChange={e => setTypePrice(e.target.value)} 
+                                                                    placeholder="All Price" 
                                                                     className="pl-6 h-8 w-full text-xs font-bold bg-background border-border/60 rounded-lg"
                                                                 />
                                                             </div>
                                                             <Button 
-                                                                size="sm"
-                                                                onClick={handleTypeApply}
+                                                                size="sm" 
+                                                                onClick={handleTypeApply} 
                                                                 disabled={dateActionLoading !== null || !typePrice}
-                                                                className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                                                className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all"
                                                             >
-                                                                Apply
+                                                                {dateActionLoading === 'type-apply' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply to All'}
+                                                            </Button>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline"
+                                                                onClick={handleTypeClearAll} 
+                                                                disabled={dateActionLoading !== null || filteredTypeCustomers.every((c: any) => !c.basePrice)}
+                                                                className="h-8 px-2.5 rounded-lg border-red-500/30 text-red-600 hover:bg-red-500/10 font-bold text-xs shadow-sm active:scale-95 transition-all"
+                                                            >
+                                                                {dateActionLoading === 'type-clear-all' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Clear All'}
                                                             </Button>
                                                         </div>
                                                     </div>
 
-                                                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                                    {/* Individual Customer List */}
+                                                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                                                         {filteredTypeCustomers.length === 0 ? (
-                                                            <div className="text-center py-4 text-[10px] text-muted-foreground">
-                                                                {isDailyBookLoading ? 'Loading...' : `No customers with ${typeFilter} found on this date.`}
+                                                            <div className="text-center py-6 text-xs text-muted-foreground">
+                                                                {isDailyBookLoading ? 'Loading...' : `No customers with ${typeFilter} found on ${newOverride.date}.`}
                                                             </div>
                                                         ) : (
-                                                            filteredTypeCustomers.map((c: any) => (
-                                                                <div key={c.customer_id} className="flex items-center justify-between p-2 rounded-lg bg-background/60 border border-border/40 hover:border-blue-500/30 transition-colors">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-bold text-foreground">#{c.customer?.customer_code} {c.customer?.name}</span>
-                                                                        {c.basePrice && (
-                                                                            <span className="text-[9px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                                                                                {c.isMultiple ? 'Multiple' : 'Manual'}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={cn(
-                                                                            "text-xs font-black",
-                                                                            c.basePrice ? "text-amber-500" : "text-muted-foreground opacity-50"
-                                                                        )}>
-                                                                            {c.basePrice ? (c.basePrice.includes('/') ? `$${c.basePrice}` : `$${c.basePrice}`) : 'empty'}
-                                                                        </span>
-                                                                        {c.basePrice && !c.isMultiple && (
+                                                            filteredTypeCustomers.map((c: any, idx: number) => {
+                                                                const currentPriceInput = individualTypePrices[c.customer_id] ?? '';
+                                                                return (
+                                                                    <div 
+                                                                        key={c.customer_id} 
+                                                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-background/80 border border-border/50 hover:border-blue-500/30 transition-all shadow-xs"
+                                                                    >
+                                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                                            <span className="text-[10px] font-mono font-bold text-muted-foreground w-4">#{idx + 1}</span>
+                                                                            <div className="min-w-0">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="text-xs font-bold text-foreground truncate">{c.customer?.name}</span>
+                                                                                    <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.2 rounded">
+                                                                                        #{c.customer?.customer_code}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2 mt-0.5">
+                                                                                    <span className="text-[11px] font-black text-blue-600 dark:text-blue-400">
+                                                                                        {c.matchingKg} KG
+                                                                                    </span>
+                                                                                    {c.basePrice && (
+                                                                                        <span className="text-[10px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.2 rounded">
+                                                                                            Price: ${c.basePrice}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                                                                            <div className="relative w-20">
+                                                                                <div className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[11px]">$</div>
+                                                                                <Input 
+                                                                                    type="number" 
+                                                                                    value={currentPriceInput} 
+                                                                                    onChange={e => setIndividualTypePrices(prev => ({ ...prev, [c.customer_id]: e.target.value }))}
+                                                                                    placeholder={c.basePrice || "Price"} 
+                                                                                    className="pl-5 h-7 w-full text-xs font-bold bg-background border-border/60 rounded-md"
+                                                                                />
+                                                                            </div>
                                                                             <Button
-                                                                                variant="ghost"
                                                                                 size="sm"
-                                                                                onClick={() => handleTypeClear(c.customer_id)}
-                                                                                disabled={dateActionLoading !== null}
-                                                                                className="h-6 px-2 text-[10px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md"
+                                                                                onClick={() => handleIndividualTypeApply(c.customer_id, currentPriceInput)}
+                                                                                disabled={dateActionLoading !== null || !currentPriceInput}
+                                                                                className="h-7 px-2.5 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-2xs"
                                                                             >
-                                                                                Clear
+                                                                                {dateActionLoading === `apply-type-${c.customer_id}` ? (
+                                                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                                                ) : (
+                                                                                    'Apply'
+                                                                                )}
                                                                             </Button>
-                                                                        )}
+                                                                            {c.basePrice && (
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={() => handleTypeClear(c.customer_id)}
+                                                                                    disabled={dateActionLoading !== null}
+                                                                                    className="h-7 px-2 text-[11px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md"
+                                                                                >
+                                                                                    {dateActionLoading === `clear-type-${c.customer_id}` ? (
+                                                                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                                                                    ) : (
+                                                                                        'Clear'
+                                                                                    )}
+                                                                                </Button>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            ))
+                                                                )
+                                                            })
                                                         )}
                                                     </div>
                                                 </div>
