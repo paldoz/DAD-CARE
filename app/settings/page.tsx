@@ -1965,15 +1965,15 @@ export default function SettingsPage() {
                                 </div>
 
                                 {/* ── Customer-Specific Date Pricing ── */}
-                                <div className="mt-3 rounded-2xl border border-black/5 dark:border-white/10 bg-background/30 backdrop-blur-xl overflow-hidden shadow-xl dark:shadow-2xl">
+                                <div className="mt-3 rounded-2xl border border-white/20 dark:border-white/10 bg-white/[0.04] dark:bg-black/[0.18] backdrop-blur-2xl backdrop-saturate-150 shadow-xl overflow-hidden">
                                     <div 
-                                        className="relative overflow-hidden px-4 py-3 border-b border-black/5 dark:border-white/5 bg-gradient-to-r from-purple-500/10 to-transparent cursor-pointer hover:bg-purple-500/20 transition-colors flex items-center justify-between"
+                                        className="relative overflow-hidden px-4 py-3 border-b border-white/15 dark:border-white/10 bg-gradient-to-r from-teal-500/[0.08] via-transparent to-transparent cursor-pointer hover:bg-white/[0.06] dark:hover:bg-white/[0.04] transition-all flex items-center justify-between"
                                         onClick={() => setIsOverridesOpen(!isOverridesOpen)}
                                     >
                                         <AnimatedBackground />
                                         <div className="flex items-center gap-2.5 relative z-10">
-                                            <div className="p-1.5 rounded-lg bg-purple-500/15">
-                                                <Users className="w-4 h-4 text-purple-500" />
+                                            <div className="p-1.5 rounded-lg bg-teal-500/15 border border-teal-500/20 text-teal-600 dark:text-teal-400">
+                                                <Users className="w-4 h-4" />
                                             </div>
                                             <div>
                                                 <h3 className="text-sm font-bold text-foreground">Customer-Specific Pricing</h3>
@@ -1994,7 +1994,7 @@ export default function SettingsPage() {
                                                         setNewOverride({ ...newOverride, date: e.target.value });
                                                         setTypeFilter(null); // reset type filter when date changes
                                                     }}
-                                                    className="flex h-10 w-full sm:w-1/3 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                                    className="flex h-10 w-full sm:w-1/3 items-center justify-between rounded-xl border border-white/20 dark:border-white/10 bg-white/[0.06] dark:bg-black/30 backdrop-blur-xl px-3 py-2 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-teal-500/40 shadow-xs"
                                                 >
                                                     {savedBookDates && Array.isArray(savedBookDates) && savedBookDates.length > 0 ? (
                                                         <optgroup label="📅 Saved Daily Books">
@@ -2020,7 +2020,7 @@ export default function SettingsPage() {
                                                 <div className="relative w-full sm:w-1/2 flex gap-1 items-center">
                                                     <div className="relative flex-1">
                                                         <div 
-                                                            className="flex h-10 w-full items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs text-muted-foreground cursor-pointer"
+                                                            className="flex h-10 w-full items-center justify-between rounded-xl border border-white/20 dark:border-white/10 bg-white/[0.06] dark:bg-black/30 backdrop-blur-xl px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-white/[0.1] transition-all cursor-pointer shadow-xs"
                                                             onClick={() => setIsCustomerSelectOpen(!isCustomerSelectOpen)}
                                                         >
                                                             {newOverride.customerIds.length === 0 
@@ -2030,14 +2030,14 @@ export default function SettingsPage() {
                                                         </div>
                                                         
                                                         {isCustomerSelectOpen && (
-                                                            <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border/50 rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto p-2 space-y-1">
+                                                            <div className="absolute top-full left-0 mt-1.5 w-full bg-background/70 dark:bg-black/70 border border-white/20 dark:border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl backdrop-saturate-150 z-50 max-h-60 overflow-y-auto p-2 space-y-1">
                                                                 {allCustomers
                                                                     .filter(c => !c.is_inactive && !c.is_kabarka)
                                                                     .map(c => (
-                                                                    <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-muted/50 rounded-lg cursor-pointer transition-colors">
+                                                                    <label key={c.id} className="flex items-center gap-2 p-2 hover:bg-white/10 dark:hover:bg-white/10 rounded-lg cursor-pointer transition-colors text-foreground">
                                                                         <input 
                                                                             type="checkbox" 
-                                                                            className="rounded border-border/50 text-purple-600 focus:ring-purple-500 w-4 h-4 bg-background/50"
+                                                                            className="rounded border-white/30 text-teal-600 focus:ring-teal-500 w-4 h-4 bg-white/10"
                                                                             checked={newOverride.customerIds.includes(c.id)}
                                                                             onChange={(e) => {
                                                                                 if (e.target.checked) {
@@ -2047,7 +2047,7 @@ export default function SettingsPage() {
                                                                                 }
                                                                             }}
                                                                         />
-                                                                        <span className="text-xs font-medium text-foreground">#{c.customer_code} - {c.name}</span>
+                                                                        <span className="text-xs font-medium">#{c.customer_code} - {c.name}</span>
                                                                     </label>
                                                                 ))}
                                                             </div>
@@ -2058,20 +2058,22 @@ export default function SettingsPage() {
                                                     <div className="relative shrink-0">
                                                         <div 
                                                             className={cn(
-                                                                "flex h-10 items-center justify-between gap-1.5 rounded-xl border border-white/20 bg-white/10 backdrop-blur-md px-3 text-xs font-semibold cursor-pointer transition-all select-none shadow-sm min-w-[100px]",
-                                                                typeFilter ? "text-blue-500 border-blue-500/30 bg-blue-500/10" : "text-foreground hover:bg-white/20"
+                                                                "flex h-10 items-center justify-between gap-1.5 rounded-xl border px-3 text-xs font-semibold cursor-pointer transition-all select-none shadow-xs min-w-[105px] backdrop-blur-xl",
+                                                                typeFilter 
+                                                                    ? "text-teal-600 dark:text-teal-400 border-teal-500/30 bg-teal-500/10 shadow-teal-500/5" 
+                                                                    : "text-foreground border-white/20 dark:border-white/10 bg-white/[0.06] dark:bg-black/30 hover:bg-white/[0.12]"
                                                             )}
                                                             onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
                                                         >
-                                                            <span className="truncate max-w-[80px]">{typeFilter ? typeFilter : 'Type'}</span>
+                                                            <span className="truncate max-w-[85px]">{typeFilter ? typeFilter : 'Type'}</span>
                                                             <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200 opacity-60 shrink-0", isTypeDropdownOpen ? "rotate-180" : "")} />
                                                         </div>
 
                                                         {isTypeDropdownOpen && (
-                                                            <div className="absolute top-full right-0 mt-1 w-44 bg-card border border-border/50 rounded-xl shadow-xl z-50 p-1.5 space-y-0.5 animate-in fade-in slide-in-from-top-1 backdrop-blur-2xl">
+                                                            <div className="absolute top-full right-0 mt-1.5 w-48 bg-background/60 dark:bg-black/60 border border-white/25 dark:border-white/15 rounded-2xl shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-2xl backdrop-saturate-150">
                                                                 {typeFilter && (
                                                                     <div 
-                                                                        className="flex items-center justify-between px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg cursor-pointer transition-colors font-medium border-b border-border/40 mb-1 pb-1"
+                                                                        className="flex items-center justify-between px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-white/10 dark:hover:bg-white/10 rounded-xl cursor-pointer transition-colors font-medium border-b border-white/10 mb-1 pb-1"
                                                                         onClick={() => {
                                                                             setTypeFilter(null);
                                                                             setIsTypeDropdownOpen(false);
@@ -2082,7 +2084,7 @@ export default function SettingsPage() {
                                                                     </div>
                                                                 )}
                                                                 {availableTypes.length === 0 ? (
-                                                                    <div className="text-[11px] text-muted-foreground p-2 text-center">
+                                                                    <div className="text-[11px] text-muted-foreground p-2.5 text-center">
                                                                         No customer labels found
                                                                     </div>
                                                                 ) : (
@@ -2092,8 +2094,10 @@ export default function SettingsPage() {
                                                                             <div
                                                                                 key={type}
                                                                                 className={cn(
-                                                                                    "flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg cursor-pointer transition-colors font-medium",
-                                                                                    isSelected ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-bold" : "hover:bg-muted/50 text-foreground"
+                                                                                    "flex items-center justify-between px-2.5 py-1.5 text-xs rounded-xl cursor-pointer transition-all duration-150 font-medium",
+                                                                                    isSelected 
+                                                                                        ? "bg-teal-500/15 text-teal-600 dark:text-teal-400 font-bold border border-teal-500/25" 
+                                                                                        : "hover:bg-white/10 dark:hover:bg-white/10 text-foreground"
                                                                                 )}
                                                                                 onClick={() => {
                                                                                     setTypeFilter(isSelected ? null : type);
@@ -2101,7 +2105,7 @@ export default function SettingsPage() {
                                                                                 }}
                                                                             >
                                                                                 <span>{type}</span>
-                                                                                {isSelected && <span className="text-blue-500 text-xs">✓</span>}
+                                                                                {isSelected && <span className="text-teal-500 text-xs font-black">✓</span>}
                                                                             </div>
                                                                         );
                                                                     })
@@ -2118,13 +2122,13 @@ export default function SettingsPage() {
                                                         value={newOverride.price} 
                                                         onChange={e => setNewOverride({ ...newOverride, price: e.target.value })}
                                                         placeholder="Price"
-                                                        className="pl-6 h-10 w-full text-xs font-bold bg-background/50 border-border/60 rounded-xl"
+                                                        className="pl-6 h-10 w-full text-xs font-bold bg-white/[0.06] dark:bg-black/30 border-white/20 dark:border-white/10 backdrop-blur-xl rounded-xl focus:border-teal-500/50 focus:ring-teal-500/20"
                                                     />
                                                 </div>
                                                 <Button 
                                                     onClick={handleAddOverride}
                                                     disabled={dateActionLoading !== null}
-                                                    className="h-10 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white shadow-md active:scale-95 transition-all shrink-0"
+                                                    className="h-10 px-3.5 rounded-xl bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white shadow-md shadow-teal-500/15 active:scale-95 transition-all shrink-0 border border-teal-400/30"
                                                 >
                                                     {dateActionLoading === 'add-override' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                                 </Button>
@@ -2132,20 +2136,20 @@ export default function SettingsPage() {
 
                                             {/* Type Filter Panel */}
                                             {typeFilter && (
-                                                <div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3.5 animate-in fade-in slide-in-from-top-2">
+                                                <div className="mb-4 rounded-2xl border border-teal-500/20 bg-teal-500/[0.03] dark:bg-teal-500/[0.02] backdrop-blur-xl p-3.5 animate-in fade-in slide-in-from-top-2 shadow-sm">
                                                     {/* Header Summary & Batch Controls */}
-                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-blue-500/20">
+                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-teal-500/20">
                                                         <div>
                                                             <div className="flex items-center gap-2">
-                                                                <h4 className="text-xs font-black text-blue-600 dark:text-blue-400 tracking-wider uppercase">
+                                                                <h4 className="text-xs font-black text-teal-600 dark:text-teal-400 tracking-wider uppercase">
                                                                     {typeFilter} CUSTOMERS ({newOverride.date})
                                                                 </h4>
-                                                                {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+                                                                {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
                                                             </div>
                                                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                                                                 <span className="font-bold text-foreground">{filteredTypeCustomers.length} Customer{filteredTypeCustomers.length !== 1 ? 's' : ''}</span>
                                                                 <span className="opacity-40">•</span>
-                                                                <span className="font-bold text-blue-600 dark:text-blue-400">{totalTypeKg} KG Total</span>
+                                                                <span className="font-bold text-teal-600 dark:text-teal-400">{totalTypeKg} KG Total</span>
                                                             </div>
                                                         </div>
 
@@ -2158,14 +2162,14 @@ export default function SettingsPage() {
                                                                     value={typePrice} 
                                                                     onChange={e => setTypePrice(e.target.value)} 
                                                                     placeholder="All Price" 
-                                                                    className="pl-6 h-8 w-full text-xs font-bold bg-background border-border/60 rounded-lg"
+                                                                    className="pl-6 h-8 w-full text-xs font-bold bg-white/[0.08] dark:bg-black/30 border-white/20 dark:border-white/10 backdrop-blur-md rounded-lg focus:border-teal-500/50"
                                                                 />
                                                             </div>
                                                             <Button 
                                                                 size="sm" 
                                                                 onClick={handleTypeApply} 
                                                                 disabled={dateActionLoading !== null || !typePrice}
-                                                                className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm active:scale-95 transition-all"
+                                                                className="h-8 px-3 rounded-lg bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white font-bold text-xs shadow-sm shadow-teal-500/15 active:scale-95 transition-all border border-teal-400/20"
                                                             >
                                                                 {dateActionLoading === 'type-apply' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply to All'}
                                                             </Button>
@@ -2174,7 +2178,7 @@ export default function SettingsPage() {
                                                                 variant="outline"
                                                                 onClick={handleTypeClearAll} 
                                                                 disabled={dateActionLoading !== null || filteredTypeCustomers.every((c: any) => !c.basePrice)}
-                                                                className="h-8 px-2.5 rounded-lg border-red-500/30 text-red-600 hover:bg-red-500/10 font-bold text-xs shadow-sm active:scale-95 transition-all"
+                                                                className="h-8 px-2.5 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 font-bold text-xs shadow-xs active:scale-95 transition-all backdrop-blur-md"
                                                             >
                                                                 {dateActionLoading === 'type-clear-all' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Clear All'}
                                                             </Button>
@@ -2193,23 +2197,23 @@ export default function SettingsPage() {
                                                                 return (
                                                                     <div 
                                                                         key={c.customer_id} 
-                                                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-background/80 border border-border/50 hover:border-blue-500/30 transition-all shadow-xs"
+                                                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.04] dark:bg-white/[0.02] border border-white/15 dark:border-white/10 hover:border-teal-500/30 hover:bg-white/[0.08] dark:hover:bg-white/[0.04] backdrop-blur-md transition-all shadow-2xs"
                                                                     >
                                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                                             <span className="text-[10px] font-mono font-bold text-muted-foreground w-4">#{idx + 1}</span>
                                                                             <div className="min-w-0">
                                                                                 <div className="flex items-center gap-1.5">
                                                                                     <span className="text-xs font-bold text-foreground truncate">{c.customer?.name}</span>
-                                                                                    <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.2 rounded">
+                                                                                    <span className="text-[10px] font-bold text-muted-foreground bg-white/10 dark:bg-white/5 border border-white/10 px-1.5 py-0.2 rounded">
                                                                                         #{c.customer?.customer_code}
                                                                                     </span>
                                                                                 </div>
                                                                                 <div className="flex items-center gap-2 mt-0.5">
-                                                                                    <span className="text-[11px] font-black text-blue-600 dark:text-blue-400">
+                                                                                    <span className="text-[11px] font-black text-teal-600 dark:text-teal-400">
                                                                                         {c.matchingKg} KG
                                                                                     </span>
                                                                                     {c.basePrice && (
-                                                                                        <span className="text-[10px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.2 rounded">
+                                                                                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded">
                                                                                             Price: ${c.basePrice}
                                                                                         </span>
                                                                                     )}
@@ -2225,14 +2229,14 @@ export default function SettingsPage() {
                                                                                     value={currentPriceInput} 
                                                                                     onChange={e => setIndividualTypePrices(prev => ({ ...prev, [c.customer_id]: e.target.value }))}
                                                                                     placeholder={c.basePrice || "Price"} 
-                                                                                    className="pl-5 h-7 w-full text-xs font-bold bg-background border-border/60 rounded-md"
+                                                                                    className="pl-5 h-7 w-full text-xs font-bold bg-white/[0.06] dark:bg-black/30 border-white/20 dark:border-white/10 backdrop-blur-md rounded-md focus:border-teal-500/50"
                                                                                 />
                                                                             </div>
                                                                             <Button
                                                                                 size="sm"
                                                                                 onClick={() => handleIndividualTypeApply(c.customer_id, currentPriceInput)}
                                                                                 disabled={dateActionLoading !== null || !currentPriceInput}
-                                                                                className="h-7 px-2.5 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-2xs"
+                                                                                className="h-7 px-2.5 text-[11px] font-bold bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white rounded-md shadow-2xs active:scale-95 transition-all border border-teal-400/20"
                                                                             >
                                                                                 {dateActionLoading === `apply-type-${c.customer_id}` ? (
                                                                                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -2246,7 +2250,7 @@ export default function SettingsPage() {
                                                                                     size="sm"
                                                                                     onClick={() => handleTypeClear(c.customer_id)}
                                                                                     disabled={dateActionLoading !== null}
-                                                                                    className="h-7 px-2 text-[11px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md"
+                                                                                    className="h-7 px-2 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 bg-rose-500/[0.06] border border-rose-500/20 rounded-md transition-all"
                                                                                 >
                                                                                     {dateActionLoading === `clear-type-${c.customer_id}` ? (
                                                                                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -2269,26 +2273,26 @@ export default function SettingsPage() {
                                                     {Object.entries(dateSpecificOverrides).filter(([date]) => allowedDates.includes(date)).sort((a, b) => b[0].localeCompare(a[0])).map(([date, overrides]) => (
                                                         <div key={date} className="space-y-1.5">
                                                             <div 
-                                                                className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 hover:bg-muted/60 border border-border/50 cursor-pointer transition-colors"
+                                                                className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] dark:bg-white/[0.02] hover:bg-white/[0.08] dark:hover:bg-white/[0.04] border border-white/15 dark:border-white/10 cursor-pointer transition-all backdrop-blur-md"
                                                                 onClick={() => toggleOverrideDate(date)}
                                                             >
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="text-xs font-bold text-foreground">📅 {date}</div>
-                                                                    <div className="text-[10px] font-semibold text-purple-600 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                                                                    <div className="text-[10px] font-semibold text-teal-600 dark:text-teal-400 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-full">
                                                                         {Object.keys(overrides).length} Customer{Object.keys(overrides).length > 1 ? 's' : ''}
                                                                     </div>
                                                                 </div>
                                                                 <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${expandedOverrideDates.includes(date) ? 'rotate-180' : ''}`} />
                                                             </div>
                                                             {expandedOverrideDates.includes(date) && (
-                                                                <div className="space-y-1.5 pl-2 mt-2 border-l-2 border-purple-500/20">
+                                                                <div className="space-y-1.5 pl-2 mt-2 border-l-2 border-teal-500/20">
                                                                     {Object.entries(overrides).map(([custId, price]) => {
                                                                         const cust = allCustomers.find(c => c.id === custId);
                                                                         return (
-                                                                            <div key={custId} className="flex items-center justify-between p-2 rounded-xl bg-background border border-border/40 hover:border-purple-500/30 transition-colors">
+                                                                            <div key={custId} className="flex items-center justify-between p-2 rounded-xl bg-white/[0.03] dark:bg-white/[0.02] border border-white/10 hover:border-teal-500/30 backdrop-blur-md transition-colors">
                                                                                 <div className="flex items-center gap-3">
-                                                                                    <span className="text-xs font-bold text-foreground bg-muted px-2 py-1 rounded-md">#{cust?.customer_code || '?'} {cust?.name || 'Unknown'}</span>
-                                                                                    <span className="text-xs font-black text-purple-500">${price}</span>
+                                                                                    <span className="text-xs font-bold text-foreground bg-white/10 dark:bg-white/5 border border-white/10 px-2 py-1 rounded-md">#{cust?.customer_code || '?'} {cust?.name || 'Unknown'}</span>
+                                                                                    <span className="text-xs font-black text-teal-600 dark:text-teal-400">${price}</span>
                                                                                 </div>
                                                                                 <Button 
                                                                                     variant="ghost" 
@@ -2308,7 +2312,7 @@ export default function SettingsPage() {
                                                     ))}
                                                 </div>
                                             ) : (
-                                                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed border-border/60 rounded-xl">
+                                                <div className="text-center py-4 text-xs text-muted-foreground border border-dashed border-white/15 dark:border-white/10 rounded-xl bg-white/[0.02]">
                                                     No customer-specific overrides set.
                                                 </div>
                                             )}
