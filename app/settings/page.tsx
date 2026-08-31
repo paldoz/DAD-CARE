@@ -2134,136 +2134,136 @@ export default function SettingsPage() {
                                                 </Button>
                                             </div>
 
-                                            {/* Type Filter Panel — ultra-transparent glass, very dark in dark mode */}
+                                            {/* Type Filter Panel — universal glass, works for VIP/Heshiish/Jaadkidambe/any label */}
                                             {typeFilter && (
-                                                <div className="mb-4 rounded-2xl border border-white/20 dark:border-white/[0.12] bg-white/[0.08] dark:bg-black/70 backdrop-blur-2xl backdrop-saturate-150 p-3.5 animate-in fade-in slide-in-from-top-2 shadow-xl dark:shadow-black/40">
-                                                    {/* Header Summary & Batch Controls */}
-                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-white/15 dark:border-white/[0.08]">
-                                                        <div>
-                                                            <div className="flex items-center gap-2">
-                                                                <h4 className="text-xs font-black text-teal-600 dark:text-teal-400 tracking-wider uppercase">
-                                                                    {typeFilter} CUSTOMERS ({newOverride.date})
-                                                                </h4>
-                                                                {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-teal-500" />}
+                                                <div className="mb-4 overflow-hidden rounded-2xl border border-white/20 dark:border-white/[0.10] bg-white/[0.07] dark:bg-black/75 backdrop-blur-2xl backdrop-saturate-150 shadow-2xl dark:shadow-black/60 animate-in fade-in slide-in-from-top-2">
+                                                    {/* subtle top highlight — mirror-glass feel */}
+                                                    <div className="h-px w-full bg-gradient-to-r from-transparent via-white/40 dark:via-white/20 to-transparent" />
+
+                                                    <div className="p-3">
+                                                        {/* ── Header: type name + stats + batch controls ── */}
+                                                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 pb-2.5 border-b border-white/10 dark:border-white/[0.07]">
+                                                            {/* left: title + stats */}
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className="text-[11px] font-black tracking-widest uppercase text-teal-600 dark:text-teal-400">
+                                                                    {typeFilter}
+                                                                </span>
+                                                                {isDailyBookLoading && <Loader2 className="w-3 h-3 animate-spin text-teal-500 shrink-0" />}
+                                                                <span className="text-[10px] text-muted-foreground font-semibold">
+                                                                    {filteredTypeCustomers.length} customers
+                                                                </span>
+                                                                <span className="text-[10px] text-muted-foreground opacity-40">·</span>
+                                                                <span className="text-[10px] font-black text-teal-600 dark:text-teal-400">
+                                                                    {totalTypeKg} KG
+                                                                </span>
+                                                                <span className="text-[10px] text-muted-foreground opacity-40">·</span>
+                                                                <span className="text-[10px] text-muted-foreground">{newOverride.date}</span>
                                                             </div>
-                                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                                                <span className="font-bold text-foreground">{filteredTypeCustomers.length} Customer{filteredTypeCustomers.length !== 1 ? 's' : ''}</span>
-                                                                <span className="opacity-40">•</span>
-                                                                <span className="font-bold text-teal-600 dark:text-teal-400">{totalTypeKg} KG Total</span>
+
+                                                            {/* right: batch price + Apply to All + Clear All */}
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                <div className="relative w-[80px]">
+                                                                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-[10px]">$</div>
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={typePrice}
+                                                                        onChange={e => setTypePrice(e.target.value)}
+                                                                        placeholder="Price"
+                                                                        className="pl-5 h-7 w-full text-xs font-bold bg-white/[0.08] dark:bg-black/40 border-white/20 dark:border-white/[0.10] backdrop-blur-md rounded-lg focus:border-teal-500/50 focus:ring-0"
+                                                                    />
+                                                                </div>
+                                                                <Button
+                                                                    size="sm"
+                                                                    onClick={handleTypeApply}
+                                                                    disabled={dateActionLoading !== null || !typePrice}
+                                                                    className="h-7 px-2.5 rounded-lg bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white font-bold text-[11px] border border-teal-400/20 active:scale-95 transition-all"
+                                                                >
+                                                                    {dateActionLoading === 'type-apply' ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Apply All'}
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={handleTypeClearAll}
+                                                                    disabled={dateActionLoading !== null || filteredTypeCustomers.every((c: any) => !c.basePrice)}
+                                                                    className="h-7 px-2 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] dark:bg-rose-500/[0.04] text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 font-bold text-[11px] active:scale-95 transition-all"
+                                                                >
+                                                                    {dateActionLoading === 'type-clear-all' ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Clear All'}
+                                                                </Button>
                                                             </div>
                                                         </div>
 
-                                                        {/* Batch Price for All & Clear All */}
-                                                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                                                            <div className="relative w-24">
-                                                                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground font-black text-xs">$</div>
-                                                                <Input 
-                                                                    type="number" 
-                                                                    value={typePrice} 
-                                                                    onChange={e => setTypePrice(e.target.value)} 
-                                                                    placeholder="All Price" 
-                                                                    className="pl-6 h-8 w-full text-xs font-bold bg-white/[0.08] dark:bg-black/30 border-white/20 dark:border-white/10 backdrop-blur-md rounded-lg focus:border-teal-500/50"
-                                                                />
-                                                            </div>
-                                                            <Button 
-                                                                size="sm" 
-                                                                onClick={handleTypeApply} 
-                                                                disabled={dateActionLoading !== null || !typePrice}
-                                                                className="h-8 px-3 rounded-lg bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white font-bold text-xs shadow-sm shadow-teal-500/15 active:scale-95 transition-all border border-teal-400/20"
-                                                            >
-                                                                {dateActionLoading === 'type-apply' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply to All'}
-                                                            </Button>
-                                                            <Button 
-                                                                size="sm" 
-                                                                variant="outline"
-                                                                onClick={handleTypeClearAll} 
-                                                                disabled={dateActionLoading !== null || filteredTypeCustomers.every((c: any) => !c.basePrice)}
-                                                                className="h-8 px-2.5 rounded-lg border border-rose-500/25 bg-rose-500/[0.06] text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 font-bold text-xs shadow-xs active:scale-95 transition-all backdrop-blur-md"
-                                                            >
-                                                                {dateActionLoading === 'type-clear-all' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Clear All'}
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Individual Customer List */}
-                                                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                                                        {filteredTypeCustomers.length === 0 ? (
-                                                            <div className="text-center py-6 text-xs text-muted-foreground">
-                                                                {isDailyBookLoading ? 'Loading...' : `No customers with ${typeFilter} found on ${newOverride.date}.`}
-                                                            </div>
-                                                        ) : (
-                                                            filteredTypeCustomers.map((c: any, idx: number) => {
-                                                                const currentPriceInput = individualTypePrices[c.customer_id] ?? '';
-                                                                return (
-                                                                    <div 
-                                                                        key={c.customer_id} 
-                                                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.06] dark:bg-black/60 border border-white/20 dark:border-white/[0.08] hover:border-teal-500/40 hover:bg-white/[0.12] dark:hover:bg-black/70 backdrop-blur-xl transition-all"
-                                                                    >
-                                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                                            <span className="text-[10px] font-mono font-bold text-muted-foreground w-4">#{idx + 1}</span>
-                                                                            <div className="min-w-0">
-                                                                                <div className="flex items-center gap-1.5">
-                                                                                    <span className="text-xs font-bold text-foreground truncate">{c.customer?.name}</span>
-                                                                                    <span className="text-[10px] font-bold text-muted-foreground bg-white/10 dark:bg-white/5 border border-white/10 px-1.5 py-0.2 rounded">
-                                                                                        #{c.customer?.customer_code}
+                                                        {/* ── Customer List ── */}
+                                                        <div className="max-h-72 overflow-y-auto space-y-px pr-0.5">
+                                                            {filteredTypeCustomers.length === 0 ? (
+                                                                <div className="py-5 text-center text-[11px] text-muted-foreground">
+                                                                    {isDailyBookLoading ? 'Loading…' : `No ${typeFilter} customers on ${newOverride.date}.`}
+                                                                </div>
+                                                            ) : (
+                                                                filteredTypeCustomers.map((c: any, idx: number) => {
+                                                                    const currentPriceInput = individualTypePrices[c.customer_id] ?? '';
+                                                                    return (
+                                                                        <div
+                                                                            key={c.customer_id}
+                                                                            className="group flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 py-1.5 px-2 rounded-xl hover:bg-white/[0.07] dark:hover:bg-white/[0.04] transition-colors"
+                                                                        >
+                                                                            {/* Left: index + name + code + kg */}
+                                                                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                                                <span className="w-5 shrink-0 text-[9px] font-mono text-muted-foreground/60 text-right">
+                                                                                    {idx + 1}
+                                                                                </span>
+                                                                                <span className="text-[11px] font-semibold text-foreground truncate leading-none">
+                                                                                    {c.customer?.name}
+                                                                                </span>
+                                                                                <span className="shrink-0 text-[9px] font-bold text-muted-foreground/70 bg-white/10 dark:bg-white/[0.06] px-1 py-px rounded">
+                                                                                    #{c.customer?.customer_code}
+                                                                                </span>
+                                                                                <span className="shrink-0 text-[10px] font-black text-teal-600 dark:text-teal-400">
+                                                                                    {c.matchingKg} KG
+                                                                                </span>
+                                                                                {c.basePrice && (
+                                                                                    <span className="shrink-0 text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/15 px-1 py-px rounded">
+                                                                                        ${c.basePrice}
                                                                                     </span>
-                                                                                </div>
-                                                                                <div className="flex items-center gap-2 mt-0.5">
-                                                                                    <span className="text-[11px] font-black text-teal-600 dark:text-teal-400">
-                                                                                        {c.matchingKg} KG
-                                                                                    </span>
-                                                                                    {c.basePrice && (
-                                                                                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded">
-                                                                                            Price: ${c.basePrice}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
-                                                                            <div className="relative w-20">
-                                                                                <div className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[11px]">$</div>
-                                                                                <Input 
-                                                                                    type="number" 
-                                                                                    value={currentPriceInput} 
-                                                                                    onChange={e => setIndividualTypePrices(prev => ({ ...prev, [c.customer_id]: e.target.value }))}
-                                                                                    placeholder={c.basePrice || "Price"} 
-                                                                                    className="pl-5 h-7 w-full text-xs font-bold bg-white/[0.06] dark:bg-black/30 border-white/20 dark:border-white/10 backdrop-blur-md rounded-md focus:border-teal-500/50"
-                                                                                />
-                                                                            </div>
-                                                                            <Button
-                                                                                size="sm"
-                                                                                onClick={() => handleIndividualTypeApply(c.customer_id, currentPriceInput)}
-                                                                                disabled={dateActionLoading !== null || !currentPriceInput}
-                                                                                className="h-7 px-2.5 text-[11px] font-bold bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white rounded-md shadow-2xs active:scale-95 transition-all border border-teal-400/20"
-                                                                            >
-                                                                                {dateActionLoading === `apply-type-${c.customer_id}` ? (
-                                                                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                                                                ) : (
-                                                                                    'Apply'
                                                                                 )}
-                                                                            </Button>
-                                                                            {c.basePrice && (
+                                                                            </div>
+
+                                                                            {/* Right: price input + apply + clear */}
+                                                                            <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto">
+                                                                                <div className="relative w-[72px]">
+                                                                                    <div className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[10px]">$</div>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        value={currentPriceInput}
+                                                                                        onChange={e => setIndividualTypePrices(prev => ({ ...prev, [c.customer_id]: e.target.value }))}
+                                                                                        placeholder={c.basePrice || '—'}
+                                                                                        className="pl-4 h-6 w-full text-[11px] font-bold bg-white/[0.06] dark:bg-black/40 border-white/15 dark:border-white/[0.08] backdrop-blur-md rounded focus:border-teal-500/50 focus:ring-0"
+                                                                                    />
+                                                                                </div>
                                                                                 <Button
-                                                                                    variant="ghost"
                                                                                     size="sm"
-                                                                                    onClick={() => handleTypeClear(c.customer_id)}
-                                                                                    disabled={dateActionLoading !== null}
-                                                                                    className="h-7 px-2 text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 bg-rose-500/[0.06] border border-rose-500/20 rounded-md transition-all"
+                                                                                    onClick={() => handleIndividualTypeApply(c.customer_id, currentPriceInput)}
+                                                                                    disabled={dateActionLoading !== null || !currentPriceInput}
+                                                                                    className="h-6 px-2 text-[10px] font-bold bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white rounded border border-teal-400/20 active:scale-95 transition-all"
                                                                                 >
-                                                                                    {dateActionLoading === `clear-type-${c.customer_id}` ? (
-                                                                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                                                                    ) : (
-                                                                                        'Clear'
-                                                                                    )}
+                                                                                    {dateActionLoading === `apply-type-${c.customer_id}` ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Apply'}
                                                                                 </Button>
-                                                                            )}
+                                                                                {c.basePrice && (
+                                                                                    <Button
+                                                                                        variant="ghost"
+                                                                                        size="sm"
+                                                                                        onClick={() => handleTypeClear(c.customer_id)}
+                                                                                        disabled={dateActionLoading !== null}
+                                                                                        className="h-6 px-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/[0.06] hover:bg-rose-500/15 border border-rose-500/15 rounded transition-all"
+                                                                                    >
+                                                                                        {dateActionLoading === `clear-type-${c.customer_id}` ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : 'Clear'}
+                                                                                    </Button>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                )
-                                                            })
-                                                        )}
+                                                                    );
+                                                                })
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
