@@ -170,9 +170,41 @@ export default function SettingsPage() {
     const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
     const [typePrice, setTypePrice] = useState<string>('');
     const [individualTypePrices, setIndividualTypePrices] = useState<Record<string, string>>({});
+
+    // Fetch REAL saved Daily Book dates from the database (for Type dropdown date picker)
+    const { data: savedBookDates } = useSWR<{ date: string }[]>(
+        '/api/daily-book-dates',
+        (url: string) => fetch(url).then(res => res.json()),
+        { revalidateOnFocus: false, dedupingInterval: 300000 }
+    );
+
+    // The most recent date that actually has Daily Book data
+    const latestBookDate = useMemo(() => {
+        if (savedBookDates && Array.isArray(savedBookDates) && savedBookDates.length > 0) {
+            const d = savedBookDates[0].date;
+            // API returns ISO datetime strings — extract YYYY-MM-DD
+            return typeof d === 'string' ? d.split('T')[0] : d;
+        }
+        return allowedDates[0];
+    }, [savedBookDates, allowedDates]);
+
+    // When the real latest book date loads, update newOverride.date if it still points to a future/empty date
+    useEffect(() => {
+        if (!savedBookDates || !Array.isArray(savedBookDates) || savedBookDates.length === 0) return;
+        const latest = savedBookDates[0].date.split('T')[0];
+        setNewOverride(prev => {
+            // Only update if current date has no real data (i.e. it's today or a future date not in saved list)
+            const isCurrentDateSaved = savedBookDates.some(b => b.date.split('T')[0] === prev.date);
+            if (!isCurrentDateSaved) {
+                return { ...prev, date: latest };
+            }
+            return prev;
+        });
+    }, [savedBookDates]);
+
     const { data: dailyBookData, isValidating: isDailyBookLoading } = useSWR(
         (isOverridesOpen || typeFilter) && newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
-        (url) => fetch(url).then(res => res.json()),
+        (url: string) => fetch(url).then(res => res.json()),
         { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
     
@@ -1958,17 +1990,31 @@ export default function SettingsPage() {
                                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
                                                 <select 
                                                     value={newOverride.date} 
-                                                    onChange={e => setNewOverride({ ...newOverride, date: e.target.value })}
+                                                    onChange={e => {
+                                                        setNewOverride({ ...newOverride, date: e.target.value });
+                                                        setTypeFilter(null); // reset type filter when date changes
+                                                    }}
                                                     className="flex h-10 w-full sm:w-1/3 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                                 >
-                                                    <optgroup label="⚡ New Pair (Current)">
-                                                        <option value={allowedDates[0]}>{allowedDates[0]} (Day 2)</option>
-                                                        <option value={allowedDates[1]}>{allowedDates[1]} (Day 1)</option>
-                                                    </optgroup>
-                                                    <optgroup label="📌 Old Pair (Previous)">
-                                                        <option value={allowedDates[2]}>{allowedDates[2]} (Day 2)</option>
-                                                        <option value={allowedDates[3]}>{allowedDates[3]} (Day 1)</option>
-                                                    </optgroup>
+                                                    {savedBookDates && Array.isArray(savedBookDates) && savedBookDates.length > 0 ? (
+                                                        <optgroup label="📅 Saved Daily Books">
+                                                            {savedBookDates.slice(0, 8).map((b: { date: string }) => {
+                                                                const d = b.date.split('T')[0];
+                                                                return <option key={d} value={d}>{d}</option>;
+                                                            })}
+                                                        </optgroup>
+                                                    ) : (
+                                                        <>
+                                                            <optgroup label="⚡ New Pair (Current)">
+                                                                <option value={allowedDates[0]}>{allowedDates[0]} (Day 2)</option>
+                                                                <option value={allowedDates[1]}>{allowedDates[1]} (Day 1)</option>
+                                                            </optgroup>
+                                                            <optgroup label="📌 Old Pair (Previous)">
+                                                                <option value={allowedDates[2]}>{allowedDates[2]} (Day 2)</option>
+                                                                <option value={allowedDates[3]}>{allowedDates[3]} (Day 1)</option>
+                                                            </optgroup>
+                                                        </>
+                                                    )}
                                                 </select>
 
                                                 <div className="relative w-full sm:w-1/2 flex gap-1 items-center">
