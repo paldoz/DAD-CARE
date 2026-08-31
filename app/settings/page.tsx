@@ -2134,11 +2134,11 @@ export default function SettingsPage() {
                                                 </Button>
                                             </div>
 
-                                            {/* Type Filter Panel */}
+                                            {/* Type Filter Panel — ultra-transparent glass, very dark in dark mode */}
                                             {typeFilter && (
-                                                <div className="mb-4 rounded-2xl border border-teal-500/20 bg-teal-500/[0.03] dark:bg-teal-500/[0.02] backdrop-blur-xl p-3.5 animate-in fade-in slide-in-from-top-2 shadow-sm">
+                                                <div className="mb-4 rounded-2xl border border-white/20 dark:border-white/[0.12] bg-white/[0.08] dark:bg-black/70 backdrop-blur-2xl backdrop-saturate-150 p-3.5 animate-in fade-in slide-in-from-top-2 shadow-xl dark:shadow-black/40">
                                                     {/* Header Summary & Batch Controls */}
-                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-teal-500/20">
+                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-3 border-b border-white/15 dark:border-white/[0.08]">
                                                         <div>
                                                             <div className="flex items-center gap-2">
                                                                 <h4 className="text-xs font-black text-teal-600 dark:text-teal-400 tracking-wider uppercase">
@@ -2197,7 +2197,7 @@ export default function SettingsPage() {
                                                                 return (
                                                                     <div 
                                                                         key={c.customer_id} 
-                                                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.04] dark:bg-white/[0.02] border border-white/15 dark:border-white/10 hover:border-teal-500/30 hover:bg-white/[0.08] dark:hover:bg-white/[0.04] backdrop-blur-md transition-all shadow-2xs"
+                                                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.06] dark:bg-black/60 border border-white/20 dark:border-white/[0.08] hover:border-teal-500/40 hover:bg-white/[0.12] dark:hover:bg-black/70 backdrop-blur-xl transition-all"
                                                                     >
                                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                                             <span className="text-[10px] font-mono font-bold text-muted-foreground w-4">#{idx + 1}</span>
