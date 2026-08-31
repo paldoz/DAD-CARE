@@ -285,13 +285,20 @@ function buildMaalinlahaHTML(entries: any[]) {
     return html;
 }
 
+function getBackupDir(): string {
+    if (process.env.USERPROFILE) {
+        return path.join(process.env.USERPROFILE, 'OneDrive', 'Desktop', 'dadcare app', 'Backups');
+    }
+    return path.resolve(process.cwd(), '..', 'Backups');
+}
+
 // ──────────────────────────────────────────────
 // MAIN API: Generate and Save Backups
 // ──────────────────────────────────────────────
 export const POST = trackApiRoute('/api/backup', async (request: Request) => {
     const { errorResponse } = await requireSuperAdmin(request);
     if (errorResponse) return errorResponse;
-    const backupDir = path.join('C:', 'Users', 'abdiq', 'OneDrive', 'Desktop', 'dadcare app', 'Backups');
+    const backupDir = getBackupDir();
     const dateStr = format(new Date(), 'yyyy-MM-dd');
     const todayDir = path.join(backupDir, dateStr);
 
@@ -466,7 +473,7 @@ export const GET = trackApiRoute('/api/backup', async (request: Request) => {
     const limited = rateLimitResponse(request, 1, 3_600_000);
     if (limited) return NextResponse.json({ error: 'Rate limit exceeded. You can only backup the database once per hour.' }, { status: 429 });
 
-    const backupDir = path.join('C:', 'Users', 'abdiq', 'OneDrive', 'Desktop', 'dadcare app', 'Backups');
+    const backupDir = getBackupDir();
 
     try {
         if (!fs.existsSync(backupDir)) {
