@@ -774,6 +774,60 @@ function DailyBookPageInner() {
                 title="Remove Customer"
                 description={`⚠️ Move "${customers.find(c => c.id === pendingDeleteCustomerId)?.name || 'this customer'}" to Inactive? Their history is preserved and they can be recovered anytime from the Customers page.`}
             />
+
+            {/* ── Absence Confirmation Modal (Super Admin Only - Root Level) ── */}
+            <Dialog open={absenceModalOpen} onOpenChange={setAbsenceModalOpen}>
+                <DialogContent className="max-w-sm rounded-2xl z-[100000]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-black">
+                            <CalendarX className="w-5 h-5" />
+                            Mark {format(date, 'MMMM dd, yyyy')} as Absence
+                        </DialogTitle>
+                        <DialogDescription className="text-xs leading-relaxed text-muted-foreground pt-1">
+                            This marks the day as <strong className="text-foreground">CLOSED / BAAQATAY</strong>. The Daily Book will automatically move to the next working day without affecting existing Maqal pairs or customer balances.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 pt-2">
+                        <Input
+                            placeholder="Optional reason (e.g. Business closed, Holiday)"
+                            value={absenceReason}
+                            onChange={e => setAbsenceReason(e.target.value)}
+                            className="text-xs rounded-xl"
+                            autoFocus
+                        />
+                        <div className="flex gap-2">
+                            <Button
+                                id="absence-cancel-btn"
+                                type="button"
+                                variant="outline"
+                                className="flex-1 rounded-xl cursor-pointer"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAbsenceModalOpen(false);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                id="absence-confirm-btn"
+                                type="button"
+                                variant="destructive"
+                                className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer shadow-md"
+                                disabled={isSavingWorkdayStatus}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleSetWorkdayStatus(format(date, 'yyyy-MM-dd'), 'ABSENCE', absenceReason);
+                                }}
+                            >
+                                {isSavingWorkdayStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                                Confirm Absence
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
             {/* Header */}
             <div className="relative px-3 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4">
                 <AnimatedBackground />
@@ -807,6 +861,79 @@ function DailyBookPageInner() {
                     </Button>
                 </div>
             </div>
+
+            {/* Super Admin Workday Status Control Bar — Global to page */}
+            {isSuperAdmin && (() => {
+                const activeDateStr = format(date, 'yyyy-MM-dd');
+                const activeBday = businessDays.find(b => String(b.date).substring(0, 10) === activeDateStr);
+                const isAbsence = activeBday?.status === 'ABSENCE';
+                return (
+                    <div className="p-3 rounded-2xl border border-border/60 bg-card/90 backdrop-blur-md shadow-xs flex flex-wrap items-center justify-between gap-3 relative z-20">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`p-2 rounded-xl shrink-0 ${isAbsence ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>
+                                {isAbsence ? <CalendarX className="w-5 h-5" /> : <CalendarCheck className="w-5 h-5" />}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-foreground">
+                                        Workday ({format(date, 'MMMM dd, yyyy')}):
+                                    </span>
+                                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md border ${
+                                        isAbsence
+                                            ? 'bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400'
+                                            : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
+                                    }`}>
+                                        {isAbsence ? '🔴 Absence / Closed' : '🟢 Worked'}
+                                    </span>
+                                </div>
+                                {activeBday?.reason && (
+                                    <p className="text-[11px] text-muted-foreground truncate max-w-sm mt-0.5">
+                                        Reason: {activeBday.reason}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                id="workday-btn-worked"
+                                type="button"
+                                disabled={isSavingWorkdayStatus}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleSetWorkdayStatus(activeDateStr, 'WORKED');
+                                }}
+                                className={`cursor-pointer select-none h-8 px-3.5 text-xs font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5 ${
+                                    !isAbsence
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-500/50'
+                                        : 'text-muted-foreground bg-muted/50 hover:bg-muted/80 border border-border/60 hover:text-foreground'
+                                }`}
+                            >
+                                ON — Worked
+                            </button>
+                            <button
+                                id="workday-btn-absence"
+                                type="button"
+                                disabled={isSavingWorkdayStatus}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAbsenceReason(activeBday?.reason || '');
+                                    setAbsenceModalOpen(true);
+                                }}
+                                className={`cursor-pointer select-none h-8 px-3.5 text-xs font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5 ${
+                                    isAbsence
+                                        ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm ring-1 ring-rose-500/50'
+                                        : 'text-rose-600 dark:text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20'
+                                }`}
+                            >
+                                OFF — Absence
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {viewMode === 'edit' ? (
                 <>
@@ -979,79 +1106,6 @@ function DailyBookPageInner() {
                                         </Button>
                                     </div>
                                 </div>
-
-                                {/* Workday / Absence Control — Super Admin Only */}
-                                {isSuperAdmin && !editingDate && (() => {
-                                    const activeDateStr = format(date, 'yyyy-MM-dd');
-                                    const activeBday = businessDays.find(b => b.date.substring(0, 10) === activeDateStr);
-                                    const isAbsence = activeBday?.status === 'ABSENCE';
-                                    return (
-                                        <div className="mt-3 p-2.5 rounded-xl border border-border/60 bg-background/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5 relative z-30 pointer-events-auto">
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                <div className={`p-1.5 rounded-lg shrink-0 ${isAbsence ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>
-                                                    {isAbsence ? <CalendarX className="w-4 h-4" /> : <CalendarCheck className="w-4 h-4" />}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-bold text-foreground">
-                                                            Workday:
-                                                        </span>
-                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                                                            isAbsence
-                                                                ? 'bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400'
-                                                                : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
-                                                        }`}>
-                                                            {isAbsence ? '🔴 Absence / Closed' : '🟢 Worked'}
-                                                        </span>
-                                                    </div>
-                                                    {activeBday?.reason && (
-                                                        <p className="text-[10px] text-muted-foreground truncate max-w-xs mt-0.5">
-                                                            Reason: {activeBday.reason}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-1.5 shrink-0 relative z-30 pointer-events-auto">
-                                                <button
-                                                    id="workday-btn-worked"
-                                                    type="button"
-                                                    disabled={isSavingWorkdayStatus}
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        handleSetWorkdayStatus(activeDateStr, 'WORKED');
-                                                    }}
-                                                    className={`cursor-pointer select-none h-7 px-3 text-[11px] font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1 ${
-                                                        !isAbsence
-                                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs ring-1 ring-emerald-500/50'
-                                                            : 'text-muted-foreground bg-muted/40 hover:bg-muted/80 border border-border/60 hover:text-foreground'
-                                                    }`}
-                                                >
-                                                    ON — Worked
-                                                </button>
-                                                <button
-                                                    id="workday-btn-absence"
-                                                    type="button"
-                                                    disabled={isSavingWorkdayStatus}
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        setAbsenceReason(activeBday?.reason || '');
-                                                        setAbsenceModalOpen(true);
-                                                    }}
-                                                    className={`cursor-pointer select-none h-7 px-3 text-[11px] font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1 ${
-                                                        isAbsence
-                                                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs ring-1 ring-rose-500/50'
-                                                            : 'text-rose-600 dark:text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20'
-                                                    }`}
-                                                >
-                                                    OFF — Absence
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
                             </CardHeader>
                             <CardContent className="p-0">
                                 {/* Search bar */}
@@ -1494,60 +1548,6 @@ function DailyBookPageInner() {
                                     {isDeleting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Trash2 className="w-3 h-3 mr-1" />}
                                     Move to Trash
                                 </Button>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
-
-                    {/* ── Absence Confirmation Modal (Super Admin Only) ── */}
-                    <Dialog open={absenceModalOpen} onOpenChange={setAbsenceModalOpen}>
-                        <DialogContent className="max-w-sm rounded-2xl">
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
-                                    <CalendarX className="w-5 h-5" />
-                                    Mark {format(date, 'MMMM dd, yyyy')} as Absence
-                                </DialogTitle>
-                                <DialogDescription className="text-xs leading-relaxed">
-                                    This marks the day as <strong>CLOSED / BAAQATAY</strong>. The Daily Book will automatically move to the next working day without affecting existing Maqal pairs or customer balances.
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-3 pt-2">
-                                <Input
-                                    placeholder="Optional reason (e.g. Business closed, Holiday)"
-                                    value={absenceReason}
-                                    onChange={e => setAbsenceReason(e.target.value)}
-                                    className="text-xs rounded-xl"
-                                    autoFocus
-                                />
-                                <div className="flex gap-2">
-                                    <Button
-                                        id="absence-cancel-btn"
-                                        type="button"
-                                        variant="outline"
-                                        className="flex-1 rounded-xl cursor-pointer"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            setAbsenceModalOpen(false);
-                                        }}
-                                    >
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        id="absence-confirm-btn"
-                                        type="button"
-                                        variant="destructive"
-                                        className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
-                                        disabled={isSavingWorkdayStatus}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            handleSetWorkdayStatus(format(date, 'yyyy-MM-dd'), 'ABSENCE', absenceReason);
-                                        }}
-                                    >
-                                        {isSavingWorkdayStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
-                                        Confirm Absence
-                                    </Button>
-                                </div>
                             </div>
                         </DialogContent>
                     </Dialog>
