@@ -43,6 +43,7 @@ export interface DailyBookInitData {
     history: SavedEntry[];
     latestDate: string | null;
     historyCount?: number;
+    businessDays?: Array<{ date: string; status: string; reason?: string | null }>;
 }
 
 // Hook for the initial Daily Book load (Customers + History)

@@ -32,14 +32,21 @@ const getDailyBookInit = unstable_cache(
         `);
         const historyCount = parseInt(countRow[0].total, 10) || 0;
 
+        // Fetch configured BusinessDays (e.g. ABSENCE days)
+        const { rows: bDays } = await pool.query(`
+          SELECT date::text as date, status, reason FROM "BusinessDay"
+          ORDER BY date DESC
+        `);
+
         return {
           customers,
           latestDate,
           historyCount,
+          businessDays: bDays,
         };
     },
     ['daily-book-init-cache'],
-    { revalidate: 3600, tags: ['daily-book-init', 'customers'] }
+    { revalidate: 3600, tags: ['daily-book-init', 'customers', 'business-days'] }
 );
 
 export const GET = trackApiRoute('/api/daily-book-init', async (request: Request) => {

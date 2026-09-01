@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
-import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check, Minus } from 'lucide-react';
+import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check, Minus, CalendarCheck, CalendarX } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
@@ -54,6 +54,8 @@ interface DailyBookItem {
 interface SavedEntry {
     date: string;
     totalKg: number;
+    workday_status?: string;
+    workday_reason?: string;
     items: DailyBookItem[];
 }
 
@@ -98,6 +100,18 @@ function getFormattedNoteBadges(note: string | undefined): { text: string, isVip
 }
 
 
+function getNextWorkingDate(lastSavedDateStr: string | null, bDays: Array<{ date: string; status: string }>): Date {
+    if (!lastSavedDateStr) return new Date();
+    const absenceSet = new Set(
+        (bDays || []).filter(b => b.status === 'ABSENCE').map(b => String(b.date).substring(0, 10))
+    );
+    let current = addDays(parseISO(lastSavedDateStr), 1);
+    while (absenceSet.has(format(current, 'yyyy-MM-dd'))) {
+        current = addDays(current, 1);
+    }
+    return current;
+}
+
 function DailyBookPageInner() {
     const [date, setDate] = useState<Date>(new Date());
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -141,6 +155,12 @@ function DailyBookPageInner() {
     const [reorderTargetId, setReorderTargetId] = useState<string>('');
     const [isReordering, setIsReordering] = useState(false);
 
+    // Business Day (Workday / Absence) State
+    const [businessDays, setBusinessDays] = useState<Array<{ date: string; status: string; reason?: string | null }>>([]);
+    const [absenceModalOpen, setAbsenceModalOpen] = useState(false);
+    const [absenceReason, setAbsenceReason] = useState('');
+    const [isSavingWorkdayStatus, setIsSavingWorkdayStatus] = useState(false);
+
     // Debounce hook for search input (300 ms)
     const useDebounce = <T,>(value: T, delay: number): T => {
         const [debounced, setDebounced] = useState(value);
@@ -181,6 +201,9 @@ function DailyBookPageInner() {
     useEffect(() => {
         if (initData && typeof initData === 'object' && initData.customers) {
             setCustomers(initData.customers);
+            if (Array.isArray(initData.businessDays)) {
+                setBusinessDays(initData.businessDays);
+            }
 
             if (!isInitialized) {
                 // Only load history from initData ONCE on initial load.
@@ -192,7 +215,8 @@ function DailyBookPageInner() {
                 if (initData.latestDate) {
                     setLatestSavedDateStr(initData.latestDate);
                     if (!editingDate) {
-                        setDate(addDays(parseISO(initData.latestDate), 1));
+                        const nextWorking = getNextWorkingDate(initData.latestDate, initData.businessDays || []);
+                        setDate(nextWorking);
                     }
                 }
                 setIsInitialized(true);
@@ -567,6 +591,46 @@ function DailyBookPageInner() {
         }
     };
 
+    const handleSetWorkdayStatus = async (targetDateStr: string, status: 'WORKED' | 'ABSENCE', reason?: string) => {
+        setIsSavingWorkdayStatus(true);
+        try {
+            const res = await fetch('/api/business-days', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: targetDateStr, status, reason })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const updated = [
+                    ...businessDays.filter(b => b.date.substring(0, 10) !== targetDateStr),
+                    { date: targetDateStr, status, reason: reason || undefined }
+                ];
+                setBusinessDays(updated);
+                mutateInit();
+                mutateHistory();
+
+                if (status === 'ABSENCE') {
+                    toast.success(`🔴 ${format(parseISO(targetDateStr), 'MMMM dd')} marked as ABSENCE (Closed).`);
+                    setAbsenceModalOpen(false);
+                    setAbsenceReason('');
+                    // Advance active date to next working date if we were on this date
+                    if (format(date, 'yyyy-MM-dd') === targetDateStr) {
+                        const nextWorking = getNextWorkingDate(latestSavedDateStr, updated);
+                        setDate(nextWorking);
+                    }
+                } else {
+                    toast.success(`🟢 ${format(parseISO(targetDateStr), 'MMMM dd')} marked as WORKED (Open).`);
+                }
+            } else {
+                toast.error(data.error || 'Failed to update workday status');
+            }
+        } catch (e: any) {
+            toast.error('Network error while saving workday status');
+        } finally {
+            setIsSavingWorkdayStatus(false);
+        }
+    };
+
     const handleDateChange = (newDate: Date) => {
         // Mode bypass
         if (editingDate) {
@@ -580,17 +644,29 @@ function DailyBookPageInner() {
         const selected = new Date(newDate);
         selected.setHours(0, 0, 0, 0);
 
-        if (selected > today) {
-            toast.error("You cannot enter a date in the future!");
+        const absenceDatesSet = new Set(
+            (businessDays || [])
+                .filter((b: any) => b.status === 'ABSENCE')
+                .map((b: any) => String(b.date).substring(0, 10))
+        );
+
+        const selectedStr = format(selected, 'yyyy-MM-dd');
+        if (absenceDatesSet.has(selectedStr)) {
+            toast.error(`${format(selected, 'MMMM dd, yyyy')} was marked as ABSENCE (Closed). You can reopen it or enter on the next working day.`);
             return;
         }
 
         if (latestSavedDateStr) {
-            const nextRequired = addDays(parseISO(latestSavedDateStr), 1);
+            const nextRequired = getNextWorkingDate(latestSavedDateStr, businessDays || []);
             if (!isSameDay(newDate, nextRequired)) {
-                toast.error(`Real-life sequence required! The next date must be ${format(nextRequired, 'MMMM dd, yyyy')} because ${format(parseISO(latestSavedDateStr), 'MMMM dd')} was the last entry.`);
+                toast.error(`Real-life sequence required! The next working date is ${format(nextRequired, 'MMMM dd, yyyy')} because ${format(parseISO(latestSavedDateStr), 'MMMM dd')} was the last entry.`);
                 return;
             }
+        }
+
+        if (selected > today) {
+            toast.error("You cannot enter a date in the future!");
+            return;
         }
 
         setDate(newDate);
@@ -874,7 +950,7 @@ function DailyBookPageInner() {
                     {/* NORMAL CARD (shown when not fullscreen) */}
                     {!isFullScreen && (
                         <Card className="glass-card">
-                            <CardHeader className="border-b border-border bg-muted/20">
+                            <CardHeader className="border-b border-border bg-muted/20 pb-3">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
                                         <CardTitle className="text-foreground flex items-center gap-2">
@@ -903,6 +979,75 @@ function DailyBookPageInner() {
                                         </Button>
                                     </div>
                                 </div>
+
+                                {/* Workday / Absence Control — Super Admin Only */}
+                                {isSuperAdmin && !editingDate && (() => {
+                                    const activeDateStr = format(date, 'yyyy-MM-dd');
+                                    const activeBday = businessDays.find(b => b.date.substring(0, 10) === activeDateStr);
+                                    const isAbsence = activeBday?.status === 'ABSENCE';
+                                    return (
+                                        <div className="mt-3 p-2.5 rounded-xl border border-border/60 bg-background/50 backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <div className={`p-1.5 rounded-lg ${isAbsence ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>
+                                                    {isAbsence ? <CalendarX className="w-4 h-4" /> : <CalendarCheck className="w-4 h-4" />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-foreground">
+                                                            Workday:
+                                                        </span>
+                                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                                                            isAbsence
+                                                                ? 'bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400'
+                                                                : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
+                                                        }`}>
+                                                            {isAbsence ? '🔴 Absence / Closed' : '🟢 Worked'}
+                                                        </span>
+                                                    </div>
+                                                    {activeBday?.reason && (
+                                                        <p className="text-[10px] text-muted-foreground truncate max-w-xs mt-0.5">
+                                                            Reason: {activeBday.reason}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <Button
+                                                    size="sm"
+                                                    type="button"
+                                                    variant={!isAbsence ? 'default' : 'outline'}
+                                                    disabled={isSavingWorkdayStatus}
+                                                    onClick={() => handleSetWorkdayStatus(activeDateStr, 'WORKED')}
+                                                    className={`h-7 px-2.5 text-[11px] font-bold rounded-lg transition-all ${
+                                                        !isAbsence
+                                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                                                            : 'text-muted-foreground border-border/60 hover:text-foreground'
+                                                    }`}
+                                                >
+                                                    ON — Worked
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    type="button"
+                                                    variant={isAbsence ? 'destructive' : 'outline'}
+                                                    disabled={isSavingWorkdayStatus}
+                                                    onClick={() => {
+                                                        setAbsenceReason(activeBday?.reason || '');
+                                                        setAbsenceModalOpen(true);
+                                                    }}
+                                                    className={`h-7 px-2.5 text-[11px] font-bold rounded-lg transition-all ${
+                                                        isAbsence
+                                                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
+                                                            : 'text-rose-600 dark:text-rose-400 border-rose-500/25 bg-rose-500/5 hover:bg-rose-500/15'
+                                                    }`}
+                                                >
+                                                    OFF — Absence
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </CardHeader>
                             <CardContent className="p-0">
                                 {/* Search bar */}
@@ -1349,6 +1494,44 @@ function DailyBookPageInner() {
                         </DialogContent>
                     </Dialog>
 
+                    {/* ── Absence Confirmation Modal (Super Admin Only) ── */}
+                    <Dialog open={absenceModalOpen} onOpenChange={setAbsenceModalOpen}>
+                        <DialogContent className="max-w-sm rounded-2xl">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                                    <CalendarX className="w-5 h-5" />
+                                    Mark {format(date, 'MMMM dd, yyyy')} as Absence
+                                </DialogTitle>
+                                <DialogDescription className="text-xs leading-relaxed">
+                                    This marks the day as <strong>CLOSED / BAAQATAY</strong>. The Daily Book will automatically move to the next working day without affecting existing Maqal pairs or customer balances.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-3 pt-2">
+                                <Input
+                                    placeholder="Optional reason (e.g. Business closed, Holiday)"
+                                    value={absenceReason}
+                                    onChange={e => setAbsenceReason(e.target.value)}
+                                    className="text-xs rounded-xl"
+                                    autoFocus
+                                />
+                                <div className="flex gap-2">
+                                    <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setAbsenceModalOpen(false)}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        variant="destructive"
+                                        className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                                        disabled={isSavingWorkdayStatus}
+                                        onClick={() => handleSetWorkdayStatus(format(date, 'yyyy-MM-dd'), 'ABSENCE', absenceReason)}
+                                    >
+                                        {isSavingWorkdayStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                                        Confirm Absence
+                                    </Button>
+                                </div>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+
                     {/* ── Bulk Delete Confirmation Dialog ── */}
                     <Dialog open={bulkDeleteModalOpen} onOpenChange={(o) => { if (!o) setBulkDeleteModalOpen(false); }}>
                         <DialogContent className="max-w-sm">
@@ -1559,13 +1742,26 @@ function DailyBookPageInner() {
                                                                 </span>
                                                             </div>
 
-                                                            {/* ALL STATS IN A SINGLE KINETIC LINE */}
-                                                            <div className="relative w-full h-[32px] mt-2 overflow-hidden bg-muted/10 rounded border border-border/20">
-                                                                <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic w-max px-2">
-                                                                    {/* 1. KG */}
-                                                                    <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[10px] md:text-xs">
-                                                                        ⚡ {formatKg(entry.totalKg)} KG
+                                                            {/* STATS OR ABSENCE BADGE */}
+                                                            {entry.workday_status === 'ABSENCE' ? (
+                                                                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                                                    <span className="text-[10px] md:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-md bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 inline-flex items-center gap-1.5 shadow-2xs">
+                                                                        🔴 BAAQATAY / ABSENCE (Closed)
                                                                     </span>
+                                                                    {entry.workday_reason && (
+                                                                        <span className="text-[10px] md:text-xs text-muted-foreground italic truncate max-w-sm">
+                                                                            — {entry.workday_reason}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                /* ALL STATS IN A SINGLE KINETIC LINE */
+                                                                <div className="relative w-full h-[32px] mt-2 overflow-hidden bg-muted/10 rounded border border-border/20">
+                                                                    <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic w-max px-2">
+                                                                        {/* 1. KG */}
+                                                                        <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[10px] md:text-xs">
+                                                                            ⚡ {formatKg(entry.totalKg)} KG
+                                                                        </span>
 
                                                                     {/* 2. VIP */}
                                                                     {(() => {
@@ -1636,8 +1832,9 @@ function DailyBookPageInner() {
                                                                     })() : null}
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        )}
                                                     </div>
+                                                </div>
                                                     <div className="flex items-center gap-2 mt-3 md:mt-0 border-t border-border/50 pt-3 md:border-0 md:pt-0" onClick={(e) => e.stopPropagation()}>
                                                         {isSuperAdmin && (
                                                             <>
