@@ -173,7 +173,7 @@ function DailyBookPageInner() {
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
     const { session } = useSession();
-    const isSuperAdmin = session?.role === 'SUPER_ADMIN';
+    const isSuperAdmin = session?.role === 'SUPER_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
     // ⚡ SWR Hooks for Lightning Fast Caching
     const { data: initData, isError: initError, mutate: mutateInit } = useDailyBookInit();
@@ -986,9 +986,9 @@ function DailyBookPageInner() {
                                     const activeBday = businessDays.find(b => b.date.substring(0, 10) === activeDateStr);
                                     const isAbsence = activeBday?.status === 'ABSENCE';
                                     return (
-                                        <div className="mt-3 p-2.5 rounded-xl border border-border/60 bg-background/50 backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5">
+                                        <div className="mt-3 p-2.5 rounded-xl border border-border/60 bg-background/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5 relative z-30 pointer-events-auto">
                                             <div className="flex items-center gap-2 min-w-0">
-                                                <div className={`p-1.5 rounded-lg ${isAbsence ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>
+                                                <div className={`p-1.5 rounded-lg shrink-0 ${isAbsence ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>
                                                     {isAbsence ? <CalendarX className="w-4 h-4" /> : <CalendarCheck className="w-4 h-4" />}
                                                 </div>
                                                 <div className="min-w-0">
@@ -1012,38 +1012,42 @@ function DailyBookPageInner() {
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                <Button
-                                                    size="sm"
+                                            <div className="flex items-center gap-1.5 shrink-0 relative z-30 pointer-events-auto">
+                                                <button
+                                                    id="workday-btn-worked"
                                                     type="button"
-                                                    variant={!isAbsence ? 'default' : 'outline'}
                                                     disabled={isSavingWorkdayStatus}
-                                                    onClick={() => handleSetWorkdayStatus(activeDateStr, 'WORKED')}
-                                                    className={`h-7 px-2.5 text-[11px] font-bold rounded-lg transition-all ${
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        handleSetWorkdayStatus(activeDateStr, 'WORKED');
+                                                    }}
+                                                    className={`cursor-pointer select-none h-7 px-3 text-[11px] font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1 ${
                                                         !isAbsence
-                                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                                                            : 'text-muted-foreground border-border/60 hover:text-foreground'
+                                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs ring-1 ring-emerald-500/50'
+                                                            : 'text-muted-foreground bg-muted/40 hover:bg-muted/80 border border-border/60 hover:text-foreground'
                                                     }`}
                                                 >
                                                     ON — Worked
-                                                </Button>
-                                                <Button
-                                                    size="sm"
+                                                </button>
+                                                <button
+                                                    id="workday-btn-absence"
                                                     type="button"
-                                                    variant={isAbsence ? 'destructive' : 'outline'}
                                                     disabled={isSavingWorkdayStatus}
-                                                    onClick={() => {
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
                                                         setAbsenceReason(activeBday?.reason || '');
                                                         setAbsenceModalOpen(true);
                                                     }}
-                                                    className={`h-7 px-2.5 text-[11px] font-bold rounded-lg transition-all ${
+                                                    className={`cursor-pointer select-none h-7 px-3 text-[11px] font-bold rounded-lg transition-all active:scale-95 flex items-center gap-1 ${
                                                         isAbsence
-                                                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs'
-                                                            : 'text-rose-600 dark:text-rose-400 border-rose-500/25 bg-rose-500/5 hover:bg-rose-500/15'
+                                                            ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs ring-1 ring-rose-500/50'
+                                                            : 'text-rose-600 dark:text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20'
                                                     }`}
                                                 >
                                                     OFF — Absence
-                                                </Button>
+                                                </button>
                                             </div>
                                         </div>
                                     );
@@ -1515,14 +1519,30 @@ function DailyBookPageInner() {
                                     autoFocus
                                 />
                                 <div className="flex gap-2">
-                                    <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setAbsenceModalOpen(false)}>
+                                    <Button
+                                        id="absence-cancel-btn"
+                                        type="button"
+                                        variant="outline"
+                                        className="flex-1 rounded-xl cursor-pointer"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setAbsenceModalOpen(false);
+                                        }}
+                                    >
                                         Cancel
                                     </Button>
                                     <Button
+                                        id="absence-confirm-btn"
+                                        type="button"
                                         variant="destructive"
-                                        className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                                        className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
                                         disabled={isSavingWorkdayStatus}
-                                        onClick={() => handleSetWorkdayStatus(format(date, 'yyyy-MM-dd'), 'ABSENCE', absenceReason)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleSetWorkdayStatus(format(date, 'yyyy-MM-dd'), 'ABSENCE', absenceReason);
+                                        }}
                                     >
                                         {isSavingWorkdayStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
                                         Confirm Absence
