@@ -4,7 +4,7 @@ import { logAudit } from '@/lib/audit';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 
 const settingSchema = z.object({
     key: z.string().min(1, 'Key is required'),
@@ -69,6 +69,7 @@ export const POST = trackApiRoute('/api/settings', async (request: Request) => {
         await logAudit(request, 'UPDATE_SETTING', `Updated setting ${key} to ${value}`);
         
         revalidatePath('/api/settings');
+        revalidatePath('/api/daily-book-init');
 
         return NextResponse.json({ success: true });
     } catch (error: any) {

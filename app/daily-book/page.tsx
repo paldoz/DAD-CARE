@@ -224,6 +224,16 @@ function DailyBookPageInner() {
         }
     }, [initData, editingDate, isInitialized]);
 
+    // Reactive sync for VIP Caadi config whenever initData updates or revalidates
+    useEffect(() => {
+        if (initData && Array.isArray(initData.vipCaadiConfig)) {
+            setVipCaadiConfig(initData.vipCaadiConfig);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(initData.vipCaadiConfig));
+            }
+        }
+    }, [initData?.vipCaadiConfig]);
+
     // Sync SWR Book Data to Local Entries — only while in edit mode to avoid overwriting optimistic UI
     useEffect(() => {
         if (!editingDate && viewMode !== 'edit') return; // only sync when actively editing
@@ -624,7 +634,8 @@ function DailyBookPageInner() {
     const activeVipCaadiCustMap = useMemo(() => {
         const idToCategory = new Map<string, { label: string; price?: string }>();
         for (const cat of vipCaadiConfig) {
-            if (!cat.date || cat.date === activeDateStr) {
+            const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+            if (!catDate || catDate === activeDateStr) {
                 for (const custId of cat.customerIds) {
                     if (!idToCategory.has(custId)) {
                         idToCategory.set(custId, {
@@ -1659,7 +1670,8 @@ function DailyBookPageInner() {
                                                                         const entryDateStr = entry.date.substring(0, 10);
                                                                         const idToCategory = new Map<string, { label: string; price?: string }>();
                                                                         for (const cat of vipCaadiConfig) {
-                                                                            if (!cat.date || cat.date === entryDateStr) {
+                                                                            const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+                                                                            if (!catDate || catDate === entryDateStr) {
                                                                                 for (const custId of cat.customerIds) {
                                                                                     if (!idToCategory.has(custId)) {
                                                                                         idToCategory.set(custId, {
