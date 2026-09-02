@@ -7,59 +7,39 @@ import { unstable_cache } from 'next/cache';
 const getCachedHistoryFull = unstable_cache(
     async () => {
         const { rows } = await pool.query(`
-            WITH combined AS (
-                SELECT 
-                    db.id::text as id, 
-                    db.date,
-                    COALESCE(bd.status, 'WORKED') as workday_status,
-                    bd.reason as workday_reason,
-                    COALESCE(
-                        json_agg(
-                            json_build_object(
-                                'id', dbi.id,
-                                'kg', dbi.kg,
-                                'present', dbi.present,
-                                'note', dbi.note,
-                                'customer_id', dbi.customer_id,
-                                'customer',    json_build_object(
-                                    'id', c.id,
-                                    'name', c.name,
-                                    'customer_code', c.customer_code,
-                                    'gender', c.gender
-                                )
-                            ) ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC
-                        ) FILTER (WHERE dbi.id IS NOT NULL), 
-                        '[]'::json
-                    ) as items
-                FROM "DailyBook" db
-                LEFT JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
-                LEFT JOIN "Customer" c ON c.id = dbi.customer_id
-                LEFT JOIN "BusinessDay" bd ON bd.date = db.date
-                WHERE db.deleted_at IS NULL
-                GROUP BY db.id, db.date, bd.status, bd.reason
-
-                UNION ALL
-
-                SELECT
-                    'absence-' || bd.id::text as id,
-                    bd.date,
-                    'ABSENCE' as workday_status,
-                    bd.reason as workday_reason,
-                    '[]'::json as items
-                FROM "BusinessDay" bd
-                WHERE bd.status = 'ABSENCE'
-                AND NOT EXISTS (
-                    SELECT 1 FROM "DailyBook" db WHERE db.date = bd.date AND db.deleted_at IS NULL
-                )
-            )
-            SELECT * FROM combined
-            ORDER BY date DESC
+            SELECT 
+                db.id, 
+                db.date,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'id', dbi.id,
+                            'kg', dbi.kg,
+                            'present', dbi.present,
+                            'note', dbi.note,
+                            'customer_id', dbi.customer_id,
+                            'customer',    json_build_object(
+                                'id', c.id,
+                                'name', c.name,
+                                'customer_code', c.customer_code,
+                                'gender', c.gender
+                            )
+                        ) ORDER BY CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC
+                    ) FILTER (WHERE dbi.id IS NOT NULL), 
+                    '[]'::json
+                ) as items
+            FROM "DailyBook" db
+            LEFT JOIN "DailyBookItem" dbi ON dbi.daily_book_id = db.id AND dbi.deleted_at IS NULL
+            LEFT JOIN "Customer" c ON c.id = dbi.customer_id
+            WHERE db.deleted_at IS NULL
+            GROUP BY db.id, db.date
+            ORDER BY db.date DESC
             LIMIT 15
         `);
         return rows;
     },
     ['daily-book-history-full-cache'],
-    { revalidate: 120, tags: ['daily-book-history', 'business-days'] }
+    { revalidate: 120, tags: ['daily-book-history'] }
 );
 
 export const GET = trackApiRoute('/api/daily-book-history-full', async (request: Request) => {

@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 import { useMemo } from 'react';
-import { Customer, SavedEntry, DailyBookItem, VipCaadiCategory } from '@/types';
+import { Customer, SavedEntry, DailyBookItem } from '@/types';
 
 // Generic fetcher — silently returns null on 401/403 (session expired),
 // throws on other errors so SWR can retry them once.
@@ -44,7 +44,6 @@ export interface DailyBookInitData {
     latestDate: string | null;
     historyCount?: number;
     businessDays?: Array<{ date: string; status: string; reason?: string | null }>;
-    vipCaadiConfig?: VipCaadiCategory[];
 }
 
 // Hook for the initial Daily Book load (Customers + History)

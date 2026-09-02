@@ -54,6 +54,8 @@ import {
     Zap,
     Crown,
     CalendarIcon,
+    Sparkles,
+    X,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
@@ -67,6 +69,7 @@ import {
     PopoverTrigger,
 } from '@/components/ui/popover';
 import { CheckCircle2, Circle } from 'lucide-react';
+import { VipCaadiCategory } from '@/types';
 
 interface PerUserMaqal {
     user_id: string;
@@ -108,6 +111,13 @@ export default function SettingsPage() {
             if (cached) { try { return JSON.parse(cached); } catch(e) {} }
         }
         return {};
+    });
+    const [vipCaadiConfig, setVipCaadiConfig] = useState<VipCaadiCategory[]>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem('dadwork_vip_caadi_config');
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+        return [];
     });
     const [isDatePricingOpen, setIsDatePricingOpen] = useState(false);
     const [isOverridesOpen, setIsOverridesOpen] = useState(false);
@@ -475,6 +485,16 @@ export default function SettingsPage() {
                         localStorage.setItem('dadwork_date_specific_overrides', JSON.stringify(parsed));
                     } catch(e) {
                         console.error('Failed to parse date overrides:', e);
+                    }
+                }
+                if (data && data.dadwork_vip_caadi_config) {
+                    try {
+                        const rawVal = data.dadwork_vip_caadi_config;
+                        const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+                        setVipCaadiConfig(parsed);
+                        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(parsed));
+                    } catch(e) {
+                        console.error('Failed to parse vip caadi config:', e);
                     }
                 }
             } catch (e) {
@@ -944,6 +964,111 @@ export default function SettingsPage() {
             }
         }
         handleSaveDateOverrides(updated, `delete-override-${date}-${customerId}`);
+    };
+
+    const handleSaveVipCaadiConfig = async (newConfig: VipCaadiCategory[], loadingKey: string) => {
+        setDateActionLoading(loadingKey);
+        try {
+            const token = localStorage.getItem('dadwork_session_token') || '';
+            const res = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-session-token': token
+                },
+                body: JSON.stringify({ key: 'dadwork_vip_caadi_config', value: JSON.stringify(newConfig) })
+            });
+            if (res.ok) {
+                localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(newConfig));
+                setVipCaadiConfig(newConfig);
+                toast.success('VIP Caadi configuration updated');
+                setDateActionLoading(null);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(`Failed to save VIP Caadi: ${err.error || res.statusText}`);
+                setDateActionLoading(null);
+            }
+        } catch (e) {
+            toast.error('Network error');
+            setDateActionLoading(null);
+        }
+    };
+
+    const handleAddVipCaadiGroup = () => {
+        if (newOverride.customerIds.length === 0) {
+            toast.info('Please select at least one customer first to add VIP');
+            return;
+        }
+        const initialPrices: Record<string, string> = {};
+        if (newOverride.price) {
+            const numericPrice = parseFloat(newOverride.price);
+            if (!isNaN(numericPrice) && numericPrice > 0 && numericPrice <= 100) {
+                newOverride.customerIds.forEach(id => {
+                    initialPrices[id] = newOverride.price;
+                });
+            }
+        }
+
+        const newGroup: VipCaadiCategory = {
+            id: `vip-caadi-${Date.now()}`,
+            label: 'VIP Caadi',
+            customerIds: [...newOverride.customerIds],
+            customerPrices: initialPrices,
+            date: newOverride.date || undefined,
+            created_at: new Date().toISOString()
+        };
+
+        const updated = [...vipCaadiConfig, newGroup];
+        handleSaveVipCaadiConfig(updated, 'add-vip-caadi');
+        setNewOverride(prev => ({ ...prev, customerIds: [], price: '' }));
+        setIsCustomerSelectOpen(false);
+    };
+
+    const handleUpdateVipCaadiLabel = (categoryId: string, newLabel: string) => {
+        const updated = vipCaadiConfig.map(cat => 
+            cat.id === categoryId ? { ...cat, label: newLabel } : cat
+        );
+        setVipCaadiConfig(updated);
+        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(updated));
+    };
+
+    const handleSaveVipCaadiLabel = (categoryId: string) => {
+        handleSaveVipCaadiConfig(vipCaadiConfig, `save-label-${categoryId}`);
+    };
+
+    const handleUpdateVipCaadiCustomerPrice = (categoryId: string, customerId: string, price: string) => {
+        const updated = vipCaadiConfig.map(cat => {
+            if (cat.id !== categoryId) return cat;
+            return {
+                ...cat,
+                customerPrices: {
+                    ...cat.customerPrices,
+                    [customerId]: price
+                }
+            };
+        });
+        setVipCaadiConfig(updated);
+        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(updated));
+    };
+
+    const handleRemoveVipCaadiCustomer = (categoryId: string, customerId: string) => {
+        const updated = vipCaadiConfig.map(cat => {
+            if (cat.id !== categoryId) return cat;
+            const newCustIds = cat.customerIds.filter(id => id !== customerId);
+            const newPrices = { ...cat.customerPrices };
+            delete newPrices[customerId];
+            return {
+                ...cat,
+                customerIds: newCustIds,
+                customerPrices: newPrices
+            };
+        }).filter(cat => cat.customerIds.length > 0);
+        handleSaveVipCaadiConfig(updated, `remove-cust-${categoryId}-${customerId}`);
+    };
+
+    const handleDeleteVipCaadiCategory = (categoryId: string) => {
+        const updated = vipCaadiConfig.filter(cat => cat.id !== categoryId);
+        handleSaveVipCaadiConfig(updated, `delete-cat-${categoryId}`);
     };
 
     // Dynamically discover all unique types from the relevant Daily Book items on the selected date
@@ -2129,10 +2254,125 @@ export default function SettingsPage() {
                                                     onClick={handleAddOverride}
                                                     disabled={dateActionLoading !== null}
                                                     className="h-10 px-3.5 rounded-xl bg-teal-600/90 hover:bg-teal-600 dark:bg-teal-500/80 dark:hover:bg-teal-500 text-white shadow-md shadow-teal-500/15 active:scale-95 transition-all shrink-0 border border-teal-400/30"
+                                                    title="Add Date Price Override"
                                                 >
                                                     {dateActionLoading === 'add-override' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                                 </Button>
+                                                <Button 
+                                                    type="button"
+                                                    onClick={handleAddVipCaadiGroup}
+                                                    disabled={dateActionLoading !== null || newOverride.customerIds.length === 0}
+                                                    title="Add selected customers to VIP Caadi"
+                                                    className="h-10 px-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 font-bold text-xs border border-amber-500/30 active:scale-95 transition-all shrink-0 flex items-center gap-1 shadow-xs"
+                                                >
+                                                    {dateActionLoading === 'add-vip-caadi' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                                                    <span>+ Add VIP</span>
+                                                </Button>
                                             </div>
+
+                                            {/* ── VIP Caadi Categories Section ── */}
+                                            {vipCaadiConfig.length > 0 && (
+                                                <div className="mb-4 space-y-2.5">
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <span className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                                            <Sparkles className="w-3.5 h-3.5" /> VIP Caadi Categories ({vipCaadiConfig.length})
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="space-y-2.5">
+                                                        {vipCaadiConfig.map((cat) => (
+                                                            <div 
+                                                                key={cat.id} 
+                                                                className="overflow-hidden rounded-2xl border border-amber-500/25 dark:border-amber-500/20 bg-amber-500/[0.04] dark:bg-amber-950/[0.15] backdrop-blur-xl p-3 space-y-2.5"
+                                                            >
+                                                                {/* Top row: Editable Label, Scope/Date, Customer count, Actions */}
+                                                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/15 pb-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <Input
+                                                                            value={cat.label}
+                                                                            onChange={(e) => handleUpdateVipCaadiLabel(cat.id, e.target.value)}
+                                                                            placeholder="VIP Caadi"
+                                                                            className="h-7 w-36 text-xs font-black uppercase text-amber-700 dark:text-amber-400 bg-white/20 dark:bg-black/30 border-amber-500/30 rounded-lg px-2 shadow-xs focus:ring-1 focus:ring-amber-500"
+                                                                        />
+                                                                        {cat.date && (
+                                                                            <span className="text-[10px] font-bold text-muted-foreground bg-white/10 dark:bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">
+                                                                                📅 {cat.date}
+                                                                            </span>
+                                                                        )}
+                                                                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                                                                            {cat.customerIds.length} customer{cat.customerIds.length > 1 ? 's' : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="outline"
+                                                                            onClick={() => handleSaveVipCaadiLabel(cat.id)}
+                                                                            disabled={dateActionLoading !== null}
+                                                                            className="h-7 px-2 text-[10px] font-bold border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 rounded-lg"
+                                                                        >
+                                                                            {dateActionLoading === `save-label-${cat.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                                                                        </Button>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant="ghost"
+                                                                            onClick={() => handleDeleteVipCaadiCategory(cat.id)}
+                                                                            disabled={dateActionLoading !== null}
+                                                                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                                                            title="Delete Category"
+                                                                        >
+                                                                            {dateActionLoading === `delete-cat-${cat.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Customer Items inside this category */}
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5 custom-scrollbar">
+                                                                    {cat.customerIds.map(custId => {
+                                                                        const cust = allCustomers.find(c => c.id === custId);
+                                                                        const assignedPrice = cat.customerPrices[custId] ?? '';
+                                                                        return (
+                                                                            <div 
+                                                                                key={custId} 
+                                                                                className="flex items-center justify-between p-1.5 rounded-xl bg-white/[0.05] dark:bg-black/20 border border-amber-500/10 hover:border-amber-500/25 transition-colors gap-1.5"
+                                                                            >
+                                                                                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                                                                    <span className="text-[9px] font-bold text-muted-foreground/80 bg-white/10 dark:bg-white/5 px-1 py-0.5 rounded shrink-0">
+                                                                                        #{cust?.customer_code || '?'}
+                                                                                    </span>
+                                                                                    <span className="text-[11px] font-semibold text-foreground truncate">
+                                                                                        {cust?.name || 'Unknown'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                                    <div className="relative w-16">
+                                                                                        <div className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[9px]">$</div>
+                                                                                        <Input
+                                                                                            type="number"
+                                                                                            value={assignedPrice}
+                                                                                            onChange={(e) => handleUpdateVipCaadiCustomerPrice(cat.id, custId, e.target.value)}
+                                                                                            placeholder="Price"
+                                                                                            className="pl-3.5 h-6 w-full text-[10px] font-bold bg-white/20 dark:bg-black/40 border-amber-500/20 rounded focus:border-amber-500/50 focus:ring-0"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => handleRemoveVipCaadiCustomer(cat.id, custId)}
+                                                                                        className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                                                                        title="Remove Customer"
+                                                                                    >
+                                                                                        <X className="w-3 h-3" />
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Type Filter Panel — universal glass, works for VIP/Heshiish/Jaadkidambe/any label */}
                                             {typeFilter && (

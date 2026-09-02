@@ -32,39 +32,21 @@ const getDailyBookInit = unstable_cache(
         `);
         const historyCount = parseInt(countRow[0].total, 10) || 0;
 
-        // Fetch configured BusinessDays (e.g. ABSENCE days) — RESTORED, do not remove
+        // Fetch configured BusinessDays (e.g. ABSENCE days)
         const { rows: bDays } = await pool.query(`
           SELECT date::text as date, status, reason FROM "BusinessDay"
           ORDER BY date DESC
         `);
-
-        // Get VIP Caadi config from Settings (additive — does not replace businessDays)
-        let vipCaadiConfig: any[] = [];
-        try {
-            const { rows: vipSetting } = await pool.query(`
-              SELECT value FROM "Settings"
-              WHERE key = 'dadwork_vip_caadi_config'
-              LIMIT 1
-            `);
-            if (vipSetting.length > 0 && vipSetting[0].value) {
-                vipCaadiConfig = typeof vipSetting[0].value === 'string'
-                    ? JSON.parse(vipSetting[0].value)
-                    : vipSetting[0].value;
-            }
-        } catch (e) {
-            // If Settings table doesn't exist yet or query fails, default to empty array
-        }
 
         return {
           customers,
           latestDate,
           historyCount,
           businessDays: bDays,
-          vipCaadiConfig,
         };
     },
     ['daily-book-init-cache'],
-    { revalidate: 3600, tags: ['daily-book-init', 'customers', 'business-days', 'settings'] }
+    { revalidate: 3600, tags: ['daily-book-init', 'customers', 'business-days'] }
 );
 
 export const GET = trackApiRoute('/api/daily-book-init', async (request: Request) => {

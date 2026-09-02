@@ -58,6 +58,15 @@ export interface CustomerSummary {
     currentBalance: number;
 }
 
+export interface VipCaadiCategory {
+    id: string;
+    label: string;
+    customerIds: string[];
+    customerPrices: Record<string, string>;
+    date?: string;
+    created_at?: string;
+}
+
 export interface DailyBookRecord {
     date: string;
     kg: number;

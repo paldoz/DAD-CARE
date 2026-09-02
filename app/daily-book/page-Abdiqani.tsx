@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { mutate as swrMutate } from 'swr';
 import { format, addDays, parseISO, isSameDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AddCustomerDialog } from '@/components/add-customer-dialog';
-import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check, Minus, Sparkles } from 'lucide-react';
+import { CalendarIcon, Save, Plus, FileText, Edit, ChevronDown, ChevronRight, Search, BookOpen, Trash2, User, Loader2, Package, MessageSquare, Maximize2, Minimize2, Download, ShieldAlert, X, Scale, ArrowRightLeft, Star, Check, Minus, CalendarCheck, CalendarX } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { SecurityVerificationDialog } from '@/components/security-verification-dialog';
@@ -21,7 +21,6 @@ import { useDailyBookInit, useDailyBookDate, useLedgerStatusForDate, useDailyBoo
 import { DailyBookErrorBoundary } from './error-boundary';
 import { useSession } from '@/hooks/useSession';
 import { AnimatedBackground } from '@/components/animated-background';
-import { VipCaadiCategory } from '@/types';
 
 interface Customer {
     id: string;
@@ -55,6 +54,8 @@ interface DailyBookItem {
 interface SavedEntry {
     date: string;
     totalKg: number;
+    workday_status?: string;
+    workday_reason?: string;
     items: DailyBookItem[];
 }
 
@@ -99,6 +100,18 @@ function getFormattedNoteBadges(note: string | undefined): { text: string, isVip
 }
 
 
+function getNextWorkingDate(lastSavedDateStr: string | null, bDays: Array<{ date: string; status: string }>): Date {
+    if (!lastSavedDateStr) return new Date();
+    const absenceSet = new Set(
+        (bDays || []).filter(b => b.status === 'ABSENCE').map(b => String(b.date).substring(0, 10))
+    );
+    let current = addDays(parseISO(lastSavedDateStr), 1);
+    while (absenceSet.has(format(current, 'yyyy-MM-dd'))) {
+        current = addDays(current, 1);
+    }
+    return current;
+}
+
 function DailyBookPageInner() {
     const [date, setDate] = useState<Date>(new Date());
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -128,19 +141,7 @@ function DailyBookPageInner() {
     const [openNoteForCustomerId, setOpenNoteForCustomerId] = useState<string | null>(null);
     const [absentPopupData, setAbsentPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
     const [vipPopupData, setVipPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
-    const [vipCaadiPopupData, setVipCaadiPopupData] = useState<{ 
-        date: string; 
-        items: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }>; 
-        totalKg: number;
-    } | null>(null);
     const [kabarkaPopupData, setKabarkaPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
-    const [vipCaadiConfig, setVipCaadiConfig] = useState<VipCaadiCategory[]>(() => {
-        if (typeof window !== 'undefined') {
-            const cached = localStorage.getItem('dadwork_vip_caadi_config');
-            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
-        }
-        return [];
-    });
     const [compareModalOpen, setCompareModalOpen] = useState(false);
     const [compareDate1, setCompareDate1] = useState<string | null>(null);
     const [compareDate2, setCompareDate2] = useState<string | null>(null);
@@ -154,6 +155,12 @@ function DailyBookPageInner() {
     const [reorderTargetId, setReorderTargetId] = useState<string>('');
     const [isReordering, setIsReordering] = useState(false);
 
+    // Business Day (Workday / Absence) State
+    const [businessDays, setBusinessDays] = useState<Array<{ date: string; status: string; reason?: string | null }>>([]);
+    const [absenceModalOpen, setAbsenceModalOpen] = useState(false);
+    const [absenceReason, setAbsenceReason] = useState('');
+    const [isSavingWorkdayStatus, setIsSavingWorkdayStatus] = useState(false);
+
     // Debounce hook for search input (300 ms)
     const useDebounce = <T,>(value: T, delay: number): T => {
         const [debounced, setDebounced] = useState(value);
@@ -166,7 +173,7 @@ function DailyBookPageInner() {
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
     const { session } = useSession();
-    const isSuperAdmin = session?.role === 'SUPER_ADMIN';
+    const isSuperAdmin = session?.role === 'SUPER_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
     // ⚡ SWR Hooks for Lightning Fast Caching
     const { data: initData, isError: initError, mutate: mutateInit } = useDailyBookInit();
@@ -194,6 +201,9 @@ function DailyBookPageInner() {
     useEffect(() => {
         if (initData && typeof initData === 'object' && initData.customers) {
             setCustomers(initData.customers);
+            if (Array.isArray(initData.businessDays)) {
+                setBusinessDays(initData.businessDays);
+            }
 
             if (!isInitialized) {
                 // Only load history from initData ONCE on initial load.
@@ -205,13 +215,8 @@ function DailyBookPageInner() {
                 if (initData.latestDate) {
                     setLatestSavedDateStr(initData.latestDate);
                     if (!editingDate) {
-                        setDate(addDays(parseISO(initData.latestDate), 1));
-                    }
-                }
-                if (initData.vipCaadiConfig && Array.isArray(initData.vipCaadiConfig)) {
-                    setVipCaadiConfig(initData.vipCaadiConfig);
-                    if (typeof window !== 'undefined') {
-                        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(initData.vipCaadiConfig));
+                        const nextWorking = getNextWorkingDate(initData.latestDate, initData.businessDays || []);
+                        setDate(nextWorking);
                     }
                 }
                 setIsInitialized(true);
@@ -586,6 +591,46 @@ function DailyBookPageInner() {
         }
     };
 
+    const handleSetWorkdayStatus = async (targetDateStr: string, status: 'WORKED' | 'ABSENCE', reason?: string) => {
+        setIsSavingWorkdayStatus(true);
+        try {
+            const res = await fetch('/api/business-days', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: targetDateStr, status, reason })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const updated = [
+                    ...businessDays.filter(b => b.date.substring(0, 10) !== targetDateStr),
+                    { date: targetDateStr, status, reason: reason || undefined }
+                ];
+                setBusinessDays(updated);
+                mutateInit();
+                mutateHistory();
+
+                if (status === 'ABSENCE') {
+                    toast.success(`🔴 ${format(parseISO(targetDateStr), 'MMMM dd')} marked as ABSENCE (Closed).`);
+                    setAbsenceModalOpen(false);
+                    setAbsenceReason('');
+                    // Advance active date to next working date if we were on this date
+                    if (format(date, 'yyyy-MM-dd') === targetDateStr) {
+                        const nextWorking = getNextWorkingDate(latestSavedDateStr, updated);
+                        setDate(nextWorking);
+                    }
+                } else {
+                    toast.success(`🟢 ${format(parseISO(targetDateStr), 'MMMM dd')} marked as WORKED (Open).`);
+                }
+            } else {
+                toast.error(data.error || 'Failed to update workday status');
+            }
+        } catch (e: any) {
+            toast.error('Network error while saving workday status');
+        } finally {
+            setIsSavingWorkdayStatus(false);
+        }
+    };
+
     const handleDateChange = (newDate: Date) => {
         // Mode bypass
         if (editingDate) {
@@ -599,69 +644,37 @@ function DailyBookPageInner() {
         const selected = new Date(newDate);
         selected.setHours(0, 0, 0, 0);
 
-        if (selected > today) {
-            toast.error("You cannot enter a date in the future!");
+        const absenceDatesSet = new Set(
+            (businessDays || [])
+                .filter((b: any) => b.status === 'ABSENCE')
+                .map((b: any) => String(b.date).substring(0, 10))
+        );
+
+        const selectedStr = format(selected, 'yyyy-MM-dd');
+        if (absenceDatesSet.has(selectedStr)) {
+            toast.error(`${format(selected, 'MMMM dd, yyyy')} was marked as ABSENCE (Closed). You can reopen it or enter on the next working day.`);
             return;
         }
 
         if (latestSavedDateStr) {
-            const nextRequired = addDays(parseISO(latestSavedDateStr), 1);
+            const nextRequired = getNextWorkingDate(latestSavedDateStr, businessDays || []);
             if (!isSameDay(newDate, nextRequired)) {
-                toast.error(`Real-life sequence required! The next date must be ${format(nextRequired, 'MMMM dd, yyyy')} because ${format(parseISO(latestSavedDateStr), 'MMMM dd')} was the last entry.`);
+                toast.error(`Real-life sequence required! The next working date is ${format(nextRequired, 'MMMM dd, yyyy')} because ${format(parseISO(latestSavedDateStr), 'MMMM dd')} was the last entry.`);
                 return;
             }
+        }
+
+        if (selected > today) {
+            toast.error("You cannot enter a date in the future!");
+            return;
         }
 
         setDate(newDate);
     };
 
     const totalKg = Object.values(entries).reduce((sum, data) => sum + (parseFloat(String(data.kg)) || 0), 0);
-    // Sum ALL vip quantities across all customers based on note (VIP QAALI)
+    // Sum ALL vip quantities across all customers based on note
     const totalVip = Object.values(entries).reduce((sum, entry) => sum + getVipCount(entry.note, entry.kg), 0);
-
-    // Active VIP CAADI items calculation
-    const activeDateStr = format(date, 'yyyy-MM-dd');
-    const activeVipCaadiCustMap = useMemo(() => {
-        const idToCategory = new Map<string, { label: string; price?: string }>();
-        for (const cat of vipCaadiConfig) {
-            if (!cat.date || cat.date === activeDateStr) {
-                for (const custId of cat.customerIds) {
-                    if (!idToCategory.has(custId)) {
-                        idToCategory.set(custId, {
-                            label: cat.label || 'VIP Caadi',
-                            price: cat.customerPrices?.[custId]
-                        });
-                    }
-                }
-            }
-        }
-        return idToCategory;
-    }, [vipCaadiConfig, activeDateStr]);
-
-    const activeVipCaadiItems = useMemo(() => {
-        const items: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }> = [];
-        for (const [custId, data] of Object.entries(entries)) {
-            const kg = parseFloat(String(data.kg)) || 0;
-            const hasVipQaali = data.note && data.note.toLowerCase().includes('vip');
-            if (!hasVipQaali && activeVipCaadiCustMap.has(custId) && kg > 0) {
-                const info = activeVipCaadiCustMap.get(custId)!;
-                const cust = customers.find(c => c.id === custId);
-                items.push({
-                    customer: cust,
-                    customer_id: custId,
-                    kg,
-                    price: info.price,
-                    categoryLabel: info.label,
-                    note: data.note
-                });
-            }
-        }
-        return items;
-    }, [entries, customers, activeVipCaadiCustMap]);
-
-    const totalVipCaadiCount = activeVipCaadiItems.length;
-    const totalVipCaadiKg = activeVipCaadiItems.reduce((sum: number, i: { kg: number }) => sum + i.kg, 0);
-
     const filteredEntries = searchDate
         ? savedEntries.filter(e => e.date && e.date.substring(0, 10) === format(searchDate, 'yyyy-MM-dd'))
         : savedEntries;
@@ -761,6 +774,60 @@ function DailyBookPageInner() {
                 title="Remove Customer"
                 description={`⚠️ Move "${customers.find(c => c.id === pendingDeleteCustomerId)?.name || 'this customer'}" to Inactive? Their history is preserved and they can be recovered anytime from the Customers page.`}
             />
+
+            {/* ── Absence Confirmation Modal (Super Admin Only - Root Level) ── */}
+            <Dialog open={absenceModalOpen} onOpenChange={setAbsenceModalOpen}>
+                <DialogContent className="max-w-sm rounded-2xl z-[100000]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-black">
+                            <CalendarX className="w-5 h-5" />
+                            Mark {format(date, 'MMMM dd, yyyy')} as Absence
+                        </DialogTitle>
+                        <DialogDescription className="text-xs leading-relaxed text-muted-foreground pt-1">
+                            This marks the day as <strong className="text-foreground">CLOSED / BAAQATAY</strong>. The Daily Book will automatically move to the next working day without affecting existing Maqal pairs or customer balances.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 pt-2">
+                        <Input
+                            placeholder="Optional reason (e.g. Business closed, Holiday)"
+                            value={absenceReason}
+                            onChange={e => setAbsenceReason(e.target.value)}
+                            className="text-xs rounded-xl"
+                            autoFocus
+                        />
+                        <div className="flex gap-2">
+                            <Button
+                                id="absence-cancel-btn"
+                                type="button"
+                                variant="outline"
+                                className="flex-1 rounded-xl cursor-pointer"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAbsenceModalOpen(false);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                id="absence-confirm-btn"
+                                type="button"
+                                variant="destructive"
+                                className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer shadow-md"
+                                disabled={isSavingWorkdayStatus}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleSetWorkdayStatus(format(date, 'yyyy-MM-dd'), 'ABSENCE', absenceReason);
+                                }}
+                            >
+                                {isSavingWorkdayStatus ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                                Confirm Absence
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
             {/* Header */}
             <div className="relative px-3 py-3 md:px-5 md:py-4 rounded-2xl bg-card border border-border shadow-sm overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 md:gap-4">
                 <AnimatedBackground />
@@ -795,6 +862,79 @@ function DailyBookPageInner() {
                 </div>
             </div>
 
+            {/* Super Admin Workday Status Control Bar — Global to page */}
+            {isSuperAdmin && (() => {
+                const activeDateStr = format(date, 'yyyy-MM-dd');
+                const activeBday = businessDays.find(b => String(b.date).substring(0, 10) === activeDateStr);
+                const isAbsence = activeBday?.status === 'ABSENCE';
+                return (
+                    <div className="p-3 rounded-2xl border border-border/60 bg-card/90 backdrop-blur-md shadow-xs flex flex-wrap items-center justify-between gap-3 relative z-20">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`p-2 rounded-xl shrink-0 ${isAbsence ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'}`}>
+                                {isAbsence ? <CalendarX className="w-5 h-5" /> : <CalendarCheck className="w-5 h-5" />}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-foreground">
+                                        Workday ({format(date, 'MMMM dd, yyyy')}):
+                                    </span>
+                                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md border ${
+                                        isAbsence
+                                            ? 'bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400'
+                                            : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
+                                    }`}>
+                                        {isAbsence ? '🔴 Absence / Closed' : '🟢 Worked'}
+                                    </span>
+                                </div>
+                                {activeBday?.reason && (
+                                    <p className="text-[11px] text-muted-foreground truncate max-w-sm mt-0.5">
+                                        Reason: {activeBday.reason}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                id="workday-btn-worked"
+                                type="button"
+                                disabled={isSavingWorkdayStatus}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleSetWorkdayStatus(activeDateStr, 'WORKED');
+                                }}
+                                className={`cursor-pointer select-none h-8 px-3.5 text-xs font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5 ${
+                                    !isAbsence
+                                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-500/50'
+                                        : 'text-muted-foreground bg-muted/50 hover:bg-muted/80 border border-border/60 hover:text-foreground'
+                                }`}
+                            >
+                                ON — Worked
+                            </button>
+                            <button
+                                id="workday-btn-absence"
+                                type="button"
+                                disabled={isSavingWorkdayStatus}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAbsenceReason(activeBday?.reason || '');
+                                    setAbsenceModalOpen(true);
+                                }}
+                                className={`cursor-pointer select-none h-8 px-3.5 text-xs font-bold rounded-xl transition-all active:scale-95 flex items-center gap-1.5 ${
+                                    isAbsence
+                                        ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm ring-1 ring-rose-500/50'
+                                        : 'text-rose-600 dark:text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20'
+                                }`}
+                            >
+                                OFF — Absence
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {viewMode === 'edit' ? (
                 <>
                     {/* TRUE FULLSCREEN OVERLAY — covers sidebar + everything */}
@@ -806,8 +946,7 @@ function DailyBookPageInner() {
                                     <BookOpen className="w-4 h-4 text-primary shrink-0" />
                                     <span className="font-black text-sm uppercase tracking-tight truncate text-foreground">{format(date, 'MMM dd, yyyy')}</span>
                                     {totalKg > 0 && <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full shrink-0">{formatKg(totalKg)} KG</span>}
-                                    {totalVip > 0 && <span className="text-[10px] font-black text-amber-600 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full shrink-0">👑 {totalVip} VIP QAALI</span>}
-                                    {totalVipCaadiCount > 0 && <span className="text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full shrink-0">⭐ {totalVipCaadiCount} VIP CAADI</span>}
+                                    {totalVip > 0 && <span className="text-[10px] font-black text-amber-600 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full shrink-0">{totalVip} VIP</span>}
                                     {editingDate && (
                                         <Popover>
                                             <PopoverTrigger asChild>
@@ -938,7 +1077,7 @@ function DailyBookPageInner() {
                     {/* NORMAL CARD (shown when not fullscreen) */}
                     {!isFullScreen && (
                         <Card className="glass-card">
-                            <CardHeader className="border-b border-border bg-muted/20">
+                            <CardHeader className="border-b border-border bg-muted/20 pb-3">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
                                         <CardTitle className="text-foreground flex items-center gap-2">
@@ -1137,16 +1276,11 @@ function DailyBookPageInner() {
                                                 <p className="text-[8px] font-black uppercase tracking-tighter text-muted-foreground leading-none mb-0.5">Summary</p>
                                                 <div className="flex items-baseline gap-2">
                                                     <span className="text-xl font-black text-primary tracking-tighter tabular-nums">{formatKg(totalKg)}</span>
+                                                    <span className="text-[9px] font-black text-primary uppercase opacity-60">Total KG</span>
                                                     {totalVip > 0 && (
                                                         <>
                                                             <span className="text-xl font-black text-amber-600 tracking-tighter tabular-nums ml-2">{totalVip}</span>
-                                                            <span className="text-[9px] font-black text-amber-600 uppercase opacity-60">VIP QAALI</span>
-                                                        </>
-                                                    )}
-                                                    {totalVipCaadiCount > 0 && (
-                                                        <>
-                                                            <span className="text-xl font-black text-amber-500 tracking-tighter tabular-nums ml-2">{totalVipCaadiCount}</span>
-                                                            <span className="text-[9px] font-black text-amber-500 uppercase opacity-60">VIP CAADI</span>
+                                                            <span className="text-[9px] font-black text-amber-600 uppercase opacity-60">VIP</span>
                                                         </>
                                                     )}
                                                 </div>
@@ -1628,15 +1762,28 @@ function DailyBookPageInner() {
                                                                 </span>
                                                             </div>
 
-                                                            {/* ALL STATS IN A SINGLE KINETIC LINE */}
-                                                            <div className="relative w-full h-[32px] mt-2 overflow-hidden bg-muted/10 rounded border border-border/20">
-                                                                <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic w-max px-2">
-                                                                    {/* 1. KG */}
-                                                                    <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[10px] md:text-xs">
-                                                                        ⚡ {formatKg(entry.totalKg)} KG
+                                                            {/* STATS OR ABSENCE BADGE */}
+                                                            {entry.workday_status === 'ABSENCE' ? (
+                                                                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                                                    <span className="text-[10px] md:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-md bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 inline-flex items-center gap-1.5 shadow-2xs">
+                                                                        🔴 BAAQATAY / ABSENCE (Closed)
                                                                     </span>
+                                                                    {entry.workday_reason && (
+                                                                        <span className="text-[10px] md:text-xs text-muted-foreground italic truncate max-w-sm">
+                                                                            — {entry.workday_reason}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                /* ALL STATS IN A SINGLE KINETIC LINE */
+                                                                <div className="relative w-full h-[32px] mt-2 overflow-hidden bg-muted/10 rounded border border-border/20">
+                                                                    <div className="absolute top-0 h-full flex items-center gap-3 whitespace-nowrap animate-kinetic w-max px-2">
+                                                                        {/* 1. KG */}
+                                                                        <span className="font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1 text-[10px] md:text-xs">
+                                                                            ⚡ {formatKg(entry.totalKg)} KG
+                                                                        </span>
 
-                                                                    {/* 2. VIP QAALI */}
+                                                                    {/* 2. VIP */}
                                                                     {(() => {
                                                                         const vipItems = entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip'));
                                                                         const entryVipCount = vipItems.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
@@ -1649,71 +1796,7 @@ function DailyBookPageInner() {
                                                                                 }}
                                                                                 className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${entryVipCount > 0 ? 'bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 hover:brightness-110 active:scale-95 cursor-pointer' : 'bg-muted/50 text-muted-foreground/50 border border-border/20 cursor-default'} shrink-0`}
                                                                             >
-                                                                                👑 {entryVipCount} VIP QAALI
-                                                                            </button>
-                                                                        );
-                                                                    })()}
-
-                                                                    {/* 2.5 VIP CAADI */}
-                                                                    {(() => {
-                                                                        const entryDateStr = entry.date.substring(0, 10);
-                                                                        const idToCategory = new Map<string, { label: string; price?: string }>();
-                                                                        for (const cat of vipCaadiConfig) {
-                                                                            if (!cat.date || cat.date === entryDateStr) {
-                                                                                for (const custId of cat.customerIds) {
-                                                                                    if (!idToCategory.has(custId)) {
-                                                                                        idToCategory.set(custId, {
-                                                                                            label: cat.label || 'VIP Caadi',
-                                                                                            price: cat.customerPrices?.[custId]
-                                                                                        });
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        }
-
-                                                                        const vipQaaliCustIds = new Set(
-                                                                            entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip')).map(i => i.customer_id)
-                                                                        );
-
-                                                                        const caadiItems: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }> = [];
-                                                                        for (const item of entry.items) {
-                                                                            const kg = parseFloat(String(item.kg)) || 0;
-                                                                            if (!vipQaaliCustIds.has(item.customer_id) && idToCategory.has(item.customer_id) && kg > 0) {
-                                                                                const info = idToCategory.get(item.customer_id)!;
-                                                                                caadiItems.push({
-                                                                                    customer: item.customer,
-                                                                                    customer_id: item.customer_id,
-                                                                                    kg,
-                                                                                    price: info.price,
-                                                                                    categoryLabel: info.label,
-                                                                                    note: item.note
-                                                                                });
-                                                                            }
-                                                                        }
-
-                                                                        const caadiCount = caadiItems.length;
-                                                                        const caadiTotalKg = caadiItems.reduce((s, i) => s + i.kg, 0);
-
-                                                                        return (
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    if (caadiItems.length > 0) {
-                                                                                        setVipCaadiPopupData({
-                                                                                            date: entry.date,
-                                                                                            items: caadiItems,
-                                                                                            totalKg: caadiTotalKg
-                                                                                        });
-                                                                                    }
-                                                                                }}
-                                                                                className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded text-[10px] md:text-xs font-black uppercase tracking-wider transition-all ${
-                                                                                    caadiCount > 0
-                                                                                        ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)] hover:brightness-110 active:scale-95 cursor-pointer'
-                                                                                        : 'bg-muted/50 text-muted-foreground/50 border border-border/20 cursor-default'
-                                                                                } shrink-0`}
-                                                                            >
-                                                                                ⭐ {caadiCount} VIP CAADI {caadiTotalKg > 0 ? `(${formatKg(caadiTotalKg)}kg)` : ''}
+                                                                                👑 {entryVipCount} VIP
                                                                             </button>
                                                                         );
                                                                     })()}
@@ -1769,8 +1852,9 @@ function DailyBookPageInner() {
                                                                     })() : null}
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        )}
                                                     </div>
+                                                </div>
                                                     <div className="flex items-center gap-2 mt-3 md:mt-0 border-t border-border/50 pt-3 md:border-0 md:pt-0" onClick={(e) => e.stopPropagation()}>
                                                         {isSuperAdmin && (
                                                             <>
@@ -1996,67 +2080,6 @@ function DailyBookPageInner() {
                                     </div>
                                 );
                             })}
-                        </div>
-                        {/* shimmer footer */}
-                        <div className="daily-popup-shimmer" />
-                    </div>
-                </div>
-            )}
-
-            {/* VIP CAADI popup */}
-            {vipCaadiPopupData && (
-                <div
-                    className="daily-popup-backdrop"
-                    onClick={() => setVipCaadiPopupData(null)}
-                >
-                    <div className="daily-popup-card" onClick={(e) => e.stopPropagation()}>
-                        {/* accent strip top */}
-                        <div className="daily-popup-strip bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600" />
-                        {/* header */}
-                        <div className="daily-popup-header">
-                            <div>
-                                <p className="daily-popup-title text-amber-700 dark:text-amber-400">⭐ VIP Caadi Macaamiisha</p>
-                                <p className="daily-popup-sub">
-                                    {format(new Date(vipCaadiPopupData.date), 'MMM dd, yyyy')}
-                                    <span className="daily-popup-count bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
-                                        {vipCaadiPopupData.items.length} ({formatKg(vipCaadiPopupData.totalKg)} KG)
-                                    </span>
-                                </p>
-                            </div>
-                            <button className="daily-popup-close" onClick={() => setVipCaadiPopupData(null)}>
-                                <X className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-                        {/* list */}
-                        <div className="daily-popup-list">
-                            {vipCaadiPopupData.items.map((item, idx) => (
-                                <div key={idx} className="daily-popup-item bg-amber-500/[0.06] border border-amber-500/15" style={{ animationDelay: `${idx * 35}ms` }}>
-                                    <div className="daily-popup-avatar bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold shadow-xs">
-                                        {item.customer?.name?.charAt(0)?.toUpperCase() || '?'}
-                                    </div>
-                                    <div className="daily-popup-info">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <p className="daily-popup-name">{item.customer?.name || 'Unknown'}</p>
-                                            <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                                                {item.categoryLabel}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between mt-1 text-[10px]">
-                                            <span className="font-mono text-muted-foreground font-semibold">#{item.customer?.customer_code || '—'}</span>
-                                            <div className="flex items-center gap-1.5">
-                                                {item.price && (
-                                                    <span className="font-bold text-amber-700 dark:text-amber-300 bg-white/20 dark:bg-black/30 px-1.5 py-0.5 rounded border border-amber-500/20">
-                                                        ${item.price}
-                                                    </span>
-                                                )}
-                                                <span className="daily-popup-badge bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/25">
-                                                    {formatKg(item.kg)} KG
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
                         </div>
                         {/* shimmer footer */}
                         <div className="daily-popup-shimmer" />
