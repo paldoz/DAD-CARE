@@ -121,89 +121,95 @@ function CustomerVipNotebookPopoverContent({
     const hasVipQaali = vipQaaliKg > 0;
     const hasVipCaadi = !!vipCaadiInfo;
 
-    if (hasVipQaali || hasVipCaadi) {
-        // Extract VIP Qaali entries from note (e.g. "10 vip 37")
-        let vipQaaliLines: string[] = [];
-        if (hasVipQaali) {
-            const parts = note.split(',').map(s => s.trim()).filter(Boolean);
-            for (const part of parts) {
-                const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
-                if (match && match[2].toLowerCase().includes('vip')) {
-                    const count = match[1];
-                    const price = match[3];
-                    vipQaaliLines.push(price ? `${count} vip ${price}` : `${count} vip`);
-                }
-            }
-            if (vipQaaliLines.length === 0) {
-                vipQaaliLines.push(`${vipQaaliKg} vip`);
+    // Extract VIP Qaali entries from note (e.g. "10 vip 37")
+    let vipQaaliLines: string[] = [];
+    if (hasVipQaali) {
+        const parts = note.split(',').map(s => s.trim()).filter(Boolean);
+        for (const part of parts) {
+            const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+            if (match && match[2].toLowerCase().includes('vip')) {
+                const count = match[1];
+                const price = match[3];
+                vipQaaliLines.push(price ? `${count} vip ${price}` : `${count} vip`);
             }
         }
-
-        // Extract VIP Caadi entry (e.g. "10 vipcaadi 39")
-        let vipCaadiLine = '';
-        if (hasVipCaadi && vipCaadiInfo) {
-            const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
-            const savedKg = vipCaadiInfo.savedKg;
-            const caadiKg = (savedKg !== undefined && savedKg > 0)
-                ? savedKg
-                : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
-
-            const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
-            const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
-                ? overridePrice
-                : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
-
-            const cleanLabel = (vipCaadiInfo.label || 'vipcaadi').toLowerCase().replace(/\s+/g, '');
-            if (caadiKg > 0) {
-                vipCaadiLine = `${caadiKg} ${cleanLabel} ${effectivePrice}`;
-            }
+        if (vipQaaliLines.length === 0) {
+            vipQaaliLines.push(`${vipQaaliKg} vip`);
         }
+    }
 
-        return (
-            <div className="space-y-2 p-1">
-                <div className="border-b border-border/60 pb-1.5">
-                    <div className="font-bold text-xs text-foreground truncate">
-                        #{customer.customer_code} {customer.name}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-medium">
-                        {format(date, 'EEEE, MMM dd, yyyy')}
-                    </div>
+    // Extract VIP Caadi entry (e.g. "10 vipcaadi 39")
+    let vipCaadiLine = '';
+    if (hasVipCaadi && vipCaadiInfo) {
+        const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
+        const savedKg = vipCaadiInfo.savedKg;
+        const caadiKg = (savedKg !== undefined && savedKg > 0)
+            ? savedKg
+            : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
+
+        const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
+        const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
+            ? overridePrice
+            : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
+
+        const cleanLabel = (vipCaadiInfo.label || 'vipcaadi').toLowerCase().replace(/\s+/g, '');
+        if (caadiKg > 0) {
+            vipCaadiLine = `${caadiKg} ${cleanLabel} ${effectivePrice}`;
+        }
+    }
+
+    return (
+        <div className="space-y-2.5 p-1 text-slate-900 dark:text-slate-100">
+            {/* Header: Name and Date */}
+            <div className="border-b border-slate-200 dark:border-slate-700 pb-1.5">
+                <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                    #{customer.customer_code} {customer.name}
                 </div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    {format(date, 'EEEE, MMM dd, yyyy')}
+                </div>
+            </div>
+
+            {/* If VIP entries exist, show them clearly with high contrast */}
+            {(hasVipQaali || hasVipCaadi) && (
                 <div className="space-y-1 font-mono text-xs font-bold">
                     {vipQaaliLines.map((line, idx) => (
-                        <div key={idx} className="text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded">
-                            {line}
+                        <div key={idx} className="text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-700 px-2 py-1 rounded">
+                            👑 {line}
                         </div>
                     ))}
                     {vipCaadiLine && (
-                        <div className="text-purple-700 dark:text-purple-300 bg-purple-500/10 px-2 py-1 rounded">
-                            {vipCaadiLine}
+                        <div className="text-purple-800 dark:text-purple-200 bg-purple-50 dark:bg-purple-950/80 border border-purple-300 dark:border-purple-700 px-2 py-1 rounded">
+                            👑 {vipCaadiLine}
                         </div>
                     )}
                 </div>
-            </div>
-        );
-    }
+            )}
 
-    // CASE 4: Normal customer with no VIP (plain note input)
-    return (
-        <div className="space-y-2 p-1">
-            <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-            <Input
-                placeholder="e.g. 10 vip 38, 10 vip 37"
-                value={entries[customer.id]?.note || ''}
-                onChange={(e) => setEntries({
-                    ...entries,
-                    [customer.id]: {
-                        kg: entries[customer.id]?.kg || 0,
-                        present: entries[customer.id]?.present ?? true,
-                        note: e.target.value
-                    }
-                })}
-                className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none"
-                autoFocus
-            />
-            <Button size="sm" className="w-full h-7 text-xs font-bold" onClick={onClose}>Done</Button>
+            {/* Editable note input by hand */}
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">
+                    Note
+                </label>
+                <Input
+                    placeholder="e.g. 10 vip 38, 10 vip 37"
+                    value={entries[customer.id]?.note || ''}
+                    onChange={(e) => setEntries({
+                        ...entries,
+                        [customer.id]: {
+                            kg: entries[customer.id]?.kg || 0,
+                            present: entries[customer.id]?.present ?? true,
+                            note: e.target.value
+                        }
+                    })}
+                    className="h-8 text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-2 border-slate-300 dark:border-slate-600 focus-visible:ring-1 focus-visible:ring-primary shadow-none"
+                    autoFocus
+                />
+            </div>
+
+            <Button size="sm" className="w-full h-7 text-xs font-bold bg-primary text-primary-foreground" onClick={onClose}>
+                Done
+            </Button>
         </div>
     );
 }
@@ -1024,9 +1030,9 @@ function DailyBookPageInner() {
                                     <div className="absolute left-[50px] md:left-[70px] top-0 bottom-0 w-[1px] bg-red-400 dark:bg-red-900/50 pointer-events-none z-20" />
                                     {/* Sticky col headers */}
                                     <div className="sticky top-0 z-30 grid grid-cols-12 items-center px-2 md:px-4 py-1.5 bg-[#f4ece0] dark:bg-slate-950 border-b-2 border-slate-300 dark:border-slate-700 shadow-sm text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">
-                                        <div className="col-span-2">ID</div>
-                                        <div className="col-span-4 pl-2 md:pl-4">Customer Name</div>
-                                        <div className="col-span-6 flex items-center justify-end gap-2 pr-1">
+                                        <div className="col-span-1 md:col-span-2">ID</div>
+                                        <div className="col-span-3 md:col-span-4 pl-1 md:pl-4">Customer Name</div>
+                                        <div className="col-span-8 md:col-span-6 flex items-center justify-end gap-1.5 pr-1">
                                             <span>Status</span>
                                             <span>/</span>
                                             <span>VIP</span>
@@ -1044,7 +1050,7 @@ function DailyBookPageInner() {
 
                                             return (
                                                 <div key={customer.id} className="grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors hover:bg-blue-100/20 dark:hover:bg-slate-800/30 group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0">
-                                                    <div className="col-span-2 flex items-center justify-start gap-1">
+                                                    <div className="col-span-1 md:col-span-2 flex items-center justify-start gap-0.5">
                                                         <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors">#{customer.customer_code}</span>
                                                         {isSuperAdmin && (
                                                             <button
@@ -1056,7 +1062,7 @@ function DailyBookPageInner() {
                                                             </button>
                                                         )}
                                                     </div>
-                                                    <div className="col-span-4 flex flex-col justify-center pl-2 md:pl-4 border-l border-red-200/50 dark:border-red-900/30 min-w-0">
+                                                    <div className="col-span-3 md:col-span-4 flex flex-col justify-center pl-1 md:pl-4 border-l border-red-200/50 dark:border-red-900/30 min-w-0">
                                                         <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
                                                             <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
                                                                 {customer.name}
@@ -1071,7 +1077,7 @@ function DailyBookPageInner() {
                                                             <div className="absolute -bottom-0.5 left-0 w-full h-[1px] bg-blue-200/50 dark:bg-slate-700 pointer-events-none" />
                                                         </div>
                                                     </div>
-                                                    <div className="col-span-6 flex items-center justify-end gap-1 md:gap-1.5">
+                                                    <div className="col-span-8 md:col-span-6 flex items-center justify-end gap-1 md:gap-1.5">
                                                         {/* Status P/A button */}
                                                         <button onClick={() => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, note: entries[customer.id]?.note || '', present: !(entries[customer.id]?.present ?? true) } })} className={`h-6 w-6 rounded flex items-center justify-center text-[10px] md:text-[11px] font-black transition-colors border shrink-0 ${entries[customer.id]?.present !== false ? 'bg-green-100/50 border-green-200 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400' : 'bg-red-100/50 border-red-200 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400'}`}>
                                                             {entries[customer.id]?.present !== false ? 'P' : 'A'}
@@ -1096,7 +1102,7 @@ function DailyBookPageInner() {
                                                                     <MessageSquare className="w-3.5 h-3.5" />
                                                                 </Button>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-56 p-2.5 bg-popover border-border shadow-xl rounded-xl z-[10000]">
+                                                            <PopoverContent className="w-64 p-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl z-[10000] opacity-100">
                                                                 <CustomerVipNotebookPopoverContent
                                                                     customer={customer}
                                                                     date={date}
@@ -1109,7 +1115,7 @@ function DailyBookPageInner() {
                                                         </Popover>
 
                                                         {/* KG Input */}
-                                                        <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-6 md:h-7 w-11 md:w-16 text-right font-black text-xs md:text-base border-0 border-b border-transparent rounded-none bg-transparent px-0.5 focus-visible:ring-0 shadow-none hover:border-blue-300 shrink-0 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
+                                                        <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-6 md:h-7 w-10 md:w-16 text-right font-black text-xs md:text-base border-0 border-b border-transparent rounded-none bg-transparent px-0.5 focus-visible:ring-0 shadow-none hover:border-blue-300 shrink-0 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
 
                                                         {/* Delete row button */}
                                                         {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
@@ -1179,9 +1185,9 @@ function DailyBookPageInner() {
                                     <div className="bg-[#fcf8f1] dark:bg-slate-900 relative overflow-hidden rounded-sm border border-slate-300 dark:border-slate-800 shadow-inner pb-48 md:pb-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent h-[60vh] md:h-[480px]">
                                         <div className="absolute left-[50px] md:left-[70px] top-0 bottom-0 w-[1px] bg-red-400 dark:bg-red-900/50 pointer-events-none z-20" />
                                         <div className="sticky top-0 z-30 grid grid-cols-12 items-center px-2 md:px-4 py-1.5 bg-[#f4ece0] dark:bg-slate-950 border-b-2 border-slate-300 dark:border-slate-700 shadow-sm text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">
-                                            <div className="col-span-2">ID</div>
-                                            <div className="col-span-4 pl-2 md:pl-4">Customer Name</div>
-                                            <div className="col-span-6 flex items-center justify-end gap-2 pr-1">
+                                            <div className="col-span-1 md:col-span-2">ID</div>
+                                            <div className="col-span-3 md:col-span-4 pl-1 md:pl-4">Customer Name</div>
+                                            <div className="col-span-8 md:col-span-6 flex items-center justify-end gap-1.5 pr-1">
                                                 <span>Status</span>
                                                 <span>/</span>
                                                 <span>VIP</span>
@@ -1199,7 +1205,7 @@ function DailyBookPageInner() {
 
                                                 return (
                                                     <div key={customer.id} className={`grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0 relative ${(customer.is_unassignable || customer.is_kabarka) ? 'bg-amber-50/40 dark:bg-amber-900/10 hover:bg-amber-100/60 dark:hover:bg-amber-900/20' : 'hover:bg-blue-100/20 dark:hover:bg-slate-800/30'}`}>
-                                                        <div className="col-span-2 flex items-center justify-start gap-1">
+                                                        <div className="col-span-1 md:col-span-2 flex items-center justify-start gap-0.5">
                                                             {isSuperAdmin ? (
                                                                 <Popover open={reorderOpenForId === customer.id} onOpenChange={(o) => {
                                                                     setReorderOpenForId(o ? customer.id : null);
@@ -1272,7 +1278,7 @@ function DailyBookPageInner() {
                                                                 </button>
                                                             )}
                                                         </div>
-                                                        <div className="col-span-4 flex flex-col justify-center pl-2 md:pl-4 border-l border-red-200/50 dark:border-red-900/30 min-w-0">
+                                                        <div className="col-span-3 md:col-span-4 flex flex-col justify-center pl-1 md:pl-4 border-l border-red-200/50 dark:border-red-900/30 min-w-0">
                                                             <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
                                                                 <span className={`font-bold text-[11px] md:text-sm uppercase truncate ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
                                                                     {customer.name}
@@ -1287,7 +1293,7 @@ function DailyBookPageInner() {
                                                                 <div className="absolute -bottom-0.5 left-0 w-full h-[1px] bg-blue-200/50 dark:bg-slate-700 pointer-events-none" />
                                                             </div>
                                                         </div>
-                                                        <div className="col-span-6 flex items-center justify-end gap-1 md:gap-1.5">
+                                                        <div className="col-span-8 md:col-span-6 flex items-center justify-end gap-1 md:gap-1.5">
                                                             {/* Status P/A button */}
                                                             <button onPointerDown={(e) => e.preventDefault()} onClick={() => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, note: entries[customer.id]?.note || '', present: !(entries[customer.id]?.present ?? true) } })} className={`h-6 w-6 rounded flex items-center justify-center text-[10px] md:text-[11px] font-black transition-colors border shrink-0 ${entries[customer.id]?.present !== false ? 'bg-green-100/50 border-green-200 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400' : 'bg-red-100/50 border-red-200 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400'}`}>
                                                                 {entries[customer.id]?.present !== false ? 'P' : 'A'}
@@ -1296,48 +1302,48 @@ function DailyBookPageInner() {
                                                             {/* Compact VIP Badges */}
                                                             {isVip && (
                                                                 <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP note" className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 border border-yellow-200 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
-                                                                    <span>👑 VIP</span>
-                                                                </button>
-                                                            )}
-                                                            {vipCaadiInfo && (
-                                                                <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white border border-violet-300 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
-                                                                    <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
-                                                                </button>
-                                                            )}
+                                                                <span>👑 VIP</span>
+                                                            </button>
+                                                        )}
+                                                        {vipCaadiInfo && (
+                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white border border-violet-300 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
+                                                                <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
+                                                            </button>
+                                                        )}
 
-                                                            {/* Notebook icon with Popover */}
-                                                            <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
-                                                                <PopoverTrigger asChild>
-                                                                    <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} className={`h-6 w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 shrink-0 ${entries[customer.id]?.note || vipCaadiInfo ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
-                                                                        <MessageSquare className="w-3.5 h-3.5" />
-                                                                    </Button>
-                                                                </PopoverTrigger>
-                                                                <PopoverContent className="w-56 p-2.5 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                                    <CustomerVipNotebookPopoverContent
-                                                                        customer={customer}
-                                                                        date={date}
-                                                                        entries={entries}
-                                                                        setEntries={setEntries}
-                                                                        activeVipCaadiCustMap={activeVipCaadiCustMap}
-                                                                        onClose={() => setOpenNoteForCustomerId(null)}
-                                                                    />
-                                                                </PopoverContent>
-                                                            </Popover>
-
-                                                            {/* KG Input */}
-                                                            <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-6 md:h-7 w-11 md:w-16 text-right font-black text-xs md:text-base border-0 border-b border-transparent rounded-none bg-transparent px-0.5 focus-visible:ring-0 shadow-none hover:border-blue-300 shrink-0 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
-
-                                                            {/* Delete row button */}
-                                                            {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
-                                                                <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} onClick={() => { const n = { ...entries }; delete n[customer.id]; setEntries(n); }} className="h-6 w-6 p-0 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
-                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                        {/* Notebook icon with Popover */}
+                                                        <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
+                                                            <PopoverTrigger asChild>
+                                                                <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} className={`h-6 w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 shrink-0 ${entries[customer.id]?.note || vipCaadiInfo ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
+                                                                    <MessageSquare className="w-3.5 h-3.5" />
                                                                 </Button>
-                                                            )}
-                                                        </div>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent className="w-64 p-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl z-[10000] opacity-100">
+                                                                <CustomerVipNotebookPopoverContent
+                                                                    customer={customer}
+                                                                    date={date}
+                                                                    entries={entries}
+                                                                    setEntries={setEntries}
+                                                                    activeVipCaadiCustMap={activeVipCaadiCustMap}
+                                                                    onClose={() => setOpenNoteForCustomerId(null)}
+                                                                />
+                                                            </PopoverContent>
+                                                        </Popover>
+
+                                                        {/* KG Input */}
+                                                        <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-6 md:h-7 w-10 md:w-16 text-right font-black text-xs md:text-base border-0 border-b border-transparent rounded-none bg-transparent px-0.5 focus-visible:ring-0 shadow-none hover:border-blue-300 shrink-0 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
+
+                                                        {/* Delete row button */}
+                                                        {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
+                                                            <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} onClick={() => { const n = { ...entries }; delete n[customer.id]; setEntries(n); }} className="h-6 w-6 p-0 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </Button>
+                                                        )}
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                     </div>
                                 )}
 
