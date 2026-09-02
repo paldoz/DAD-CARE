@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import type { VipCaadiCategory } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { groupTransactionsInfoReceipts, calculateMaqalCharge, type Transaction } from '@/app/utils/ledgerHelpers';
 import { smartCustomerSearch } from '@/lib/search-utils';
@@ -155,7 +156,8 @@ const buildEntryFromDailyRecord = (
     defaultPrice: string,
     dateSpecificPrices?: Record<string, string>,
     dateSpecificOverrides?: Record<string, Record<string, string>>,
-    customerId?: string
+    customerId?: string,
+    vipCaadiConfig?: VipCaadiCategory[]
 ): { entry: DateEntry; shouldExpandExtra: boolean } => {
     let kg = record.kg ? record.kg.toString() : '0';
     
@@ -178,6 +180,82 @@ const buildEntryFromDailyRecord = (
     let extraNote = 'Notebook';
     let mainNote = '';
     let shouldExpandExtra = false;
+
+    // ── VIP Caadi injection ───────────────────────────────────────────────────
+    // If this customer is in a VIP Caadi category for this date AND the note
+    // doesn't already encode a manual VIP split, apply the VIP Caadi split
+    // automatically so the Maqal charge uses (vipCaadiKg × vipCaadiPrice) +
+    // (normalKg × normalPrice) instead of the full KG at the default price.
+    if (customerId && vipCaadiConfig && vipCaadiConfig.length > 0) {
+        // Find the first category that applies to this customer on this date
+        let vipCaadiInfo: { label: string; effectivePrice: number; savedKg?: number } | null = null;
+        for (const cat of vipCaadiConfig) {
+            const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+            if (catDate && catDate !== entryDateKey) continue; // date-scoped category doesn't match
+            if (!cat.customerIds.includes(customerId)) continue;
+
+            // Resolve effective price: per-customer override → category default
+            const overrideStr = cat.customerPrices?.[customerId];
+            const override = overrideStr ? parseFloat(overrideStr) : NaN;
+            const effectivePrice = (!isNaN(override) && override > 0)
+                ? override
+                : (cat.defaultPrice ?? 0);
+
+            if (effectivePrice > 0) {
+                vipCaadiInfo = {
+                    label: cat.label || 'VIP Caadi',
+                    effectivePrice,
+                    savedKg: cat.customerKgs?.[customerId]
+                };
+                break;
+            }
+        }
+
+        if (vipCaadiInfo) {
+            const totalKg = record.kg || 0;
+            // Parse VIP Qaali KG already encoded in the note (e.g. "5 vip 36" → 5 KG)
+            let vipQaaliKg = 0;
+            if (record.note) {
+                const noteEntries = parseNoteEntries(record.note.trim());
+                if (noteEntries.length > 0) {
+                    vipQaaliKg = noteEntries.reduce((s, e) => s + e.kg, 0);
+                }
+            }
+            const maxCaadiKg = Math.max(0, totalKg - vipQaaliKg);
+            const rawCaadiKg = vipCaadiInfo.savedKg !== undefined
+                ? Math.min(vipCaadiInfo.savedKg, maxCaadiKg)
+                : maxCaadiKg;
+
+            if (rawCaadiKg > 0) {
+                const normalKg = Math.max(0, totalKg - vipQaaliKg - rawCaadiKg);
+                // VIP Caadi portion goes into extraKg (shown as the sub-line)
+                extraKg = rawCaadiKg.toString();
+                extraPricePerKg = vipCaadiInfo.effectivePrice.toString();
+                extraNote = vipCaadiInfo.label;
+                shouldExpandExtra = true;
+                // Normal portion (what remains) goes into the main line
+                kg = normalKg.toString();
+                // Main kg row still uses the normal/default price
+                // (pricePerKg is already set correctly above)
+
+                return {
+                    entry: {
+                        id,
+                        date: record.date || '',
+                        kg,
+                        pricePerKg,
+                        extraKg,
+                        extraPricePerKg,
+                        extraNote,
+                        mainNote,
+                        isReady: record.isReady !== false
+                    },
+                    shouldExpandExtra
+                };
+            }
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     if (record.note) {
         const noteText = record.note.trim();
@@ -393,6 +471,14 @@ export default function LedgerPage() {
         return {};
     });
 
+    const [vipCaadiConfig, setVipCaadiConfig] = useState<VipCaadiCategory[]>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem('dadwork_vip_caadi_config');
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+        return [];
+    });
+
     // Form state (continued)
     const [customerDailyDates, setCustomerDailyDates] = useState<DailyBookRecord[]>([]);
     const [dateEntries, setDateEntries] = useState<DateEntry[]>([]);
@@ -428,6 +514,15 @@ export default function LedgerPage() {
                             : data.dadwork_date_specific_overrides;
                         setDateSpecificOverrides(parsed);
                         localStorage.setItem('dadwork_date_specific_overrides', JSON.stringify(parsed));
+                    } catch(e) {}
+                }
+                // Load VIP Caadi config from DB settings
+                if (data && data.dadwork_vip_caadi_config) {
+                    try {
+                        const rawVal = data.dadwork_vip_caadi_config;
+                        const parsed: VipCaadiCategory[] = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+                        setVipCaadiConfig(parsed);
+                        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(parsed));
                     } catch(e) {}
                 }
             } catch (e) {
@@ -561,7 +656,7 @@ export default function LedgerPage() {
                     if (dailyData && dailyData.length > 0) {
                         newEntries = dailyData.map((d: any, idx: number) => {
                             const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                             if (shouldExpandExtra) {
                                 newExpandedIds.add(entryId);
                             }
@@ -575,7 +670,7 @@ export default function LedgerPage() {
                     newEntries = prev.map((entry, idx) => {
                         const d = dailyData[idx];
                         if (!d) return { ...entry, date: '' };
-                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                         if (shouldExpandExtra) {
                             newExpandedIds.add(entry.id);
                         }
@@ -733,7 +828,7 @@ export default function LedgerPage() {
         }
         const nextUnprocessed = customerDailyDates[nextIndex];
         const newEntryId = Date.now().toString();
-        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(newEntryId, nextUnprocessed, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(newEntryId, nextUnprocessed, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
         if (shouldExpandExtra) {
             setExpandedExtraEntryIds(prev => {
                 const next = new Set(prev);
@@ -776,7 +871,7 @@ export default function LedgerPage() {
             const mapped = filtered.map((entry, idx) => {
                 const d = customerDailyDates[idx];
                 if (!d) return { ...entry, date: '' };
-                const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                 if (shouldExpandExtra) {
                     nextExpandedIds.add(entry.id);
                 }
@@ -1006,7 +1101,7 @@ export default function LedgerPage() {
                     const newExpandedIds = new Set<string>();
                     const newEntries = dailyEntriesRaw.dailyData.map((d: any, idx: number) => {
                         const entryId = (Date.now() + idx).toString();
-                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                         if (shouldExpandExtra) newExpandedIds.add(entryId);
                         return entry;
                     });
@@ -1042,7 +1137,7 @@ export default function LedgerPage() {
                         const newExpandedIds = new Set<string>();
                         const newEntries = nextPair.map((d: any, idx: number) => {
                             const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId);
+                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                             if (shouldExpandExtra) newExpandedIds.add(entryId);
                             return entry;
                         });
@@ -1450,12 +1545,12 @@ export default function LedgerPage() {
                                                                     {expandedExtraEntryIds.has(entry.id) ? (
                                                                         <>
                                                                             <ChevronUp className="w-3.5 h-3.5" />
-                                                                            Hide Notebook KG
+                                                                            Hide {entry.extraNote || 'Notebook'} KG
                                                                         </>
                                                                     ) : (
                                                                         <>
                                                                             <ChevronDown className="w-3.5 h-3.5" />
-                                                                            Add Notebook KG
+                                                                            Add {entry.extraNote || 'Notebook'} KG
                                                                         </>
                                                                     )}
                                                                 </Button>
@@ -1470,7 +1565,7 @@ export default function LedgerPage() {
                                                             {expandedExtraEntryIds.has(entry.id) && (
                                                                 <div className="grid grid-cols-2 gap-3 mt-2 p-3 bg-muted/5 border border-dashed border-border/60 rounded-xl animate-in slide-in-from-top-1 duration-150 w-full">
                                                                     <div className="space-y-1.5">
-                                                                        <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-wider ml-1">Notebook KG</Label>
+                                                                        <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-wider ml-1">{entry.extraNote || 'Notebook'} KG</Label>
                                                                         <div className="relative group/input">
                                                                             <Scale className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/70 group-focus-within/input:text-primary transition-colors" />
                                                                             <Input
@@ -1486,7 +1581,7 @@ export default function LedgerPage() {
                                                                         </div>
                                                                     </div>
                                                                     <div className="space-y-1.5">
-                                                                        <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-wider ml-1">Notebook Price / KG</Label>
+                                                                        <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-wider ml-1">{entry.extraNote || 'Notebook'} Price / KG</Label>
                                                                         <div className="relative group/input">
                                                                             <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/70 group-focus-within/input:text-primary transition-colors" />
                                                                             <Input
