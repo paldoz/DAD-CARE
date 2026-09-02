@@ -959,13 +959,46 @@ function DailyBookPageInner() {
                                                                 <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                             </Button>
                                                         </PopoverTrigger>
-                                                        <PopoverContent className="w-60 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                            <div className="space-y-2">
-                                                                <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-                                                                <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                                                                <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
-                                                                <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
-                                                            </div>
+                                                        <PopoverContent className="w-64 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
+                                                            {(() => {
+                                                                const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+                                                                if (vipCaadiInfo) {
+                                                                    const bookKg = entries[customer.id]?.kg || 0;
+                                                                    const note = entries[customer.id]?.note || '';
+                                                                    const vipQaaliKg = getVipCount(note, bookKg);
+                                                                    const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
+                                                                    const savedKg = vipCaadiInfo.savedKg;
+                                                                    const caadiKg = (savedKg !== undefined && savedKg > 0)
+                                                                        ? savedKg
+                                                                        : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
+                                                                    const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
+                                                                    const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
+                                                                        ? overridePrice
+                                                                        : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
+                                                                    const label = vipCaadiInfo.label || 'VIP Caadi';
+                                                                    return (
+                                                                        <div className="space-y-3">
+                                                                            <div className="space-y-0.5">
+                                                                                <div className="font-bold text-sm text-foreground">#{customer.customer_code} {customer.name}</div>
+                                                                                <div className="text-xs text-muted-foreground">{format(date, 'EEEE, MMM dd, yyyy')}</div>
+                                                                                <span className="inline-flex items-center text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded mt-1">👑 {label}</span>
+                                                                            </div>
+                                                                            <div className="border-t border-border/60 pt-2">
+                                                                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{label}</div>
+                                                                                <div className="text-base font-black text-foreground font-mono">{caadiKg} KG × ${effectivePrice}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <div className="space-y-2">
+                                                                        <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
+                                                                        <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
+                                                                        <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
+                                                                        <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </PopoverContent>
                                                     </Popover>
                                                 </div>
@@ -974,11 +1007,21 @@ function DailyBookPageInner() {
                                                         {(() => {
                                                             const note = entries[customer.id]?.note || '';
                                                             const isVip = note.toLowerCase().includes('vip');
-                                                            return isVip ? (
-                                                                <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                    <span>👑 VIP</span>
-                                                                </button>
-                                                            ) : null;
+                                                            const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+                                                            return (
+                                                                <>
+                                                                    {isVip && (
+                                                                        <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                            <span>👑 VIP</span>
+                                                                        </button>
+                                                                    )}
+                                                                    {vipCaadiInfo && (
+                                                                        <button onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)] border border-violet-300 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                            <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
+                                                                        </button>
+                                                                    )}
+                                                                </>
+                                                            );
                                                         })()}
                                                         <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-7 w-16 md:w-20 text-right font-black text-sm md:text-base border-0 border-b border-transparent rounded-none bg-transparent transition-all px-1 focus-visible:ring-0 shadow-none hover:border-blue-300 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
                                                     </div>
@@ -1154,13 +1197,46 @@ function DailyBookPageInner() {
                                                                     <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                                 </Button>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-60 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                                <div className="space-y-2">
-                                                                    <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-                                                                    <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                                                                    <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
-                                                                    <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
-                                                                </div>
+                                                            <PopoverContent className="w-64 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
+                                                                {(() => {
+                                                                    const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+                                                                    if (vipCaadiInfo) {
+                                                                        const bookKg = entries[customer.id]?.kg || 0;
+                                                                        const note = entries[customer.id]?.note || '';
+                                                                        const vipQaaliKg = getVipCount(note, bookKg);
+                                                                        const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
+                                                                        const savedKg = vipCaadiInfo.savedKg;
+                                                                        const caadiKg = (savedKg !== undefined && savedKg > 0)
+                                                                            ? savedKg
+                                                                            : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
+                                                                        const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
+                                                                        const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
+                                                                            ? overridePrice
+                                                                            : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
+                                                                        const label = vipCaadiInfo.label || 'VIP Caadi';
+                                                                        return (
+                                                                            <div className="space-y-3">
+                                                                                <div className="space-y-0.5">
+                                                                                    <div className="font-bold text-sm text-foreground">#{customer.customer_code} {customer.name}</div>
+                                                                                    <div className="text-xs text-muted-foreground">{format(date, 'EEEE, MMM dd, yyyy')}</div>
+                                                                                    <span className="inline-flex items-center text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded mt-1">👑 {label}</span>
+                                                                                </div>
+                                                                                <div className="border-t border-border/60 pt-2">
+                                                                                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{label}</div>
+                                                                                    <div className="text-base font-black text-foreground font-mono">{caadiKg} KG × ${effectivePrice}</div>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return (
+                                                                        <div className="space-y-2">
+                                                                            <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
+                                                                            <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
+                                                                            <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
+                                                                            <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                             </PopoverContent>
                                                         </Popover>
                                                     </div>
@@ -1169,11 +1245,21 @@ function DailyBookPageInner() {
                                                             {(() => {
                                                                 const note = entries[customer.id]?.note || '';
                                                                 const isVip = note.toLowerCase().includes('vip');
-                                                                return isVip ? (
-                                                                    <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                        <span>👑 VIP</span>
-                                                                    </button>
-                                                                ) : null;
+                                                                const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+                                                                return (
+                                                                    <>
+                                                                        {isVip && (
+                                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                                <span>👑 VIP</span>
+                                                                            </button>
+                                                                        )}
+                                                                        {vipCaadiInfo && (
+                                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)] border border-violet-300 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                                <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
+                                                                            </button>
+                                                                        )}
+                                                                    </>
+                                                                );
                                                             })()}
                                                             <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-7 w-16 md:w-20 text-right font-black text-sm md:text-base border-0 border-b border-transparent rounded-none bg-transparent transition-all px-1 focus-visible:ring-0 shadow-none hover:border-blue-300 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
                                                         </div>
