@@ -138,8 +138,6 @@ function CustomerNotebookPopoverContent({
     setEntries,
     activeVipCaadiCustMap,
     defaultPrice,
-    dateSpecificPrices,
-    dateSpecificOverrides,
     onClose
 }: {
     customer: Customer;
@@ -148,131 +146,78 @@ function CustomerNotebookPopoverContent({
     setEntries: React.Dispatch<React.SetStateAction<{ [key: string]: { kg: number, present: boolean, note: string } }>>;
     activeVipCaadiCustMap: Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>;
     defaultPrice: string;
-    dateSpecificPrices: Record<string, string>;
-    dateSpecificOverrides: Record<string, Record<string, string>>;
     onClose: () => void;
 }) {
-    const activeDateKey = format(date, 'yyyy-MM-dd');
-    const bookKg = entries[customer.id]?.kg || 0;
-    const note = entries[customer.id]?.note || '';
-    const vipQaaliKg = getVipCount(note, bookKg);
-    const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
     const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
-    const caadiKg = (vipCaadiInfo && maxCaadiKg > 0)
-        ? (vipCaadiInfo.savedKg !== undefined ? Math.min(vipCaadiInfo.savedKg, maxCaadiKg) : maxCaadiKg)
-        : 0;
-    const normalKg = Math.max(0, bookKg - vipQaaliKg - caadiKg);
 
-    // Caadi price: customer override -> category default -> fallback
-    const overrideCaadiPrice = vipCaadiInfo?.price ? parseFloat(vipCaadiInfo.price) : undefined;
-    const effectiveCaadiPrice = (overrideCaadiPrice && !isNaN(overrideCaadiPrice) && overrideCaadiPrice > 0)
-        ? overrideCaadiPrice
-        : (vipCaadiInfo?.defaultPrice ?? 36);
+    // If customer has VIP Caadi on this date, show MINIMAL UI ONLY
+    if (vipCaadiInfo) {
+        const bookKg = entries[customer.id]?.kg || 0;
+        const note = entries[customer.id]?.note || '';
+        const vipQaaliKg = getVipCount(note, bookKg);
+        const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
 
-    // Normal price: customer date override -> global date price -> default price
-    const custOverride = dateSpecificOverrides?.[activeDateKey]?.[customer.id];
-    const datePrice = dateSpecificPrices?.[activeDateKey];
-    const effectiveNormalPrice = custOverride ? parseFloat(custOverride) : (datePrice ? parseFloat(datePrice) : parseFloat(defaultPrice || '35'));
+        const savedKg = vipCaadiInfo.savedKg;
+        const caadiKg = (savedKg !== undefined && savedKg > 0)
+            ? savedKg
+            : (maxCaadiKg > 0 ? maxCaadiKg : (bookKg > 0 ? bookKg : 0));
 
-    // VIP Qaali price (from note or fallback to normal price)
-    let vipQaaliPrice = effectiveNormalPrice;
-    if (note) {
-        const parsed = parseNoteEntries(note);
-        const vipEntry = parsed.find(e => e.label.toLowerCase().includes('vip'));
-        if (vipEntry && vipEntry.price) {
-            vipQaaliPrice = vipEntry.price;
-        }
+        const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
+        const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
+            ? overridePrice
+            : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0)
+                ? vipCaadiInfo.defaultPrice
+                : (parseFloat(defaultPrice) || 36));
+
+        const label = vipCaadiInfo.label || 'VIP Caadi';
+
+        return (
+            <div className="p-3 space-y-3">
+                <div className="space-y-1">
+                    <div className="font-bold text-sm text-foreground">
+                        #{customer.customer_code} {customer.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                        {format(date, 'EEEE, MMM dd, yyyy')}
+                    </div>
+                    <div className="pt-0.5">
+                        <span className="inline-flex items-center text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded">
+                            👑 {label}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="pt-2 border-t border-border/60">
+                    <div className="text-xs font-bold text-muted-foreground">
+                        {label}
+                    </div>
+                    <div className="text-base font-black text-foreground font-mono mt-0.5">
+                        {caadiKg} KG × ${effectivePrice}
+                    </div>
+                </div>
+            </div>
+        );
     }
 
-    const vipQaaliAmount = vipQaaliKg * vipQaaliPrice;
-    const caadiAmount = caadiKg * effectiveCaadiPrice;
-    const normalAmount = normalKg * effectiveNormalPrice;
-    const totalAmount = (vipQaaliKg > 0 ? vipQaaliAmount : 0) + (caadiKg > 0 ? caadiAmount : 0) + normalAmount;
-    const hasSpecialAllocation = caadiKg > 0 || vipQaaliKg > 0 || bookKg > 0;
-
+    // Otherwise (manual note input for non-VIP Caadi customers)
     return (
-        <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-border/60 pb-2">
-                <div>
-                    <h4 className="font-bold text-xs text-foreground flex items-center gap-1.5">
-                        <span>{customer.name}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground">#{customer.customer_code}</span>
-                    </h4>
-                    <p className="text-[10px] text-muted-foreground font-medium">{format(date, 'EEEE, MMM dd, yyyy')}</p>
-                </div>
-                <div className="flex items-center gap-1">
-                    {vipQaaliKg > 0 && (
-                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-600 dark:text-amber-400 border border-amber-400/30">
-                            👑 VIP
-                        </span>
-                    )}
-                    {caadiKg > 0 && (
-                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30">
-                            👑 VIP Caadi
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {hasSpecialAllocation && (
-                <div className="rounded-xl border border-border/80 bg-muted/40 p-3 space-y-2 text-xs">
-                    <div className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-between border-b border-border/40 pb-1">
-                        <span>Buuga Maalinlaha Notebook</span>
-                        <span className="font-mono text-foreground font-bold">{formatKg(bookKg)} KG Total</span>
-                    </div>
-
-                    <div className="space-y-1.5 font-mono text-[11px]">
-                        <div className="flex justify-between text-muted-foreground">
-                            <span>Book:</span>
-                            <span className="font-bold text-foreground">{formatKg(bookKg)} KG</span>
-                        </div>
-
-                        {vipQaaliKg > 0 && (
-                            <div className="flex justify-between text-amber-600 dark:text-amber-400 font-medium">
-                                <span>👑 VIP Qaali:</span>
-                                <span>{formatKg(vipQaaliKg)} KG × ${vipQaaliPrice} = ${formatMoney(vipQaaliAmount)}</span>
-                            </div>
-                        )}
-
-                        {caadiKg > 0 && (
-                            <div className="flex justify-between text-purple-600 dark:text-purple-400 font-bold">
-                                <span>👑 VIP Caadi:</span>
-                                <span>{formatKg(caadiKg)} KG × ${effectiveCaadiPrice} = ${formatMoney(caadiAmount)}</span>
-                            </div>
-                        )}
-
-                        <div className="flex justify-between text-muted-foreground">
-                            <span>Normal remaining:</span>
-                            <span>{formatKg(normalKg)} KG × ${effectiveNormalPrice} = ${formatMoney(normalAmount)}</span>
-                        </div>
-
-                        <div className="flex justify-between pt-1.5 mt-1 border-t-2 border-double border-border font-bold text-foreground text-xs">
-                            <span>Maqal Contribution:</span>
-                            <span className="text-emerald-600 dark:text-emerald-400 font-black">${formatMoney(totalAmount)}</span>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="space-y-1.5">
-                <Label className="text-[10px] font-bold text-muted-foreground">Manual Note (VIP Qaali / Notes)</Label>
-                <p className="text-[9px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                <Input
-                    placeholder="e.g. 10 vip 38, 10 vip 37"
-                    value={entries[customer.id]?.note || ''}
-                    onChange={(e) => setEntries({
-                        ...entries,
-                        [customer.id]: {
-                            kg: entries[customer.id]?.kg || 0,
-                            present: entries[customer.id]?.present ?? true,
-                            note: e.target.value
-                        }
-                    })}
-                    className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none"
-                    autoFocus={!hasSpecialAllocation}
-                />
-            </div>
-            <Button size="sm" className="w-full h-7 text-xs font-bold" onClick={onClose}>Done</Button>
+        <div className="space-y-2 p-1">
+            <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
+            <Input
+                placeholder="e.g. 10 vip 38, 10 vip 37"
+                value={entries[customer.id]?.note || ''}
+                onChange={(e) => setEntries({
+                    ...entries,
+                    [customer.id]: {
+                        kg: entries[customer.id]?.kg || 0,
+                        present: entries[customer.id]?.present ?? true,
+                        note: e.target.value
+                    }
+                })}
+                className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none"
+                autoFocus
+            />
+            <Button size="sm" className="w-full h-7 text-xs" onClick={onClose}>Done</Button>
         </div>
     );
 }
@@ -1173,7 +1118,7 @@ function DailyBookPageInner() {
                                                                 <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                             </Button>
                                                         </PopoverTrigger>
-                                                        <PopoverContent className="w-80 md:w-[350px] p-3.5 bg-popover border-border shadow-2xl rounded-2xl z-[10000]">
+                                                        <PopoverContent className="w-64 p-2.5 bg-popover border-border shadow-xl rounded-xl z-[10000]">
                                                             <CustomerNotebookPopoverContent
                                                                 customer={customer}
                                                                 date={date}
@@ -1181,8 +1126,6 @@ function DailyBookPageInner() {
                                                                 setEntries={setEntries}
                                                                 activeVipCaadiCustMap={activeVipCaadiCustMap}
                                                                 defaultPrice={defaultPrice}
-                                                                dateSpecificPrices={dateSpecificPrices}
-                                                                dateSpecificOverrides={dateSpecificOverrides}
                                                                 onClose={() => setOpenNoteForCustomerId(null)}
                                                             />
                                                         </PopoverContent>
@@ -1385,7 +1328,7 @@ function DailyBookPageInner() {
                                                                     <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                                 </Button>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-80 md:w-[350px] p-3.5 bg-popover border-border shadow-2xl rounded-2xl z-[10000]">
+                                                            <PopoverContent className="w-64 p-2.5 bg-popover border-border shadow-xl rounded-xl z-[10000]">
                                                                 <CustomerNotebookPopoverContent
                                                                     customer={customer}
                                                                     date={date}
@@ -1393,8 +1336,6 @@ function DailyBookPageInner() {
                                                                     setEntries={setEntries}
                                                                     activeVipCaadiCustMap={activeVipCaadiCustMap}
                                                                     defaultPrice={defaultPrice}
-                                                                    dateSpecificPrices={dateSpecificPrices}
-                                                                    dateSpecificOverrides={dateSpecificOverrides}
                                                                     onClose={() => setOpenNoteForCustomerId(null)}
                                                                 />
                                                             </PopoverContent>
