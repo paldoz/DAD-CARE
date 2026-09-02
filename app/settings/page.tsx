@@ -71,6 +71,22 @@ import {
 import { CheckCircle2, Circle } from 'lucide-react';
 import { VipCaadiCategory } from '@/types';
 
+function getVipCount(note: string | undefined | null, fallbackKg: number = 0): number {
+    if (!note) return 0;
+    const lower = note.toLowerCase();
+    if (!lower.includes('vip')) return 0;
+
+    const regex = /(\d+(?:\.\d+)?)\s*vip/g;
+    let match;
+    let totalCount = 0;
+    let found = false;
+    while ((match = regex.exec(lower)) !== null) {
+        found = true;
+        totalCount += parseFloat(match[1]);
+    }
+    return found ? totalCount : fallbackKg;
+}
+
 interface PerUserMaqal {
     user_id: string;
     username: string;
@@ -213,9 +229,9 @@ export default function SettingsPage() {
     }, [savedBookDates]);
 
     const { data: dailyBookData, isValidating: isDailyBookLoading } = useSWR(
-        (isOverridesOpen || typeFilter) && newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
+        newOverride.date ? `/api/daily-book?date=${newOverride.date}` : null,
         (url: string) => fetch(url).then(res => res.json()),
-        { revalidateOnFocus: false, dedupingInterval: 60000 }
+        { revalidateOnFocus: false, dedupingInterval: 30000 }
     );
     
     const toggleOverrideDate = (date: string) => {
@@ -230,50 +246,85 @@ export default function SettingsPage() {
         );
     };
 
-    const dailyBookCustomerKgMap = useMemo(() => {
-        const map = new Map<string, number>();
+    // Calculate actual Daily Book KG, VIP Qaali KG, and maximum possible VIP Caadi KG per customer
+    const dailyBookCustomerStatsMap = useMemo(() => {
+        const map = new Map<string, { actualKg: number; vipQaaliKg: number; maxCaadiKg: number }>();
         if (dailyBookData?.items && Array.isArray(dailyBookData.items)) {
             for (const item of dailyBookData.items) {
-                map.set(item.customer_id, parseFloat(String(item.kg)) || 0);
+                const actualKg = parseFloat(String(item.kg)) || 0;
+                const vipQaaliKg = getVipCount(item.note, actualKg);
+                const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+                map.set(item.customer_id, { actualKg, vipQaaliKg, maxCaadiKg });
             }
         }
         return map;
     }, [dailyBookData]);
 
+    // Available customers for the selected Daily Book date (every customer present on that date appears!)
     const availableCustomersForSelectedDate = useMemo(() => {
+        const list: Array<{ id: string; name: string; customer_code: string; is_inactive?: boolean; is_kabarka?: boolean; actualKg: number; vipQaaliKg: number; maxCaadiKg: number }> = [];
+        const seen = new Set<string>();
+
+        // 1. If dailyBookData has items for this date, every customer with an item on this date appears!
         if (dailyBookData?.items && Array.isArray(dailyBookData.items) && dailyBookData.items.length > 0) {
-            const list: Array<{ id: string; name: string; customer_code: string; is_inactive?: boolean; is_kabarka?: boolean; kg?: number }> = [];
-            const seen = new Set<string>();
             for (const item of dailyBookData.items) {
-                const cust = item.customer || allCustomers.find((c: any) => c.id === item.customer_id);
-                if (cust && !cust.is_inactive && !cust.is_kabarka && !seen.has(item.customer_id)) {
+                const cust = allCustomers.find((c: any) => c.id === item.customer_id) || item.customer;
+                if (cust && !seen.has(item.customer_id)) {
                     seen.add(item.customer_id);
+                    const stats = dailyBookCustomerStatsMap.get(item.customer_id) || { actualKg: 0, vipQaaliKg: 0, maxCaadiKg: 0 };
                     list.push({
                         id: item.customer_id,
                         name: cust.name || 'Unknown',
                         customer_code: cust.customer_code || '',
                         is_inactive: cust.is_inactive,
                         is_kabarka: cust.is_kabarka,
-                        kg: parseFloat(String(item.kg)) || 0
+                        ...stats
                     });
                 }
             }
-            if (list.length > 0) {
-                return list.sort((a, b) => {
-                    const codeA = parseInt(a.customer_code.replace(/\D/g, ''), 10) || 0;
-                    const codeB = parseInt(b.customer_code.replace(/\D/g, ''), 10) || 0;
-                    return codeA - codeB;
+        }
+
+        // 2. Also include all active customers from allCustomers
+        for (const c of allCustomers) {
+            if (!c.is_inactive && !c.is_kabarka && !seen.has(c.id)) {
+                seen.add(c.id);
+                const stats = dailyBookCustomerStatsMap.get(c.id) || { actualKg: 0, vipQaaliKg: 0, maxCaadiKg: 0 };
+                list.push({
+                    id: c.id,
+                    name: c.name || 'Unknown',
+                    customer_code: c.customer_code || '',
+                    is_inactive: c.is_inactive,
+                    is_kabarka: c.is_kabarka,
+                    ...stats
                 });
             }
         }
-        return allCustomers
-            .filter((c: any) => !c.is_inactive && !c.is_kabarka)
-            .sort((a: any, b: any) => {
-                const codeA = parseInt(a.customer_code.replace(/\D/g, ''), 10) || 0;
-                const codeB = parseInt(b.customer_code.replace(/\D/g, ''), 10) || 0;
-                return codeA - codeB;
-            });
-    }, [dailyBookData, allCustomers]);
+
+        return list.sort((a, b) => {
+            const codeA = parseInt(a.customer_code.replace(/\D/g, ''), 10) || 0;
+            const codeB = parseInt(b.customer_code.replace(/\D/g, ''), 10) || 0;
+            return codeA - codeB;
+        });
+    }, [dailyBookData, allCustomers, dailyBookCustomerStatsMap]);
+
+    // Date-specific checkmarks: Synchronize newOverride.customerIds with the selected date's VIP Caadi assignments
+    useEffect(() => {
+        if (!newOverride.date) return;
+        const selectedDateStr = newOverride.date.substring(0, 10);
+        const assignedIdsForDate = new Set<string>();
+        for (const cat of vipCaadiConfig) {
+            const catDateStr = cat.date ? cat.date.substring(0, 10) : undefined;
+            if (catDateStr === selectedDateStr) {
+                for (const id of cat.customerIds) {
+                    assignedIdsForDate.add(id);
+                }
+            }
+        }
+        setNewOverride(prev => ({
+            ...prev,
+            customerIds: Array.from(assignedIdsForDate)
+        }));
+    }, [newOverride.date]);
 
     const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -1116,6 +1167,38 @@ export default function SettingsPage() {
             };
         }).filter(cat => cat.customerIds.length > 0);
         handleSaveVipCaadiConfig(updated, `remove-cust-${categoryId}-${customerId}`);
+    };
+
+    const handleUpdateVipCaadiCustomerKg = (categoryId: string, customerId: string, kgString: string) => {
+        // Optimistic update for the input field only — does not save to DB
+        const updated = vipCaadiConfig.map(cat => {
+            if (cat.id !== categoryId) return cat;
+            return {
+                ...cat,
+                customerKgs: {
+                    ...cat.customerKgs,
+                    [customerId]: parseFloat(kgString) || 0
+                }
+            };
+        });
+        setVipCaadiConfig(updated);
+        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(updated));
+    };
+
+    const handleSaveVipCaadiCustomerKg = (categoryId: string, customerId: string) => {
+        // Validate boundary: vipCaadiKg <= maxVipCaadiKg
+        const cat = vipCaadiConfig.find(c => c.id === categoryId);
+        if (!cat) return;
+        const stats = dailyBookCustomerStatsMap.get(customerId);
+        const enteredKg = cat.customerKgs?.[customerId] ?? 0;
+        if (stats && enteredKg > stats.maxCaadiKg) {
+            toast.error(
+                `Maximum VIP Caadi KG is ${stats.maxCaadiKg} KG because ${stats.vipQaaliKg} KG is already VIP Qaali.`,
+                { duration: 5000 }
+            );
+            return;
+        }
+        handleSaveVipCaadiConfig(vipCaadiConfig, `save-kg-${categoryId}-${customerId}`);
     };
 
     const handleDeleteVipCaadiCategory = (categoryId: string) => {
@@ -2228,8 +2311,8 @@ export default function SettingsPage() {
                                                                         />
                                                                         <div className="flex items-center justify-between flex-1 min-w-0">
                                                                             <span className="text-xs font-medium truncate">#{c.customer_code} - {c.name}</span>
-                                                                            {c.kg !== undefined && c.kg > 0 && (
-                                                                                <span className="text-[10px] font-bold text-muted-foreground ml-2 shrink-0">{c.kg} KG</span>
+                                                                            {c.actualKg !== undefined && c.actualKg > 0 && (
+                                                                                <span className="text-[10px] font-bold text-muted-foreground ml-2 shrink-0">{c.actualKg} KG</span>
                                                                             )}
                                                                         </div>
                                                                     </label>
@@ -2337,22 +2420,34 @@ export default function SettingsPage() {
                                                             <Sparkles className="w-3.5 h-3.5" /> VIP Caadi Categories ({vipCaadiConfig.length})
                                                         </span>
                                                     </div>
-
                                                     <div className="space-y-2.5">
                                                         {vipCaadiConfig.map((cat) => {
                                                             const isExpanded = expandedVipCaadiCategories.includes(cat.id);
+                                                            const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
                                                             const catCustomers = cat.customerIds.map(custId => {
-                                                                const cust = allCustomers.find(c => c.id === custId) || availableCustomersForSelectedDate.find(c => c.id === custId);
-                                                                const kg = dailyBookCustomerKgMap.get(custId) || 0;
+                                                                const cust = allCustomers.find(c => c.id === custId)
+                                                                    || availableCustomersForSelectedDate.find(c => c.id === custId);
+                                                                const stats = dailyBookCustomerStatsMap.get(custId) || { actualKg: 0, vipQaaliKg: 0, maxCaadiKg: 0 };
+                                                                // Use saved KG if present, otherwise default to maxCaadiKg (backward compat)
+                                                                const savedKg = cat.customerKgs?.[custId];
+                                                                const assignedCaadiKg = savedKg !== undefined
+                                                                    ? Math.min(savedKg, stats.maxCaadiKg)
+                                                                    : stats.maxCaadiKg;
                                                                 return {
                                                                     id: custId,
                                                                     name: cust?.name || 'Unknown',
                                                                     code: cust?.customer_code || '?',
-                                                                    kg,
+                                                                    actualKg: stats.actualKg,
+                                                                    vipQaaliKg: stats.vipQaaliKg,
+                                                                    maxCaadiKg: stats.maxCaadiKg,
+                                                                    assignedCaadiKg,
+                                                                    // Current input value (in-flight edit)
+                                                                    inputKg: cat.customerKgs?.[custId] ?? stats.maxCaadiKg,
                                                                     price: cat.customerPrices?.[custId] ?? ''
                                                                 };
                                                             });
-                                                            const totalCategoryKg = catCustomers.reduce((sum, c) => sum + c.kg, 0);
+                                                            // Category Total KG = SUM of assigned VIP Caadi KG (not Daily Book KG!)
+                                                            const totalCategoryKg = catCustomers.reduce((sum, c) => sum + c.assignedCaadiKg, 0);
 
                                                             return (
                                                                 <div 
@@ -2368,14 +2463,14 @@ export default function SettingsPage() {
                                                                             <span className="text-xs font-black uppercase text-amber-700 dark:text-amber-400 flex items-center gap-1">
                                                                                 ⭐ {cat.label || 'VIP Caadi'}
                                                                             </span>
-                                                                            {cat.date && (
+                                                                            {catDate && (
                                                                                 <span className="text-[10px] font-bold text-muted-foreground bg-white/10 dark:bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">
-                                                                                    📅 {cat.date}
+                                                                                    📅 {catDate}
                                                                                 </span>
                                                                             )}
                                                                             <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
                                                                                 {cat.customerIds.length} customer{cat.customerIds.length > 1 ? 's' : ''}
-                                                                                {totalCategoryKg > 0 ? ` · ${totalCategoryKg} KG` : ''}
+                                                                                {totalCategoryKg > 0 ? ` · ${totalCategoryKg.toFixed(1)} KG` : ''}
                                                                             </span>
                                                                         </div>
 
@@ -2420,49 +2515,81 @@ export default function SettingsPage() {
                                                                     {/* Customer Items inside this category (only shown when expanded) */}
                                                                     {isExpanded && (
                                                                         <div className="p-3 border-t border-amber-500/15 bg-black/[0.02] dark:bg-black/20 space-y-2 animate-in slide-in-from-top-1 duration-150">
-                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-56 overflow-y-auto pr-0.5 custom-scrollbar">
-                                                                                {catCustomers.map(cust => (
-                                                                                    <div 
-                                                                                        key={cust.id} 
-                                                                                        className="flex items-center justify-between p-2 rounded-xl bg-white/[0.05] dark:bg-black/30 border border-amber-500/10 hover:border-amber-500/25 transition-colors gap-2"
-                                                                                    >
-                                                                                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                                                                            <span className="text-[9px] font-bold text-muted-foreground/80 bg-white/10 dark:bg-white/5 px-1 py-0.5 rounded shrink-0">
-                                                                                                #{cust.code}
-                                                                                            </span>
-                                                                                            <span className="text-[11px] font-semibold text-foreground truncate" title={cust.name}>
-                                                                                                {cust.name}
-                                                                                            </span>
-                                                                                            {cust.kg > 0 && (
-                                                                                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded shrink-0">
-                                                                                                    {cust.kg} KG
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                        <div className="flex items-center gap-1 shrink-0">
-                                                                                            <div className="relative w-16">
-                                                                                                <div className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[9px]">$</div>
-                                                                                                <Input
-                                                                                                    type="number"
-                                                                                                    value={cust.price}
-                                                                                                    onChange={(e) => handleUpdateVipCaadiCustomerPrice(cat.id, cust.id, e.target.value)}
-                                                                                                    placeholder="Price"
-                                                                                                    className="pl-3.5 h-6 w-full text-[10px] font-bold bg-white/20 dark:bg-black/40 border-amber-500/20 rounded focus:border-amber-500/50 focus:ring-0"
-                                                                                                />
+                                                                            {cat.customerIds.length === 0 ? (
+                                                                                <div className="text-[11px] text-muted-foreground text-center py-3">No customers assigned.</div>
+                                                                            ) : (
+                                                                                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-0.5 custom-scrollbar">
+                                                                                    {catCustomers.map(cust => (
+                                                                                        <div 
+                                                                                            key={cust.id} 
+                                                                                            className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-white/[0.05] dark:bg-black/30 border border-amber-500/10 hover:border-amber-500/25 transition-colors"
+                                                                                        >
+                                                                                            {/* Row 1: Customer name & code */}
+                                                                                            <div className="flex items-center justify-between gap-2">
+                                                                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                                                                    <span className="text-[9px] font-bold text-muted-foreground/80 bg-white/10 dark:bg-white/5 px-1 py-0.5 rounded shrink-0">
+                                                                                                        #{cust.code}
+                                                                                                    </span>
+                                                                                                    <span className="text-[11px] font-semibold text-foreground truncate" title={cust.name}>
+                                                                                                        {cust.name}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleRemoveVipCaadiCustomer(cat.id, cust.id)}
+                                                                                                    className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                                                                                                    title="Remove Customer"
+                                                                                                >
+                                                                                                    <X className="w-3 h-3" />
+                                                                                                </button>
                                                                                             </div>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleRemoveVipCaadiCustomer(cat.id, cust.id)}
-                                                                                                className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                                                                                title="Remove Customer"
-                                                                                            >
-                                                                                                <X className="w-3 h-3" />
-                                                             
-                                                                                            </button>
+                                                                                            {/* Row 2: KG stats + editable VIP Caadi KG + Price */}
+                                                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                                {cust.actualKg > 0 && (
+                                                                                                    <span className="text-[9px] font-medium text-muted-foreground bg-white/10 px-1.5 py-0.5 rounded shrink-0">
+                                                                                                        Book: {cust.actualKg} KG
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                {cust.vipQaaliKg > 0 && (
+                                                                                                    <span className="text-[9px] font-medium text-purple-500 bg-purple-500/10 px-1.5 py-0.5 rounded shrink-0">
+                                                                                                        VIP Qaali: {cust.vipQaaliKg} KG
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                <span className="text-[9px] font-medium text-amber-600/70 shrink-0">
+                                                                                                    Max: {cust.maxCaadiKg} KG
+                                                                                                </span>
+                                                                                                {/* Editable VIP Caadi KG */}
+                                                                                                <div className="flex items-center gap-1 ml-auto">
+                                                                                                    <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 shrink-0">VIP KG:</span>
+                                                                                                    <Input
+                                                                                                        type="number"
+                                                                                                        min={0}
+                                                                                                        max={cust.maxCaadiKg}
+                                                                                                        step={0.5}
+                                                                                                        value={cust.inputKg}
+                                                                                                        onChange={(e) => handleUpdateVipCaadiCustomerKg(cat.id, cust.id, e.target.value)}
+                                                                                                        onBlur={() => handleSaveVipCaadiCustomerKg(cat.id, cust.id)}
+                                                                                                        className="h-6 w-16 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30 rounded focus:border-amber-500/60 focus:ring-0 text-center px-1"
+                                                                                                        title={`VIP Caadi KG (max ${cust.maxCaadiKg})`}
+                                                                                                    />
+                                                                                                    {/* Price */}
+                                                                                                    <div className="relative w-16">
+                                                                                                        <div className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[9px]">$</div>
+                                                                                                        <Input
+                                                                                                            type="number"
+                                                                                                            value={cust.price}
+                                                                                                            onChange={(e) => handleUpdateVipCaadiCustomerPrice(cat.id, cust.id, e.target.value)}
+                                                                                                            onBlur={() => handleSaveVipCaadiConfig(vipCaadiConfig, `save-price-${cat.id}-${cust.id}`)}
+                                                                                                            placeholder="Price"
+                                                                                                            className="pl-3.5 h-6 w-full text-[10px] font-bold bg-white/20 dark:bg-black/40 border-amber-500/20 rounded focus:border-amber-500/50 focus:ring-0"
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
                                                                                         </div>
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     )}
                                                                 </div>

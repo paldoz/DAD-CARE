@@ -632,15 +632,17 @@ function DailyBookPageInner() {
     // Active VIP CAADI items calculation
     const activeDateStr = format(date, 'yyyy-MM-dd');
     const activeVipCaadiCustMap = useMemo(() => {
-        const idToCategory = new Map<string, { label: string; price?: string }>();
+        const idToCategory = new Map<string, { label: string; price?: string; savedKg?: number }>();
         for (const cat of vipCaadiConfig) {
             const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+            // Include cats with no date (global) or cats that match this exact date
             if (!catDate || catDate === activeDateStr) {
                 for (const custId of cat.customerIds) {
                     if (!idToCategory.has(custId)) {
                         idToCategory.set(custId, {
                             label: cat.label || 'VIP Caadi',
-                            price: cat.customerPrices?.[custId]
+                            price: cat.customerPrices?.[custId],
+                            savedKg: cat.customerKgs?.[custId]
                         });
                     }
                 }
@@ -652,15 +654,21 @@ function DailyBookPageInner() {
     const activeVipCaadiItems = useMemo(() => {
         const items: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }> = [];
         for (const [custId, data] of Object.entries(entries)) {
-            const kg = parseFloat(String(data.kg)) || 0;
-            const hasVipQaali = data.note && data.note.toLowerCase().includes('vip');
-            if (!hasVipQaali && activeVipCaadiCustMap.has(custId) && kg > 0) {
+            const actualKg = parseFloat(String(data.kg)) || 0;
+            const vipQaaliKg = getVipCount(data.note, actualKg);
+            const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+            // Only include if customer is VIP Caadi assigned AND they have some non-VIP-Qaali KG
+            if (activeVipCaadiCustMap.has(custId) && maxCaadiKg > 0) {
                 const info = activeVipCaadiCustMap.get(custId)!;
                 const cust = customers.find(c => c.id === custId);
+                // Use saved VIP Caadi KG if present, otherwise default to max available
+                const caadiKg = info.savedKg !== undefined
+                    ? Math.min(info.savedKg, maxCaadiKg)
+                    : maxCaadiKg;
                 items.push({
                     customer: cust,
                     customer_id: custId,
-                    kg,
+                    kg: caadiKg,
                     price: info.price,
                     categoryLabel: info.label,
                     note: data.note
