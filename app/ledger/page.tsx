@@ -158,7 +158,7 @@ const buildEntryFromDailyRecord = (
     dateSpecificOverrides?: Record<string, Record<string, string>>,
     customerId?: string,
     vipCaadiConfig?: VipCaadiCategory[]
-): { entry: DateEntry; shouldExpandExtra: boolean } => {
+): { entry: DateEntry; secondEntry?: DateEntry; shouldExpandExtra: boolean } => {
     let kg = record.kg ? record.kg.toString() : '0';
     
     // Apply date-specific price if available, otherwise fallback to global default
@@ -215,10 +215,15 @@ const buildEntryFromDailyRecord = (
             const totalKg = record.kg || 0;
             // Parse VIP Qaali KG already encoded in the note (e.g. "5 vip 36" → 5 KG)
             let vipQaaliKg = 0;
+            let vipQaaliPrice = pricePerKg;
+            let vipQaaliLabel = 'VIP';
             if (record.note) {
                 const noteEntries = parseNoteEntries(record.note.trim());
                 if (noteEntries.length > 0) {
-                    vipQaaliKg = noteEntries.reduce((s, e) => s + e.kg, 0);
+                    const firstVip = noteEntries.find(e => e.label.toLowerCase().includes('vip')) || noteEntries[0];
+                    vipQaaliKg = firstVip.kg;
+                    if (firstVip.price !== null) vipQaaliPrice = firstVip.price.toString();
+                    vipQaaliLabel = firstVip.label.charAt(0).toUpperCase() + firstVip.label.slice(1);
                 }
             }
             const maxCaadiKg = Math.max(0, totalKg - vipQaaliKg);
@@ -235,21 +240,38 @@ const buildEntryFromDailyRecord = (
                 shouldExpandExtra = true;
                 // Normal portion (what remains) goes into the main line
                 kg = normalKg.toString();
-                // Main kg row still uses the normal/default price
-                // (pricePerKg is already set correctly above)
+                mainNote = normalKg > 0 ? 'Normal' : '';
+
+                const mainEntry: DateEntry = {
+                    id,
+                    date: record.date || '',
+                    kg,
+                    pricePerKg,
+                    extraKg,
+                    extraPricePerKg,
+                    extraNote,
+                    mainNote,
+                    isReady: record.isReady !== false
+                };
+
+                let secondEntry: DateEntry | undefined = undefined;
+                if (vipQaaliKg > 0) {
+                    secondEntry = {
+                        id: `${id}-qaali`,
+                        date: record.date || '',
+                        kg: '0',
+                        pricePerKg,
+                        extraKg: vipQaaliKg.toString(),
+                        extraPricePerKg: vipQaaliPrice,
+                        extraNote: vipQaaliLabel,
+                        mainNote: '',
+                        isReady: record.isReady !== false
+                    };
+                }
 
                 return {
-                    entry: {
-                        id,
-                        date: record.date || '',
-                        kg,
-                        pricePerKg,
-                        extraKg,
-                        extraPricePerKg,
-                        extraNote,
-                        mainNote,
-                        isReady: record.isReady !== false
-                    },
+                    entry: mainEntry,
+                    secondEntry,
                     shouldExpandExtra
                 };
             }
@@ -654,27 +676,29 @@ export default function LedgerPage() {
                 // If no dates, or just 1 empty row, initialize sequentially with all unprocessed records
                 if (prev.length === 0 || (prev.length === 1 && !prev[0].date)) {
                     if (dailyData && dailyData.length > 0) {
-                        newEntries = dailyData.map((d: any, idx: number) => {
+                        newEntries = dailyData.flatMap((d: any, idx: number) => {
                             const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
+                            const { entry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                             if (shouldExpandExtra) {
                                 newExpandedIds.add(entryId);
+                                if (secondEntry) newExpandedIds.add(secondEntry.id);
                             }
-                            return entry;
+                            return secondEntry ? [entry, secondEntry] : [entry];
                         });
                     } else {
                         newEntries = [{ id: Date.now().toString(), date: '', kg: '0', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }];
                     }
                 } else {
                     // Re-sequence existing rows to strictly match unprocessed dates
-                    newEntries = prev.map((entry, idx) => {
+                    newEntries = prev.flatMap((entry, idx) => {
                         const d = dailyData[idx];
-                        if (!d) return { ...entry, date: '' };
-                        const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
+                        if (!d) return [{ ...entry, date: '' }];
+                        const { entry: parsedEntry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                         if (shouldExpandExtra) {
                             newExpandedIds.add(entry.id);
+                            if (secondEntry) newExpandedIds.add(secondEntry.id);
                         }
-                        return parsedEntry;
+                        return secondEntry ? [parsedEntry, secondEntry] : [parsedEntry];
                     }).filter(e => e.date !== '');
                 }
 
@@ -828,15 +852,16 @@ export default function LedgerPage() {
         }
         const nextUnprocessed = customerDailyDates[nextIndex];
         const newEntryId = Date.now().toString();
-        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(newEntryId, nextUnprocessed, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
+        const { entry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(newEntryId, nextUnprocessed, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
         if (shouldExpandExtra) {
             setExpandedExtraEntryIds(prev => {
                 const next = new Set(prev);
                 next.add(newEntryId);
+                if (secondEntry) next.add(secondEntry.id);
                 return next;
             });
         }
-        setDateEntries([...dateEntries, entry]);
+        setDateEntries([...dateEntries, ...(secondEntry ? [entry, secondEntry] : [entry])]);
     };
 
     const updateDateEntry = (id: string, field: keyof DateEntry, value: string) => {
@@ -868,15 +893,16 @@ export default function LedgerPage() {
         setDateEntries(entries => {
             const filtered = entries.filter(entry => entry.id !== id);
             const nextExpandedIds = new Set<string>();
-            const mapped = filtered.map((entry, idx) => {
+            const mapped = filtered.flatMap((entry, idx) => {
                 const d = customerDailyDates[idx];
-                if (!d) return { ...entry, date: '' };
-                const { entry: parsedEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
+                if (!d) return [{ ...entry, date: '' }];
+                const { entry: parsedEntry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entry.id, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                 if (shouldExpandExtra) {
                     nextExpandedIds.add(entry.id);
+                    if (secondEntry) nextExpandedIds.add(secondEntry.id);
                 }
-                return parsedEntry;
-            });
+                return secondEntry ? [parsedEntry, secondEntry] : [parsedEntry];
+            }).filter(e => e.date !== '');
             setExpandedExtraEntryIds(nextExpandedIds);
             return mapped;
         });
@@ -1099,11 +1125,14 @@ export default function LedgerPage() {
                 // So we manually repopulate the screen with the existing next pair instantly to avoid a blank screen!
                 if (dailyEntriesRaw && dailyEntriesRaw.dailyData) {
                     const newExpandedIds = new Set<string>();
-                    const newEntries = dailyEntriesRaw.dailyData.map((d: any, idx: number) => {
+                    const newEntries = dailyEntriesRaw.dailyData.flatMap((d: any, idx: number) => {
                         const entryId = (Date.now() + idx).toString();
-                        const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
-                        if (shouldExpandExtra) newExpandedIds.add(entryId);
-                        return entry;
+                        const { entry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
+                        if (shouldExpandExtra) {
+                            newExpandedIds.add(entryId);
+                            if (secondEntry) newExpandedIds.add(secondEntry.id);
+                        }
+                        return secondEntry ? [entry, secondEntry] : [entry];
                     });
                     setDateEntries(newEntries);
                     setExpandedExtraEntryIds(newExpandedIds);
@@ -1135,11 +1164,14 @@ export default function LedgerPage() {
                         setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
                     } else {
                         const newExpandedIds = new Set<string>();
-                        const newEntries = nextPair.map((d: any, idx: number) => {
+                        const newEntries = nextPair.flatMap((d: any, idx: number) => {
                             const entryId = (Date.now() + idx).toString();
-                            const { entry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
-                            if (shouldExpandExtra) newExpandedIds.add(entryId);
-                            return entry;
+                            const { entry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
+                            if (shouldExpandExtra) {
+                                newExpandedIds.add(entryId);
+                                if (secondEntry) newExpandedIds.add(secondEntry.id);
+                            }
+                            return secondEntry ? [entry, secondEntry] : [entry];
                         });
                         
                         setDateEntries(newEntries);

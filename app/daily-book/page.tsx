@@ -9,6 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -98,6 +99,184 @@ function getFormattedNoteBadges(note: string | undefined): { text: string, isVip
     return badges;
 }
 
+const formatMoney = (val: number): string => {
+    const num = Number(val || 0);
+    const hasCents = Math.abs(num % 1) > 0.001;
+    return num.toLocaleString('en-US', {
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: 2
+    });
+};
+
+const parseNoteEntries = (note: string): { kg: number; label: string; price: number | null }[] => {
+    if (!note) return [];
+    const n = note.trim();
+    const results: { kg: number; label: string; price: number | null }[] = [];
+    const fullPattern = /(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z\s]{0,20}?)\s+(\d+(?:\.\d+)?)/g;
+    let match;
+    while ((match = fullPattern.exec(n)) !== null) {
+        const kg = parseFloat(match[1]);
+        const label = match[2].trim();
+        const price = parseFloat(match[3]);
+        if (kg > 0 && price > 0) results.push({ kg, label, price });
+    }
+    if (results.length === 0) {
+        const simplePattern = /(\d+(?:\.\d+)?)\s+([a-zA-Z][a-zA-Z]{1,20})/g;
+        while ((match = simplePattern.exec(n)) !== null) {
+            const kg = parseFloat(match[1]);
+            const label = match[2].trim();
+            if (kg > 0) results.push({ kg, label, price: null });
+        }
+    }
+    return results;
+};
+
+function CustomerNotebookPopoverContent({
+    customer,
+    date,
+    entries,
+    setEntries,
+    activeVipCaadiCustMap,
+    defaultPrice,
+    dateSpecificPrices,
+    dateSpecificOverrides,
+    onClose
+}: {
+    customer: Customer;
+    date: Date;
+    entries: { [key: string]: { kg: number, present: boolean, note: string } };
+    setEntries: React.Dispatch<React.SetStateAction<{ [key: string]: { kg: number, present: boolean, note: string } }>>;
+    activeVipCaadiCustMap: Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>;
+    defaultPrice: string;
+    dateSpecificPrices: Record<string, string>;
+    dateSpecificOverrides: Record<string, Record<string, string>>;
+    onClose: () => void;
+}) {
+    const activeDateKey = format(date, 'yyyy-MM-dd');
+    const bookKg = entries[customer.id]?.kg || 0;
+    const note = entries[customer.id]?.note || '';
+    const vipQaaliKg = getVipCount(note, bookKg);
+    const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
+    const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+    const caadiKg = (vipCaadiInfo && maxCaadiKg > 0)
+        ? (vipCaadiInfo.savedKg !== undefined ? Math.min(vipCaadiInfo.savedKg, maxCaadiKg) : maxCaadiKg)
+        : 0;
+    const normalKg = Math.max(0, bookKg - vipQaaliKg - caadiKg);
+
+    // Caadi price: customer override -> category default -> fallback
+    const overrideCaadiPrice = vipCaadiInfo?.price ? parseFloat(vipCaadiInfo.price) : undefined;
+    const effectiveCaadiPrice = (overrideCaadiPrice && !isNaN(overrideCaadiPrice) && overrideCaadiPrice > 0)
+        ? overrideCaadiPrice
+        : (vipCaadiInfo?.defaultPrice ?? 36);
+
+    // Normal price: customer date override -> global date price -> default price
+    const custOverride = dateSpecificOverrides?.[activeDateKey]?.[customer.id];
+    const datePrice = dateSpecificPrices?.[activeDateKey];
+    const effectiveNormalPrice = custOverride ? parseFloat(custOverride) : (datePrice ? parseFloat(datePrice) : parseFloat(defaultPrice || '35'));
+
+    // VIP Qaali price (from note or fallback to normal price)
+    let vipQaaliPrice = effectiveNormalPrice;
+    if (note) {
+        const parsed = parseNoteEntries(note);
+        const vipEntry = parsed.find(e => e.label.toLowerCase().includes('vip'));
+        if (vipEntry && vipEntry.price) {
+            vipQaaliPrice = vipEntry.price;
+        }
+    }
+
+    const vipQaaliAmount = vipQaaliKg * vipQaaliPrice;
+    const caadiAmount = caadiKg * effectiveCaadiPrice;
+    const normalAmount = normalKg * effectiveNormalPrice;
+    const totalAmount = (vipQaaliKg > 0 ? vipQaaliAmount : 0) + (caadiKg > 0 ? caadiAmount : 0) + normalAmount;
+    const hasSpecialAllocation = caadiKg > 0 || vipQaaliKg > 0 || bookKg > 0;
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                <div>
+                    <h4 className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                        <span>{customer.name}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">#{customer.customer_code}</span>
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground font-medium">{format(date, 'EEEE, MMM dd, yyyy')}</p>
+                </div>
+                <div className="flex items-center gap-1">
+                    {vipQaaliKg > 0 && (
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-600 dark:text-amber-400 border border-amber-400/30">
+                            👑 VIP
+                        </span>
+                    )}
+                    {caadiKg > 0 && (
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30">
+                            👑 VIP Caadi
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {hasSpecialAllocation && (
+                <div className="rounded-xl border border-border/80 bg-muted/40 p-3 space-y-2 text-xs">
+                    <div className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground flex items-center justify-between border-b border-border/40 pb-1">
+                        <span>Buuga Maalinlaha Notebook</span>
+                        <span className="font-mono text-foreground font-bold">{formatKg(bookKg)} KG Total</span>
+                    </div>
+
+                    <div className="space-y-1.5 font-mono text-[11px]">
+                        <div className="flex justify-between text-muted-foreground">
+                            <span>Book:</span>
+                            <span className="font-bold text-foreground">{formatKg(bookKg)} KG</span>
+                        </div>
+
+                        {vipQaaliKg > 0 && (
+                            <div className="flex justify-between text-amber-600 dark:text-amber-400 font-medium">
+                                <span>👑 VIP Qaali:</span>
+                                <span>{formatKg(vipQaaliKg)} KG × ${vipQaaliPrice} = ${formatMoney(vipQaaliAmount)}</span>
+                            </div>
+                        )}
+
+                        {caadiKg > 0 && (
+                            <div className="flex justify-between text-purple-600 dark:text-purple-400 font-bold">
+                                <span>👑 VIP Caadi:</span>
+                                <span>{formatKg(caadiKg)} KG × ${effectiveCaadiPrice} = ${formatMoney(caadiAmount)}</span>
+                            </div>
+                        )}
+
+                        <div className="flex justify-between text-muted-foreground">
+                            <span>Normal remaining:</span>
+                            <span>{formatKg(normalKg)} KG × ${effectiveNormalPrice} = ${formatMoney(normalAmount)}</span>
+                        </div>
+
+                        <div className="flex justify-between pt-1.5 mt-1 border-t-2 border-double border-border font-bold text-foreground text-xs">
+                            <span>Maqal Contribution:</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-black">${formatMoney(totalAmount)}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold text-muted-foreground">Manual Note (VIP Qaali / Notes)</Label>
+                <p className="text-[9px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
+                <Input
+                    placeholder="e.g. 10 vip 38, 10 vip 37"
+                    value={entries[customer.id]?.note || ''}
+                    onChange={(e) => setEntries({
+                        ...entries,
+                        [customer.id]: {
+                            kg: entries[customer.id]?.kg || 0,
+                            present: entries[customer.id]?.present ?? true,
+                            note: e.target.value
+                        }
+                    })}
+                    className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none"
+                    autoFocus={!hasSpecialAllocation}
+                />
+            </div>
+            <Button size="sm" className="w-full h-7 text-xs font-bold" onClick={onClose}>Done</Button>
+        </div>
+    );
+}
+
 
 function DailyBookPageInner() {
     const [date, setDate] = useState<Date>(new Date());
@@ -153,6 +332,21 @@ function DailyBookPageInner() {
         }
         return [];
     });
+    const [defaultPrice, setDefaultPrice] = useState('35');
+    const [dateSpecificPrices, setDateSpecificPrices] = useState<Record<string, string>>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem('dadwork_date_specific_prices');
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+        return {};
+    });
+    const [dateSpecificOverrides, setDateSpecificOverrides] = useState<Record<string, Record<string, string>>>(() => {
+        if (typeof window !== 'undefined') {
+            const cached = localStorage.getItem('dadwork_date_specific_overrides');
+            if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+        }
+        return {};
+    });
     const [compareModalOpen, setCompareModalOpen] = useState(false);
     const [compareDate1, setCompareDate1] = useState<string | null>(null);
     const [compareDate2, setCompareDate2] = useState<string | null>(null);
@@ -200,6 +394,26 @@ function DailyBookPageInner() {
                 }
             } catch (e) { }
         }
+
+        const loadPrices = async () => {
+            try {
+                const res = await fetch(`/api/settings?_t=${Date.now()}`, { cache: 'no-store' });
+                const data = await res.json();
+                if (data?.dadwork_price_per_kg) setDefaultPrice(data.dadwork_price_per_kg);
+                if (data?.dadwork_date_specific_prices) {
+                    try { setDateSpecificPrices(JSON.parse(data.dadwork_date_specific_prices)); } catch(e) {}
+                }
+                if (data?.dadwork_date_specific_overrides) {
+                    try {
+                        const parsed = typeof data.dadwork_date_specific_overrides === 'string'
+                            ? JSON.parse(data.dadwork_date_specific_overrides)
+                            : data.dadwork_date_specific_overrides;
+                        setDateSpecificOverrides(parsed);
+                    } catch(e) {}
+                }
+            } catch(e) {}
+        };
+        loadPrices();
     }, []);
 
     // Sync SWR Init Data to Local State (Protects Optimistic UI)
@@ -955,17 +1169,22 @@ function DailyBookPageInner() {
                                                     </button>
                                                     <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
                                                         <PopoverTrigger asChild>
-                                                            <Button variant="ghost" size="sm" className={`h-5 w-5 md:h-6 md:w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 ${entries[customer.id]?.note ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
+                                                            <Button variant="ghost" size="sm" className={`h-5 w-5 md:h-6 md:w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 ${entries[customer.id]?.note || activeVipCaadiCustMap.has(customer.id) ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
                                                                 <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                             </Button>
                                                         </PopoverTrigger>
-                                                        <PopoverContent className="w-60 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                            <div className="space-y-2">
-                                                                <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-                                                                <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                                                                <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
-                                                                <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
-                                                            </div>
+                                                        <PopoverContent className="w-80 md:w-[350px] p-3.5 bg-popover border-border shadow-2xl rounded-2xl z-[10000]">
+                                                            <CustomerNotebookPopoverContent
+                                                                customer={customer}
+                                                                date={date}
+                                                                entries={entries}
+                                                                setEntries={setEntries}
+                                                                activeVipCaadiCustMap={activeVipCaadiCustMap}
+                                                                defaultPrice={defaultPrice}
+                                                                dateSpecificPrices={dateSpecificPrices}
+                                                                dateSpecificOverrides={dateSpecificOverrides}
+                                                                onClose={() => setOpenNoteForCustomerId(null)}
+                                                            />
                                                         </PopoverContent>
                                                     </Popover>
                                                 </div>
@@ -974,11 +1193,23 @@ function DailyBookPageInner() {
                                                         {(() => {
                                                             const note = entries[customer.id]?.note || '';
                                                             const isVip = note.toLowerCase().includes('vip');
-                                                            return isVip ? (
-                                                                <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                    <span>👑 VIP</span>
-                                                                </button>
-                                                            ) : null;
+                                                            const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+                                                            const hasVipCaadi = !!vipCaadiInfo && (entries[customer.id]?.kg || 0) > 0;
+
+                                                            return (
+                                                                <div className="flex items-center gap-1">
+                                                                    {isVip && (
+                                                                        <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP note" className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                            <span>👑 VIP</span>
+                                                                        </button>
+                                                                    )}
+                                                                    {hasVipCaadi && (
+                                                                        <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP Caadi notebook" className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 text-white shadow-sm border border-purple-300 dark:border-purple-600 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                            <span>👑 VIP Caadi</span>
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            );
                                                         })()}
                                                         <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-7 w-16 md:w-20 text-right font-black text-sm md:text-base border-0 border-b border-transparent rounded-none bg-transparent transition-all px-1 focus-visible:ring-0 shadow-none hover:border-blue-300 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
                                                     </div>
@@ -1150,17 +1381,22 @@ function DailyBookPageInner() {
                                                         </button>
                                                         <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
                                                             <PopoverTrigger asChild>
-                                                                <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} className={`h-5 w-5 md:h-6 md:w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 ${entries[customer.id]?.note ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
+                                                                <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} className={`h-5 w-5 md:h-6 md:w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 ${entries[customer.id]?.note || activeVipCaadiCustMap.has(customer.id) ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
                                                                     <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
                                                                 </Button>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-60 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                                <div className="space-y-2">
-                                                                    <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-                                                                    <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                                                                    <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
-                                                                    <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
-                                                                </div>
+                                                            <PopoverContent className="w-80 md:w-[350px] p-3.5 bg-popover border-border shadow-2xl rounded-2xl z-[10000]">
+                                                                <CustomerNotebookPopoverContent
+                                                                    customer={customer}
+                                                                    date={date}
+                                                                    entries={entries}
+                                                                    setEntries={setEntries}
+                                                                    activeVipCaadiCustMap={activeVipCaadiCustMap}
+                                                                    defaultPrice={defaultPrice}
+                                                                    dateSpecificPrices={dateSpecificPrices}
+                                                                    dateSpecificOverrides={dateSpecificOverrides}
+                                                                    onClose={() => setOpenNoteForCustomerId(null)}
+                                                                />
                                                             </PopoverContent>
                                                         </Popover>
                                                     </div>
@@ -1169,11 +1405,23 @@ function DailyBookPageInner() {
                                                             {(() => {
                                                                 const note = entries[customer.id]?.note || '';
                                                                 const isVip = note.toLowerCase().includes('vip');
-                                                                return isVip ? (
-                                                                    <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                        <span>👑 VIP</span>
-                                                                    </button>
-                                                                ) : null;
+                                                                const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+                                                                const hasVipCaadi = !!vipCaadiInfo && (entries[customer.id]?.kg || 0) > 0;
+
+                                                                return (
+                                                                    <div className="flex items-center gap-1">
+                                                                        {isVip && (
+                                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP note" className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                                <span>👑 VIP</span>
+                                                                            </button>
+                                                                        )}
+                                                                        {hasVipCaadi && (
+                                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP Caadi notebook" className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-purple-500 via-indigo-500 to-purple-600 text-white shadow-sm border border-purple-300 dark:border-purple-600 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
+                                                                                <span>👑 VIP Caadi</span>
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                );
                                                             })()}
                                                             <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-7 w-16 md:w-20 text-right font-black text-sm md:text-base border-0 border-b border-transparent rounded-none bg-transparent transition-all px-1 focus-visible:ring-0 shadow-none hover:border-blue-300 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
                                                         </div>
@@ -1943,15 +2191,45 @@ function DailyBookPageInner() {
                                                                                     <span className="font-black text-primary text-base md:text-lg">{formatKg(item.kg)} <span className="text-[10px] opacity-60">KG</span></span>
                                                                                 )}
                                                                                 {(() => {
-                                                                                    if (!item.note) return null;
-                                                                                    const badges = getFormattedNoteBadges(item.note);
-                                                                                    return badges.map((badge, bIdx) => (
-                                                                                        <div key={`n-${item.customer_id}-${bIdx}`} className="flex items-center gap-1 opacity-90 group-hover:opacity-100 transition-opacity mt-0.5">
-                                                                                            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm border truncate max-w-[120px] ${badge.isVip ? 'text-amber-600 bg-amber-500/10 border-amber-500/20' : 'text-slate-600 bg-slate-500/10 border-slate-500/20 dark:text-slate-300'}`} title={badge.text}>
-                                                                                                {badge.isVip ? '👑 ' : '🏷️ '}{badge.text}
-                                                                                            </span>
+                                                                                    const badges = item.note ? getFormattedNoteBadges(item.note) : [];
+                                                                                    // Check if customer had VIP Caadi on entry.date
+                                                                                    const entryDateStr = entry.date.substring(0, 10);
+                                                                                    let historyCaadiInfo: { label: string; price: number; kg: number } | null = null;
+                                                                                    for (const cat of vipCaadiConfig) {
+                                                                                        const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+                                                                                        if (!catDate || catDate === entryDateStr) {
+                                                                                            if (cat.customerIds.includes(item.customer_id)) {
+                                                                                                const actualKg = parseFloat(String(item.kg)) || 0;
+                                                                                                const vipQaaliKg = getVipCount(item.note, actualKg);
+                                                                                                const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+                                                                                                const savedKg = cat.customerKgs?.[item.customer_id];
+                                                                                                const caadiKg = savedKg !== undefined ? Math.min(savedKg, maxCaadiKg) : maxCaadiKg;
+                                                                                                const overridePrice = cat.customerPrices?.[item.customer_id] ? parseFloat(cat.customerPrices[item.customer_id]) : undefined;
+                                                                                                const price = (overridePrice && !isNaN(overridePrice) && overridePrice > 0) ? overridePrice : (cat.defaultPrice ?? 36);
+                                                                                                if (caadiKg > 0) {
+                                                                                                    historyCaadiInfo = { label: cat.label || 'VIP Caadi', price, kg: caadiKg };
+                                                                                                    break;
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    }
+
+                                                                                    if (badges.length === 0 && !historyCaadiInfo) return null;
+
+                                                                                    return (
+                                                                                        <div className="flex flex-col items-end gap-1 opacity-90 group-hover:opacity-100 transition-opacity mt-0.5">
+                                                                                            {badges.map((badge, bIdx) => (
+                                                                                                <span key={`n-${item.customer_id}-${bIdx}`} className={`text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm border truncate max-w-[120px] ${badge.isVip ? 'text-amber-600 bg-amber-500/10 border-amber-500/20' : 'text-slate-600 bg-slate-500/10 border-slate-500/20 dark:text-slate-300'}`} title={badge.text}>
+                                                                                                    {badge.isVip ? '👑 ' : '🏷️ '}{badge.text}
+                                                                                                </span>
+                                                                                            ))}
+                                                                                            {historyCaadiInfo && (
+                                                                                                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm border truncate max-w-[150px] text-purple-700 bg-purple-500/10 border-purple-500/20 dark:text-purple-300" title={`👑 ${historyCaadiInfo.label}: ${historyCaadiInfo.kg}kg @ $${historyCaadiInfo.price}`}>
+                                                                                                    👑 {historyCaadiInfo.label}: {historyCaadiInfo.kg}kg @ ${historyCaadiInfo.price}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </div>
-                                                                                    ));
+                                                                                    );
                                                                                 })()}
                                                                             </div>
                                                                         </div>
