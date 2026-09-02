@@ -150,16 +150,16 @@ function CustomerVipNotebookPopoverContent({
         const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
         const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
             ? overridePrice
-            : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
+            : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : null);
 
         const cleanLabel = (vipCaadiInfo.label || 'vipcaadi').toLowerCase().replace(/\s+/g, '');
         if (caadiKg > 0) {
-            vipCaadiLine = `${caadiKg} ${cleanLabel} ${effectivePrice}`;
+            vipCaadiLine = effectivePrice ? `${caadiKg} ${cleanLabel} ${effectivePrice}` : `${caadiKg} ${cleanLabel}`;
         }
     }
 
     return (
-        <div className="space-y-2.5 p-1 text-slate-900 dark:text-slate-100">
+        <div className="space-y-2.5 p-1 text-slate-900 dark:text-slate-100 !bg-white dark:!bg-[#0f172a] !opacity-100">
             {/* Header: Name and Date */}
             <div className="border-b border-slate-200 dark:border-slate-700 pb-1.5">
                 <div className="font-bold text-xs text-slate-900 dark:text-white truncate">
@@ -1102,7 +1102,7 @@ function DailyBookPageInner() {
                                                                     <MessageSquare className="w-3.5 h-3.5" />
                                                                 </Button>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-64 p-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl z-[10000] opacity-100">
+                                                            <PopoverContent className="w-64 p-3 !bg-white dark:!bg-[#0f172a] text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl z-[10000] !opacity-100 backdrop-blur-none">
                                                                 <CustomerVipNotebookPopoverContent
                                                                     customer={customer}
                                                                     date={date}
@@ -1318,7 +1318,7 @@ function DailyBookPageInner() {
                                                                     <MessageSquare className="w-3.5 h-3.5" />
                                                                 </Button>
                                                             </PopoverTrigger>
-                                                            <PopoverContent className="w-64 p-3 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl z-[10000] opacity-100">
+                                                            <PopoverContent className="w-64 p-3 !bg-white dark:!bg-[#0f172a] text-slate-900 dark:text-slate-100 border-2 border-slate-300 dark:border-slate-700 shadow-2xl rounded-xl z-[10000] !opacity-100 backdrop-blur-none">
                                                                 <CustomerVipNotebookPopoverContent
                                                                     customer={customer}
                                                                     date={date}
@@ -1513,20 +1513,57 @@ function DailyBookPageInner() {
                                         <span className="text-[10px] font-bold text-muted-foreground uppercase">Total KG</span>
                                     </div>
                                     {(() => {
-                                        // Sum all VIP quantities based on note
-                                        const entryVipCount = entry.items.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
-                                        if (entryVipCount > 0) {
-                                            return (
-                                                <>
-                                                    <div className="h-3 w-px bg-border" />
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="font-black text-amber-600 text-sm">{entryVipCount}</span>
-                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase">VIP</span>
-                                                    </div>
-                                                </>
-                                            );
+                                        const entryDateStr = entry.date.substring(0, 10);
+                                        const entryVipCaadiCustMap = new Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>();
+                                        for (const cat of vipCaadiConfig) {
+                                            const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+                                            if (!catDate || catDate === entryDateStr) {
+                                                for (const custId of cat.customerIds) {
+                                                    if (!entryVipCaadiCustMap.has(custId)) {
+                                                        entryVipCaadiCustMap.set(custId, {
+                                                            label: cat.label || 'VIP Caadi',
+                                                            price: cat.customerPrices?.[custId],
+                                                            defaultPrice: cat.defaultPrice,
+                                                            savedKg: cat.customerKgs?.[custId]
+                                                        });
+                                                    }
+                                                }
+                                            }
                                         }
-                                        return null;
+                                        let entryVipCaadiKg = 0;
+                                        for (const i of entry.items) {
+                                            const actualKg = i.kg || 0;
+                                            const vipQaaliKg = getVipCount(i.note, actualKg);
+                                            const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+                                            if (entryVipCaadiCustMap.has(i.customer_id) && maxCaadiKg > 0) {
+                                                const info = entryVipCaadiCustMap.get(i.customer_id)!;
+                                                const caadiKg = info.savedKg !== undefined ? Math.min(info.savedKg, maxCaadiKg) : maxCaadiKg;
+                                                entryVipCaadiKg += caadiKg;
+                                            }
+                                        }
+                                        const entryVipCount = entry.items.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
+                                        return (
+                                            <>
+                                                {entryVipCount > 0 && (
+                                                    <>
+                                                        <div className="h-3 w-px bg-border" />
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-black text-amber-600 text-sm">{entryVipCount}</span>
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase">VIP</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                                {entryVipCaadiKg > 0 && (
+                                                    <>
+                                                        <div className="h-3 w-px bg-border" />
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-black text-purple-600 dark:text-purple-400 text-sm">{entryVipCaadiKg}</span>
+                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase">VIP CAADI</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </>
+                                        );
                                     })()}
                                 </div>
 
@@ -1541,63 +1578,145 @@ function DailyBookPageInner() {
                                         <div className="col-span-4 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter text-right">KG / Status</div>
                                     </div>
                                     <div className="divide-y divide-blue-200/30 dark:divide-slate-800/50">
-                                        {entry.items.map((item) => {
-                                            const isProcessed = ledgerSet ? ledgerSet.has(item.customer_id) : null;
-                                            return (
-                                                <div key={item.customer_id} className="grid grid-cols-12 items-center px-3 md:px-5 py-2 hover:bg-blue-100/20 dark:hover:bg-slate-800/30">
-                                                    <div className="col-span-2">
-                                                        <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500">#{item.customer?.customer_code || '—'}</span>
-                                                    </div>
-                                                    <div className="col-span-6 pl-4 border-l border-red-200/50 dark:border-red-900/30 flex items-center gap-1.5">
-                                                        <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">{item.customer?.name || 'Unknown'}</span>
-                                                        {item.kg > 0 && isProcessed !== null && (
-                                                            isProcessed ? (
-                                                                <span title="In Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black">✓</span>
+                                        {(() => {
+                                            const entryDateStr = entry.date.substring(0, 10);
+                                            const entryVipCaadiCustMap = new Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>();
+                                            for (const cat of vipCaadiConfig) {
+                                                const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+                                                if (!catDate || catDate === entryDateStr) {
+                                                    for (const custId of cat.customerIds) {
+                                                        if (!entryVipCaadiCustMap.has(custId)) {
+                                                            entryVipCaadiCustMap.set(custId, {
+                                                                label: cat.label || 'VIP Caadi',
+                                                                price: cat.customerPrices?.[custId],
+                                                                defaultPrice: cat.defaultPrice,
+                                                                savedKg: cat.customerKgs?.[custId]
+                                                            });
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            return entry.items.map((item) => {
+                                                const isProcessed = ledgerSet ? ledgerSet.has(item.customer_id) : null;
+                                                return (
+                                                    <div key={item.customer_id} className="grid grid-cols-12 items-center px-3 md:px-5 py-2 hover:bg-blue-100/20 dark:hover:bg-slate-800/30">
+                                                        <div className="col-span-2">
+                                                            <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500">#{item.customer?.customer_code || '—'}</span>
+                                                        </div>
+                                                        <div className="col-span-6 pl-4 border-l border-red-200/50 dark:border-red-900/30 flex items-center gap-1.5">
+                                                            <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">{item.customer?.name || 'Unknown'}</span>
+                                                            {item.kg > 0 && isProcessed !== null && (
+                                                                isProcessed ? (
+                                                                    <span title="In Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black">✓</span>
+                                                                ) : (
+                                                                    <span title="Not in Buuga Maqalka yet" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black animate-pulse">!</span>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                        <div className="col-span-4 text-right">
+                                                            {item.present === false ? (
+                                                                <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 text-[10px] font-bold uppercase">Absent</span>
                                                             ) : (
-                                                                <span title="Not in Buuga Maqalka yet" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black animate-pulse">!</span>
-                                                            )
-                                                        )}
+                                                                <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                                                    {/* VIP Qaali badges */}
+                                                                    {(() => {
+                                                                        if (!item.note) return null;
+                                                                        const badges = getFormattedNoteBadges(item.note);
+                                                                        return badges.map((badge, bIdx) => (
+                                                                            <div key={`n-${item.customer_id}-${bIdx}`} className={`flex items-center justify-between border-b last:border-0 py-0.5 ${badge.isVip ? 'border-amber-200/30' : 'border-slate-200/30 dark:border-slate-700/50'}`}>
+                                                                                <span className={`text-[10px] font-bold truncate max-w-[120px] ${badge.isVip ? 'text-amber-600/90' : 'text-slate-600 dark:text-slate-400'}`} title={badge.text}>
+                                                                                    {badge.isVip ? '👑 ' : '🏷️ '}{badge.text}
+                                                                                </span>
+                                                                            </div>
+                                                                        ));
+                                                                    })()}
+
+                                                                    {/* VIP Caadi badge */}
+                                                                    {(() => {
+                                                                        const actualKg = item.kg || 0;
+                                                                        const vipQaaliKg = getVipCount(item.note, actualKg);
+                                                                        const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+                                                                        if (entryVipCaadiCustMap.has(item.customer_id) && maxCaadiKg > 0) {
+                                                                            const info = entryVipCaadiCustMap.get(item.customer_id)!;
+                                                                            const caadiKg = info.savedKg !== undefined ? Math.min(info.savedKg, maxCaadiKg) : maxCaadiKg;
+                                                                            if (caadiKg > 0) {
+                                                                                const overridePrice = info.price ? parseFloat(info.price) : undefined;
+                                                                                const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
+                                                                                    ? overridePrice
+                                                                                    : ((info.defaultPrice && info.defaultPrice > 0) ? info.defaultPrice : null);
+                                                                                const label = info.label || 'VIP Caadi';
+                                                                                const text = effectivePrice ? `${caadiKg} ${label} @ $${effectivePrice}` : `${caadiKg} ${label}`;
+                                                                                return (
+                                                                                    <div className="flex items-center justify-between border-b last:border-0 py-0.5 border-purple-200/30">
+                                                                                        <span className="text-[10px] font-bold truncate max-w-[140px] text-purple-600 dark:text-purple-400" title={text}>
+                                                                                            👑 {text}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                );
+                                                                            }
+                                                                        }
+                                                                        return null;
+                                                                    })()}
+
+                                                                    <span className="font-black text-primary text-sm md:text-base">{formatKg(item.kg)} <span className="text-[9px] opacity-60">KG</span></span>
+                                                                </div>
+                                                            )}
+                                                            {item.note && !item.note.toLowerCase().trim().match(/^\d*\s*vip$/i) && <div className="text-[9px] text-muted-foreground truncate max-w-[90px] ml-auto mt-0.5">{item.note}</div>}
+                                                        </div>
                                                     </div>
-                                                    <div className="col-span-4 text-right">
-                                                        {item.present === false ? (
-                                                            <span className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 text-[10px] font-bold uppercase">Absent</span>
-                                                        ) : (
-                                                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                                                                {(() => {
-                                                                    if (!item.note) return null;
-                                                                    const badges = getFormattedNoteBadges(item.note);
-                                                                    return badges.map((badge, bIdx) => (
-                                                                        <div key={`n-${item.customer_id}-${bIdx}`} className={`flex items-center justify-between border-b last:border-0 py-0.5 ${badge.isVip ? 'border-amber-200/30' : 'border-slate-200/30 dark:border-slate-700/50'}`}>
-                                                                            <span className={`text-[10px] font-bold truncate max-w-[120px] ${badge.isVip ? 'text-amber-600/90' : 'text-slate-600 dark:text-slate-400'}`} title={badge.text}>
-                                                                                {badge.isVip ? '👑 ' : '🏷️ '}{badge.text}
-                                                                            </span>
-                                                                        </div>
-                                                                    ));
-                                                                })()}
-                                                                <span className="font-black text-primary text-sm md:text-base">{formatKg(item.kg)} <span className="text-[9px] opacity-60">KG</span></span>
-                                                            </div>
-                                                        )}
-                                                        {item.note && !item.note.toLowerCase().trim().match(/^\d*\s*vip$/i) && <div className="text-[9px] text-muted-foreground truncate max-w-[90px] ml-auto mt-0.5">{item.note}</div>}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            });
+                                        })()}
                                     </div>
                                     {/* Footer total */}
                                     <div className="sticky bottom-0 bg-[#f4ece0]/95 dark:bg-slate-950/95 border-t-2 border-double border-primary/20 backdrop-blur-sm flex items-center justify-between px-4 md:px-6 py-3">
                                         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Total Quantity</span>
                                         <div className="flex items-center gap-4">
                                             {(() => {
-                                                // Sum the actual count of any customer whose note contains 'vip'
+                                                const entryDateStr = entry.date.substring(0, 10);
+                                                const entryVipCaadiCustMap = new Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>();
+                                                for (const cat of vipCaadiConfig) {
+                                                    const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+                                                    if (!catDate || catDate === entryDateStr) {
+                                                        for (const custId of cat.customerIds) {
+                                                            if (!entryVipCaadiCustMap.has(custId)) {
+                                                                entryVipCaadiCustMap.set(custId, {
+                                                                    label: cat.label || 'VIP Caadi',
+                                                                    price: cat.customerPrices?.[custId],
+                                                                    defaultPrice: cat.defaultPrice,
+                                                                    savedKg: cat.customerKgs?.[custId]
+                                                                });
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                let entryVipCaadiKg = 0;
+                                                for (const i of entry.items) {
+                                                    const actualKg = i.kg || 0;
+                                                    const vipQaaliKg = getVipCount(i.note, actualKg);
+                                                    const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+                                                    if (entryVipCaadiCustMap.has(i.customer_id) && maxCaadiKg > 0) {
+                                                        const info = entryVipCaadiCustMap.get(i.customer_id)!;
+                                                        const caadiKg = info.savedKg !== undefined ? Math.min(info.savedKg, maxCaadiKg) : maxCaadiKg;
+                                                        entryVipCaadiKg += caadiKg;
+                                                    }
+                                                }
                                                 const entryVipCount = entry.items.reduce((sum, i) => {
                                                     if (i.note && i.note.toLowerCase().includes('vip')) {
                                                         return sum + getVipCount(i.note, i.kg);
                                                     }
                                                     return sum;
                                                 }, 0);
-                                                return entryVipCount > 0 ? (
-                                                    <span className="font-black text-amber-600 text-xl">{entryVipCount} <span className="text-xs opacity-60">VIP</span></span>
-                                                ) : null;
+                                                return (
+                                                    <>
+                                                        {entryVipCount > 0 && (
+                                                            <span className="font-black text-amber-600 text-xl">{entryVipCount} <span className="text-xs opacity-60">VIP</span></span>
+                                                        )}
+                                                        {entryVipCaadiKg > 0 && (
+                                                            <span className="font-black text-purple-600 dark:text-purple-400 text-xl">{entryVipCaadiKg} <span className="text-xs opacity-60">VIP CAADI</span></span>
+                                                        )}
+                                                    </>
+                                                );
                                             })()}
                                             <span className="font-black text-primary text-xl">{formatKg(entry.totalKg)} <span className="text-xs opacity-60">KG</span></span>
                                         </div>
