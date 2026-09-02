@@ -1102,29 +1102,86 @@ export default function SettingsPage() {
             toast.info('Please select at least one customer first to add VIP');
             return;
         }
-        const initialPrices: Record<string, string> = {};
-        if (newOverride.price) {
-            const numericPrice = parseFloat(newOverride.price);
-            if (!isNaN(numericPrice) && numericPrice > 0 && numericPrice <= 100) {
-                newOverride.customerIds.forEach(id => {
-                    initialPrices[id] = newOverride.price;
-                });
+
+        const selectedDate = newOverride.date ? newOverride.date.substring(0, 10) : undefined;
+        const parsedPrice = newOverride.price ? parseFloat(newOverride.price) : undefined;
+        const validPrice = parsedPrice && !isNaN(parsedPrice) && parsedPrice > 0 && parsedPrice <= 100 ? parsedPrice : undefined;
+
+        // Check if a category for this date already exists
+        const existingCatIndex = vipCaadiConfig.findIndex(cat => {
+            const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
+            return catDate === selectedDate;
+        });
+
+        let updated: VipCaadiCategory[];
+
+        if (existingCatIndex >= 0) {
+            // MERGE into existing category without resetting existing customer assignments/KGs/prices
+            const existingCat = vipCaadiConfig[existingCatIndex];
+            const existingIdSet = new Set(existingCat.customerIds);
+            const mergedIds = [...existingCat.customerIds];
+            const mergedKgs = { ...(existingCat.customerKgs || {}) };
+            const mergedPrices = { ...(existingCat.customerPrices || {}) };
+
+            for (const custId of newOverride.customerIds) {
+                if (!existingIdSet.has(custId)) {
+                    mergedIds.push(custId);
+                    const stats = dailyBookCustomerStatsMap.get(custId) || { actualKg: 0, vipQaaliKg: 0, maxCaadiKg: 0 };
+                    mergedKgs[custId] = stats.maxCaadiKg;
+                }
             }
+
+            const mergedCat: VipCaadiCategory = {
+                ...existingCat,
+                customerIds: mergedIds,
+                customerKgs: mergedKgs,
+                customerPrices: mergedPrices,
+                defaultPrice: existingCat.defaultPrice ?? validPrice
+            };
+
+            updated = vipCaadiConfig.map((c, idx) => idx === existingCatIndex ? mergedCat : c);
+        } else {
+            // Create new category for this date
+            const initialKgs: Record<string, number> = {};
+            for (const custId of newOverride.customerIds) {
+                const stats = dailyBookCustomerStatsMap.get(custId) || { actualKg: 0, vipQaaliKg: 0, maxCaadiKg: 0 };
+                initialKgs[custId] = stats.maxCaadiKg;
+            }
+
+            const newGroup: VipCaadiCategory = {
+                id: `vip-caadi-${Date.now()}`,
+                label: 'VIP Caadi',
+                customerIds: [...newOverride.customerIds],
+                defaultPrice: validPrice,
+                customerPrices: {},
+                customerKgs: initialKgs,
+                date: selectedDate,
+                created_at: new Date().toISOString()
+            };
+
+            updated = [...vipCaadiConfig, newGroup];
         }
 
-        const newGroup: VipCaadiCategory = {
-            id: `vip-caadi-${Date.now()}`,
-            label: 'VIP Caadi',
-            customerIds: [...newOverride.customerIds],
-            customerPrices: initialPrices,
-            date: newOverride.date || undefined,
-            created_at: new Date().toISOString()
-        };
-
-        const updated = [...vipCaadiConfig, newGroup];
         handleSaveVipCaadiConfig(updated, 'add-vip-caadi');
         setNewOverride(prev => ({ ...prev, customerIds: [], price: '' }));
         setIsCustomerSelectOpen(false);
+    };
+
+    const handleUpdateVipCaadiDefaultPrice = (categoryId: string, rawPrice: string) => {
+        const numericPrice = parseFloat(rawPrice);
+        const updated = vipCaadiConfig.map(cat => {
+            if (cat.id !== categoryId) return cat;
+            return {
+                ...cat,
+                defaultPrice: isNaN(numericPrice) ? undefined : numericPrice
+            };
+        });
+        setVipCaadiConfig(updated);
+        localStorage.setItem('dadwork_vip_caadi_config', JSON.stringify(updated));
+    };
+
+    const handleSaveVipCaadiDefaultPrice = (categoryId: string) => {
+        handleSaveVipCaadiConfig(vipCaadiConfig, `save-default-price-${categoryId}`);
     };
 
     const handleUpdateVipCaadiLabel = (categoryId: string, newLabel: string) => {
@@ -1160,10 +1217,13 @@ export default function SettingsPage() {
             const newCustIds = cat.customerIds.filter(id => id !== customerId);
             const newPrices = { ...cat.customerPrices };
             delete newPrices[customerId];
+            const newKgs = { ...(cat.customerKgs || {}) };
+            delete newKgs[customerId];
             return {
                 ...cat,
                 customerIds: newCustIds,
-                customerPrices: newPrices
+                customerPrices: newPrices,
+                customerKgs: newKgs
             };
         }).filter(cat => cat.customerIds.length > 0);
         handleSaveVipCaadiConfig(updated, `remove-cust-${categoryId}-${customerId}`);
@@ -2428,11 +2488,17 @@ export default function SettingsPage() {
                                                                 const cust = allCustomers.find(c => c.id === custId)
                                                                     || availableCustomersForSelectedDate.find(c => c.id === custId);
                                                                 const stats = dailyBookCustomerStatsMap.get(custId) || { actualKg: 0, vipQaaliKg: 0, maxCaadiKg: 0 };
-                                                                // Use saved KG if present, otherwise default to maxCaadiKg (backward compat)
                                                                 const savedKg = cat.customerKgs?.[custId];
                                                                 const assignedCaadiKg = savedKg !== undefined
                                                                     ? Math.min(savedKg, stats.maxCaadiKg)
                                                                     : stats.maxCaadiKg;
+                                                                const normalKg = Math.max(0, stats.actualKg - stats.vipQaaliKg - assignedCaadiKg);
+                                                                const rawPrice = cat.customerPrices?.[custId];
+                                                                const parsedOverridePrice = rawPrice ? parseFloat(rawPrice) : undefined;
+                                                                const effectivePrice = parsedOverridePrice && !isNaN(parsedOverridePrice) && parsedOverridePrice > 0
+                                                                    ? parsedOverridePrice
+                                                                    : (cat.defaultPrice ?? null);
+
                                                                 return {
                                                                     id: custId,
                                                                     name: cust?.name || 'Unknown',
@@ -2441,11 +2507,17 @@ export default function SettingsPage() {
                                                                     vipQaaliKg: stats.vipQaaliKg,
                                                                     maxCaadiKg: stats.maxCaadiKg,
                                                                     assignedCaadiKg,
-                                                                    // Current input value (in-flight edit)
+                                                                    normalKg,
                                                                     inputKg: cat.customerKgs?.[custId] ?? stats.maxCaadiKg,
-                                                                    price: cat.customerPrices?.[custId] ?? ''
+                                                                    price: rawPrice ?? '',
+                                                                    effectivePrice
                                                                 };
+                                                            }).sort((a, b) => {
+                                                                const codeA = parseInt(a.code.replace(/\D/g, ''), 10) || 0;
+                                                                const codeB = parseInt(b.code.replace(/\D/g, ''), 10) || 0;
+                                                                return codeA - codeB;
                                                             });
+
                                                             // Category Total KG = SUM of assigned VIP Caadi KG (not Daily Book KG!)
                                                             const totalCategoryKg = catCustomers.reduce((sum, c) => sum + c.assignedCaadiKg, 0);
 
@@ -2472,6 +2544,26 @@ export default function SettingsPage() {
                                                                                 {cat.customerIds.length} customer{cat.customerIds.length > 1 ? 's' : ''}
                                                                                 {totalCategoryKg > 0 ? ` · ${totalCategoryKg.toFixed(1)} KG` : ''}
                                                                             </span>
+                                                                            {/* Category Default Price Badge / Input */}
+                                                                            <div 
+                                                                                className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/25 px-2 py-0.5 rounded-lg shrink-0" 
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 shrink-0">Default:</span>
+                                                                                <div className="relative w-14">
+                                                                                    <div className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[9px]">$</div>
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        value={cat.defaultPrice ?? ''}
+                                                                                        onChange={(e) => handleUpdateVipCaadiDefaultPrice(cat.id, e.target.value)}
+                                                                                        onBlur={() => handleSaveVipCaadiDefaultPrice(cat.id)}
+                                                                                        placeholder="36"
+                                                                                        className="pl-3.5 h-6 w-full text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-white/20 dark:bg-black/40 border-amber-500/30 rounded focus:border-amber-500/60 focus:ring-0"
+                                                                                        title="Category default VIP Caadi price per KG"
+                                                                                    />
+                                                                                </div>
+                                                                                <span className="text-[9px] text-muted-foreground font-semibold">/KG</span>
+                                                                            </div>
                                                                         </div>
 
                                                                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -2518,7 +2610,7 @@ export default function SettingsPage() {
                                                                             {cat.customerIds.length === 0 ? (
                                                                                 <div className="text-[11px] text-muted-foreground text-center py-3">No customers assigned.</div>
                                                                             ) : (
-                                                                                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-0.5 custom-scrollbar">
+                                                                                <div className="space-y-2 max-h-80 overflow-y-auto pr-0.5 custom-scrollbar">
                                                                                     {catCustomers.map(cust => (
                                                                                         <div 
                                                                                             key={cust.id} 
@@ -2543,23 +2635,28 @@ export default function SettingsPage() {
                                                                                                     <X className="w-3 h-3" />
                                                                                                 </button>
                                                                                             </div>
-                                                                                            {/* Row 2: KG stats + editable VIP Caadi KG + Price */}
-                                                                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                                                                {cust.actualKg > 0 && (
-                                                                                                    <span className="text-[9px] font-medium text-muted-foreground bg-white/10 px-1.5 py-0.5 rounded shrink-0">
-                                                                                                        Book: {cust.actualKg} KG
-                                                                                                    </span>
-                                                                                                )}
-                                                                                                {cust.vipQaaliKg > 0 && (
-                                                                                                    <span className="text-[9px] font-medium text-purple-500 bg-purple-500/10 px-1.5 py-0.5 rounded shrink-0">
-                                                                                                        VIP Qaali: {cust.vipQaaliKg} KG
-                                                                                                    </span>
-                                                                                                )}
-                                                                                                <span className="text-[9px] font-medium text-amber-600/70 shrink-0">
-                                                                                                    Max: {cust.maxCaadiKg} KG
+
+                                                                                            {/* Row 2: KG Breakdown & Split (Book, VIP Qaali, Max, Normal) */}
+                                                                                            <div className="flex items-center gap-1.5 flex-wrap text-[9px]">
+                                                                                                <span className="font-medium text-muted-foreground bg-white/10 px-1.5 py-0.5 rounded shrink-0">
+                                                                                                    Book: <strong className="text-foreground">{cust.actualKg} KG</strong>
                                                                                                 </span>
-                                                                                                {/* Editable VIP Caadi KG */}
-                                                                                                <div className="flex items-center gap-1 ml-auto">
+                                                                                                {cust.vipQaaliKg > 0 && (
+                                                                                                    <span className="font-medium text-purple-600 dark:text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded shrink-0">
+                                                                                                        VIP Qaali: <strong>{cust.vipQaaliKg} KG</strong>
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                <span className="font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded shrink-0">
+                                                                                                    Max VIP Caadi: <strong>{cust.maxCaadiKg} KG</strong>
+                                                                                                </span>
+                                                                                                <span className="font-medium text-teal-700 dark:text-teal-300 bg-teal-500/10 px-1.5 py-0.5 rounded shrink-0">
+                                                                                                    Normal: <strong>{cust.normalKg} KG</strong>
+                                                                                                </span>
+                                                                                            </div>
+
+                                                                                            {/* Row 3: Editable VIP Caadi KG, Optional Override Price, and Effective Price */}
+                                                                                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-white/5 flex-wrap">
+                                                                                                <div className="flex items-center gap-1">
                                                                                                     <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 shrink-0">VIP KG:</span>
                                                                                                     <Input
                                                                                                         type="number"
@@ -2572,17 +2669,27 @@ export default function SettingsPage() {
                                                                                                         className="h-6 w-16 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30 rounded focus:border-amber-500/60 focus:ring-0 text-center px-1"
                                                                                                         title={`VIP Caadi KG (max ${cust.maxCaadiKg})`}
                                                                                                     />
-                                                                                                    {/* Price */}
-                                                                                                    <div className="relative w-16">
-                                                                                                        <div className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[9px]">$</div>
-                                                                                                        <Input
-                                                                                                            type="number"
-                                                                                                            value={cust.price}
-                                                                                                            onChange={(e) => handleUpdateVipCaadiCustomerPrice(cat.id, cust.id, e.target.value)}
-                                                                                                            onBlur={() => handleSaveVipCaadiConfig(vipCaadiConfig, `save-price-${cat.id}-${cust.id}`)}
-                                                                                                            placeholder="Price"
-                                                                                                            className="pl-3.5 h-6 w-full text-[10px] font-bold bg-white/20 dark:bg-black/40 border-amber-500/20 rounded focus:border-amber-500/50 focus:ring-0"
-                                                                                                        />
+                                                                                                </div>
+
+                                                                                                <div className="flex items-center gap-1.5">
+                                                                                                    <div className="flex items-center gap-1">
+                                                                                                        <span className="text-[9px] font-bold text-muted-foreground shrink-0">Override:</span>
+                                                                                                        <div className="relative w-16">
+                                                                                                            <div className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-[9px]">$</div>
+                                                                                                            <Input
+                                                                                                                type="number"
+                                                                                                                value={cust.price}
+                                                                                                                onChange={(e) => handleUpdateVipCaadiCustomerPrice(cat.id, cust.id, e.target.value)}
+                                                                                                                onBlur={() => handleSaveVipCaadiConfig(vipCaadiConfig, `save-price-${cat.id}-${cust.id}`)}
+                                                                                                                placeholder={cat.defaultPrice ? `${cat.defaultPrice}` : "Price"}
+                                                                                                                className="pl-3.5 h-6 w-full text-[10px] font-bold bg-white/20 dark:bg-black/40 border-amber-500/20 rounded focus:border-amber-500/50 focus:ring-0"
+                                                                                                                title="Optional customer-specific override price (leave blank to use category default)"
+                                                                                                            />
+                                                                                                        </div>
+                                                                                                    </div>
+
+                                                                                                    <div className="text-[9px] font-semibold text-muted-foreground px-1.5 py-0.5 rounded bg-white/5 border border-white/10 shrink-0" title="Effective VIP Caadi price">
+                                                                                                        Effective: <strong className="text-foreground">{cust.effectivePrice ? `$${cust.effectivePrice}/KG` : 'Default'}</strong>
                                                                                                     </div>
                                                                                                 </div>
                                                                                             </div>

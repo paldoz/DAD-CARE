@@ -20,242 +20,200 @@ function getVipCount(note: string | undefined, fallbackKg: number = 0): number {
     return found ? totalCount : fallbackKg;
 }
 
-// VIP Caadi derivation helper as implemented in Daily Book
-function deriveVipCategories(
-    items: Array<{ customer_id: string; kg: number; note?: string }>,
-    vipCaadiConfig: VipCaadiCategory[],
-    dateStr: string
+// Calculate KG split and pricing for a customer on a given date
+function calculateCustomerKgSplitAndPrice(
+    bookKg: number,
+    note: string | undefined,
+    assignedVipCaadiKgInput: number | undefined,
+    categoryDefaultPrice: number | undefined,
+    customerOverridePrice: string | undefined,
+    defaultNormalPrice: number = 38
 ) {
-    const idToCategory = new Map<string, { label: string; price?: string }>();
-    for (const cat of vipCaadiConfig) {
-        const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
-        if (!catDate || catDate === dateStr) {
-            for (const custId of cat.customerIds) {
-                if (!idToCategory.has(custId)) {
-                    idToCategory.set(custId, {
-                        label: cat.label || 'VIP Caadi',
-                        price: cat.customerPrices?.[custId]
-                    });
-                }
-            }
-        }
-    }
+    const vipQaaliKg = getVipCount(note, bookKg);
+    const maxVipCaadiKg = Math.max(0, bookKg - vipQaaliKg);
 
-    // 1. VIP QAALI items (from note containing 'vip')
-    const vipQaaliItems = items.filter(i => i.note && i.note.toLowerCase().includes('vip'));
-    const vipQaaliCount = vipQaaliItems.reduce((sum, i) => sum + getVipCount(i.note, i.kg), 0);
-    const vipQaaliCustIds = new Set(vipQaaliItems.map(i => i.customer_id));
+    // Validation
+    const requestedVipCaadiKg = assignedVipCaadiKgInput !== undefined ? assignedVipCaadiKgInput : maxVipCaadiKg;
+    const isValid = requestedVipCaadiKg >= 0 && requestedVipCaadiKg <= maxVipCaadiKg;
 
-    // 2. VIP CAADI items (from config, strictly excluding any customer in VIP QAALI)
-    const vipCaadiItems: Array<{ customer_id: string; kg: number; price?: string; categoryLabel: string }> = [];
-    for (const item of items) {
-        const kg = parseFloat(String(item.kg)) || 0;
-        if (!vipQaaliCustIds.has(item.customer_id) && idToCategory.has(item.customer_id) && kg > 0) {
-            const info = idToCategory.get(item.customer_id)!;
-            vipCaadiItems.push({
-                customer_id: item.customer_id,
-                kg,
-                price: info.price,
-                categoryLabel: info.label
-            });
-        }
-    }
+    const vipCaadiKg = Math.min(Math.max(0, requestedVipCaadiKg), maxVipCaadiKg);
+    const normalKg = Math.max(0, bookKg - vipQaaliKg - vipCaadiKg);
 
-    const vipCaadiCount = vipCaadiItems.length;
-    const vipCaadiTotalKg = vipCaadiItems.reduce((s: number, i: { kg: number }) => s + i.kg, 0);
+    // Pricing
+    const parsedOverride = customerOverridePrice ? parseFloat(customerOverridePrice) : undefined;
+    const effectiveVipCaadiPrice = parsedOverride && !isNaN(parsedOverride) && parsedOverride > 0
+        ? parsedOverride
+        : (categoryDefaultPrice ?? null);
+
+    const vipCaadiAmount = effectiveVipCaadiPrice ? vipCaadiKg * effectiveVipCaadiPrice : 0;
+    const normalAmount = normalKg * defaultNormalPrice;
+    const totalAmount = vipCaadiAmount + normalAmount;
 
     return {
-        vipQaaliCount,
-        vipQaaliItems,
-        vipCaadiCount,
-        vipCaadiTotalKg,
-        vipCaadiItems
+        bookKg,
+        vipQaaliKg,
+        maxVipCaadiKg,
+        vipCaadiKg,
+        normalKg,
+        isValid,
+        effectiveVipCaadiPrice,
+        vipCaadiAmount,
+        normalAmount,
+        totalAmount,
+        reconciledKg: vipQaaliKg + vipCaadiKg + normalKg
     };
 }
 
-// Selector customers derivation helper as implemented in Settings
-function deriveSelectorCustomers(
-    dailyBookItems: Array<{ customer_id: string; customer?: { id: string; name: string; customer_code: string; is_inactive?: boolean; is_kabarka?: boolean }; kg: number }>,
-    allCustomers: Array<{ id: string; name: string; customer_code: string; is_inactive?: boolean; is_kabarka?: boolean }>
-) {
-    if (dailyBookItems && dailyBookItems.length > 0) {
-        const list: Array<{ id: string; name: string; customer_code: string; kg: number }> = [];
-        const seen = new Set<string>();
-        for (const item of dailyBookItems) {
-            const cust = item.customer || allCustomers.find(c => c.id === item.customer_id);
-            if (cust && !cust.is_inactive && !cust.is_kabarka && !seen.has(item.customer_id)) {
-                seen.add(item.customer_id);
-                list.push({
-                    id: item.customer_id,
-                    name: cust.name || 'Unknown',
-                    customer_code: cust.customer_code || '',
-                    kg: parseFloat(String(item.kg)) || 0
-                });
-            }
-        }
-        if (list.length > 0) {
-            return list.sort((a, b) => {
-                const codeA = parseInt(a.customer_code.replace(/\D/g, ''), 10) || 0;
-                const codeB = parseInt(b.customer_code.replace(/\D/g, ''), 10) || 0;
-                return codeA - codeB;
-            });
-        }
+// Merge helper testing adding customers non-destructively
+function mergeCustomerIntoCategory(
+    category: VipCaadiCategory,
+    newCustomerId: string,
+    newCustomerMaxKg: number
+): VipCaadiCategory {
+    const existingIdSet = new Set(category.customerIds);
+    if (existingIdSet.has(newCustomerId)) {
+        return category;
     }
-    return allCustomers
-        .filter(c => !c.is_inactive && !c.is_kabarka)
-        .map(c => ({ ...c, kg: 0 }))
-        .sort((a, b) => {
-            const codeA = parseInt(a.customer_code.replace(/\D/g, ''), 10) || 0;
-            const codeB = parseInt(b.customer_code.replace(/\D/g, ''), 10) || 0;
-            return codeA - codeB;
-        });
+    return {
+        ...category,
+        customerIds: [...category.customerIds, newCustomerId],
+        customerKgs: {
+            ...(category.customerKgs || {}),
+            [newCustomerId]: newCustomerMaxKg
+        },
+        customerPrices: {
+            ...(category.customerPrices || {})
+        }
+    };
 }
 
-describe('VIP CAADI Comprehensive Feature Verification', () => {
+describe('VIP CAADI Pricing & KG Split Comprehensive Verification', () => {
 
-    it('1. All Daily Book customers (e.g. 57) appear in Customer Selector', () => {
-        const mockDailyItems = Array.from({ length: 57 }, (_, i) => ({
-            customer_id: `cust_${i + 1}`,
-            customer: { id: `cust_${i + 1}`, name: `Customer ${i + 1}`, customer_code: `${i + 1}`, is_inactive: false, is_kabarka: false },
-            kg: (i % 5) + 1
-        }));
-        const selectorList = deriveSelectorCustomers(mockDailyItems, []);
-        assert.equal(selectorList.length, 57, 'Selector must show all 57 customers for that Daily Book date');
-        assert.equal(selectorList[0].customer_code, '1');
-        assert.equal(selectorList[56].customer_code, '57');
+    it('TEST 1: Book = 14, VIP Qaali = 0, VIP Caadi = 12 -> Expected normal = 2', () => {
+        const split = calculateCustomerKgSplitAndPrice(14, '', 12, 36, undefined);
+        assert.equal(split.bookKg, 14);
+        assert.equal(split.vipQaaliKg, 0);
+        assert.equal(split.vipCaadiKg, 12);
+        assert.equal(split.normalKg, 2);
+        assert.equal(split.reconciledKg, 14);
+        assert.equal(split.isValid, true);
     });
 
-    it('2. Newly added customer (#57) appears in Customer Selector', () => {
-        const existingCustomers = Array.from({ length: 56 }, (_, i) => ({
-            id: `cust_${i + 1}`, name: `Customer ${i + 1}`, customer_code: `${i + 1}`, is_inactive: false, is_kabarka: false
-        }));
-        const newCustomer57 = { id: 'cust_57', name: 'New Customer 57', customer_code: '57', is_inactive: false, is_kabarka: false };
-        const dailyItems = [...existingCustomers, newCustomer57].map((c, i) => ({
-            customer_id: c.id,
-            customer: c,
-            kg: 10
-        }));
-
-        const selectorList = deriveSelectorCustomers(dailyItems, [...existingCustomers, newCustomer57]);
-        assert.equal(selectorList.length, 57);
-        const found = selectorList.find(c => c.id === 'cust_57');
-        assert.ok(found, 'Customer #57 must appear in selector');
-        assert.equal(found?.name, 'New Customer 57');
+    it('TEST 2: Book = 10, VIP Qaali = 5, VIP Caadi = 3 -> Expected normal = 2', () => {
+        const split = calculateCustomerKgSplitAndPrice(10, '5 vip 38', 3, 36, undefined);
+        assert.equal(split.bookKg, 10);
+        assert.equal(split.vipQaaliKg, 5);
+        assert.equal(split.vipCaadiKg, 3);
+        assert.equal(split.normalKg, 2);
+        assert.equal(split.reconciledKg, 10);
+        assert.equal(split.isValid, true);
     });
 
-    it('3. VIP CAADI assignment is separate from selector availability (57 in selector != 57 in VIP CAADI)', () => {
-        // Daily Book has 57 customers, but user assigns only 22 to VIP CAADI
-        const assignedIds = Array.from({ length: 22 }, (_, i) => `cust_${i + 1}`);
-        const config: VipCaadiCategory[] = [{
-            id: 'cat-1',
+    it('TEST 3: Book = 10, VIP Qaali = 5, VIP Caadi = 6 -> Expected validation failure (Max is 5)', () => {
+        const split = calculateCustomerKgSplitAndPrice(10, '5 vip 38', 6, 36, undefined);
+        assert.equal(split.maxVipCaadiKg, 5, 'Max VIP Caadi must be 5');
+        assert.equal(split.isValid, false, '6 VIP Caadi exceeds max of 5, must fail validation');
+    });
+
+    it('TEST 4: Default VIP Caadi price = 36, Customer override absent -> Expected effective price = 36', () => {
+        const split = calculateCustomerKgSplitAndPrice(10, '', 5, 36, '');
+        assert.equal(split.effectiveVipCaadiPrice, 36, 'Must inherit category default price');
+    });
+
+    it('TEST 5: Default VIP Caadi price = 36, Customer override = 35 -> Expected effective price = 35', () => {
+        const split = calculateCustomerKgSplitAndPrice(10, '', 5, 36, '35');
+        assert.equal(split.effectiveVipCaadiPrice, 35, 'Must use individual customer override price');
+    });
+
+    it('TEST 6: Customer #30 has VIP Caadi = 12 on 2026-09-02; Switch to 2026-09-03 -> Expected VIP Caadi = 0 unless separately saved', () => {
+        const categories: VipCaadiCategory[] = [{
+            id: 'cat-sep-02',
             label: 'VIP Caadi',
-            customerIds: assignedIds,
+            customerIds: ['cust_30'],
+            defaultPrice: 36,
             customerPrices: {},
+            customerKgs: { 'cust_30': 12 },
             date: '2026-09-02'
         }];
 
-        const dailyItems = Array.from({ length: 57 }, (_, i) => ({
-            customer_id: `cust_${i + 1}`,
-            kg: 5,
-            note: ''
-        }));
+        // Querying Sep 02
+        const catSep02 = categories.find(c => c.date === '2026-09-02');
+        assert.ok(catSep02);
+        assert.equal(catSep02?.customerKgs?.['cust_30'], 12);
 
-        const result = deriveVipCategories(dailyItems, config, '2026-09-02');
-        assert.equal(result.vipCaadiCount, 22, 'Category count must be 22 (assigned), NOT 57 (selector total)');
+        // Querying Sep 03 (no category saved for Sep 03)
+        const catSep03 = categories.find(c => c.date === '2026-09-03');
+        assert.equal(catSep03, undefined, 'No VIP Caadi on Sep 03 unless separately assigned and saved');
     });
 
-    it('4. VIP CAADI count is calculated from assigned customers with actual KG', () => {
-        const config: VipCaadiCategory[] = [{
+    it('TEST 7: Existing customers #1, #2, #30 have saved assignments. Add #55 -> Existing data remains untouched', () => {
+        const existingCategory: VipCaadiCategory = {
             id: 'cat-1',
             label: 'VIP Caadi',
-            customerIds: ['cust_1', 'cust_2', 'cust_3', 'cust_absent'],
-            customerPrices: { 'cust_1': '100', 'cust_2': '95' },
+            customerIds: ['cust_1', 'cust_2', 'cust_30'],
+            defaultPrice: 36,
+            customerPrices: { 'cust_30': '35' },
+            customerKgs: { 'cust_1': 10, 'cust_2': 5, 'cust_30': 12 },
             date: '2026-09-02'
-        }];
+        };
 
-        const dailyItems = [
-            { customer_id: 'cust_1', kg: 10, note: '' },
-            { customer_id: 'cust_2', kg: 15, note: '' },
-            { customer_id: 'cust_3', kg: 5, note: '' },
-            { customer_id: 'cust_absent', kg: 0, note: '' } // 0 KG on this date
+        const merged = mergeCustomerIntoCategory(existingCategory, 'cust_55', 3);
+
+        // Verify #1, #2, #30 are 100% preserved
+        assert.equal(merged.customerKgs?.['cust_1'], 10);
+        assert.equal(merged.customerKgs?.['cust_2'], 5);
+        assert.equal(merged.customerKgs?.['cust_30'], 12);
+        assert.equal(merged.customerPrices?.['cust_30'], '35');
+        assert.equal(merged.defaultPrice, 36);
+
+        // Verify #55 is added cleanly
+        assert.ok(merged.customerIds.includes('cust_55'));
+        assert.equal(merged.customerKgs?.['cust_55'], 3);
+        assert.equal(merged.customerIds.length, 4);
+    });
+
+    it('TEST 8: Customer list is sorted by numeric ID: 1, 2, 3, 4, ... 55', () => {
+        const rawList = [
+            { code: '55', name: 'Fadxi' },
+            { code: '42', name: 'Hidayo' },
+            { code: '3', name: 'Ali' },
+            { code: '30', name: 'Seynab' },
+            { code: '1', name: 'Farah' },
+            { code: '20', name: 'Amina' },
+            { code: '2', name: 'Hassan' }
         ];
 
-        const result = deriveVipCategories(dailyItems, config, '2026-09-02');
-        assert.equal(result.vipCaadiCount, 3, 'Only customers with KG > 0 on this date count');
-        assert.equal(result.vipCaadiTotalKg, 30, '10 + 15 + 5 = 30 KG');
+        const sorted = [...rawList].sort((a, b) => {
+            const codeA = parseInt(a.code.replace(/\D/g, ''), 10) || 0;
+            const codeB = parseInt(b.code.replace(/\D/g, ''), 10) || 0;
+            return codeA - codeB;
+        });
+
+        const sortedCodes = sorted.map(c => parseInt(c.code, 10));
+        assert.deepEqual(sortedCodes, [1, 2, 3, 20, 30, 42, 55], 'Customer codes must sort strictly numerically ascending');
     });
 
-    it('5. VIP CAADI KG comes directly from Daily Book entry for selected date', () => {
-        const config: VipCaadiCategory[] = [{
-            id: 'cat-1',
-            label: 'VIP Caadi',
-            customerIds: ['cust_1', 'cust_2'],
-            customerPrices: { 'cust_1': '100', 'cust_2': '95' },
-            date: '2026-09-02'
-        }];
+    it('TEST 9: Category total uses VIP Caadi KG, not Book KG (12 + 5 = 17 KG, not 14 + 8 = 22 KG)', () => {
+        const cust30 = calculateCustomerKgSplitAndPrice(14, '', 12, 36, undefined);
+        const cust20 = calculateCustomerKgSplitAndPrice(8, '', 5, 36, undefined);
 
-        const dailyItems = [
-            { customer_id: 'cust_1', kg: 17.5, note: '' },
-            { customer_id: 'cust_2', kg: 22.5, note: '' }
-        ];
+        const categoryTotalKg = cust30.vipCaadiKg + cust20.vipCaadiKg;
+        const rawBookTotalKg = cust30.bookKg + cust20.bookKg;
 
-        const result = deriveVipCategories(dailyItems, config, '2026-09-02');
-        assert.equal(result.vipCaadiTotalKg, 40, '17.5 + 22.5 = 40 KG');
+        assert.equal(categoryTotalKg, 17, 'Category total must be 12 + 5 = 17 KG');
+        assert.equal(rawBookTotalKg, 22, 'Raw book total is 22 KG');
+        assert.notEqual(categoryTotalKg, rawBookTotalKg);
     });
 
-    it('6. Date-Aware KG: Customer KG changes correctly by date', () => {
-        const config: VipCaadiCategory[] = [{
-            id: 'cat-1',
-            label: 'VIP Caadi',
-            customerIds: ['cust_hamdi'],
-            customerPrices: { 'cust_hamdi': '100' }
-        }];
-
-        // On 2026-09-02 Hamdi has 5 KG
-        const itemsSep02 = [{ customer_id: 'cust_hamdi', kg: 5, note: '' }];
-        const resultSep02 = deriveVipCategories(itemsSep02, config, '2026-09-02');
-        assert.equal(resultSep02.vipCaadiTotalKg, 5, 'Hamdi has 5 KG on Sep 02');
-
-        // On 2026-08-31 Hamdi has 8 KG
-        const itemsAug31 = [{ customer_id: 'cust_hamdi', kg: 8, note: '' }];
-        const resultAug31 = deriveVipCategories(itemsAug31, config, '2026-08-31');
-        assert.equal(resultAug31.vipCaadiTotalKg, 8, 'Hamdi has 8 KG on Aug 31');
-    });
-
-    it('7 & 8. Zero Double-Counting: VIP QAALI customer is strictly excluded from VIP CAADI', () => {
-        const config: VipCaadiCategory[] = [{
-            id: 'cat-1',
-            label: 'VIP Caadi',
-            customerIds: ['cust_qaali_and_caadi', 'cust_caadi_only'],
-            customerPrices: { 'cust_qaali_and_caadi': '100', 'cust_caadi_only': '95' },
-            date: '2026-09-02'
-        }];
-
-        const dailyItems = [
-            { customer_id: 'cust_qaali_and_caadi', kg: 10, note: '10 vip 38' }, // VIP QAALI
-            { customer_id: 'cust_caadi_only', kg: 15, note: '' } // VIP CAADI
-        ];
-
-        const result = deriveVipCategories(dailyItems, config, '2026-09-02');
-        assert.equal(result.vipQaaliCount, 10, 'cust_qaali_and_caadi is in VIP QAALI');
-        assert.equal(result.vipCaadiCount, 1, 'Only cust_caadi_only is in VIP CAADI');
-        assert.equal(result.vipCaadiTotalKg, 15, 'Only cust_caadi_only KG in VIP CAADI');
-        assert.ok(!result.vipCaadiItems.some(i => i.customer_id === 'cust_qaali_and_caadi'), 'No double counting');
-    });
-
-    it('9 & 10. Category Default State: Starts collapsed, expand is local UI state', () => {
-        // Initial state is empty array of expanded IDs
-        const initialExpanded: string[] = [];
-        const isCollapsedInitially = !initialExpanded.includes('cat-1');
-        assert.equal(isCollapsedInitially, true, 'Default state must be collapsed');
-
-        // Toggle expand
-        const toggledExpanded = [...initialExpanded, 'cat-1'];
-        assert.equal(toggledExpanded.includes('cat-1'), true, 'Clicking category expands locally');
-
-        // Toggle collapse
-        const reCollapsed = toggledExpanded.filter(id => id !== 'cat-1');
-        assert.equal(reCollapsed.includes('cat-1'), false, 'Clicking again collapses locally');
+    it('TEST 10: 14 Book KG + 12 VIP Caadi KG results in exactly 2 normal KG with exact financial reconciliation ($508)', () => {
+        // Customer #30: Book = 14 KG, VIP Caadi = 12 KG @ $36/KG, Normal = 2 KG @ $38/KG
+        const split = calculateCustomerKgSplitAndPrice(14, '', 12, 36, undefined, 38);
+        assert.equal(split.vipCaadiKg, 12);
+        assert.equal(split.normalKg, 2);
+        assert.equal(split.vipCaadiAmount, 432, '12 * 36 = $432');
+        assert.equal(split.normalAmount, 76, '2 * 38 = $76');
+        assert.equal(split.totalAmount, 508, '432 + 76 = $508 total');
+        assert.equal(split.reconciledKg, 14);
     });
 
     it('11. Invariant: Existing VIP QAALI note parsing remains 100% intact', () => {

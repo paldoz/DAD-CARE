@@ -62,6 +62,7 @@ export interface VipCaadiCategory {
     id: string;
     label: string;
     customerIds: string[];
+    defaultPrice?: number;
     customerPrices: Record<string, string>;
     customerKgs?: Record<string, number>;
     date?: string;

@@ -130,7 +130,19 @@ function DailyBookPageInner() {
     const [vipPopupData, setVipPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
     const [vipCaadiPopupData, setVipCaadiPopupData] = useState<{ 
         date: string; 
-        items: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }>; 
+        items: Array<{ 
+            customer?: Customer; 
+            customer_id: string; 
+            dailyKg: number;
+            vipQaaliKg: number;
+            kg: number; 
+            normalKg: number;
+            price?: string; 
+            defaultPrice?: number;
+            effectivePrice?: number | null;
+            categoryLabel: string; 
+            note?: string; 
+        }>; 
         totalKg: number;
     } | null>(null);
     const [kabarkaPopupData, setKabarkaPopupData] = useState<{ date: string; items: DailyBookItem[] } | null>(null);
@@ -632,7 +644,7 @@ function DailyBookPageInner() {
     // Active VIP CAADI items calculation
     const activeDateStr = format(date, 'yyyy-MM-dd');
     const activeVipCaadiCustMap = useMemo(() => {
-        const idToCategory = new Map<string, { label: string; price?: string; savedKg?: number }>();
+        const idToCategory = new Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>();
         for (const cat of vipCaadiConfig) {
             const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
             // Include cats with no date (global) or cats that match this exact date
@@ -642,6 +654,7 @@ function DailyBookPageInner() {
                         idToCategory.set(custId, {
                             label: cat.label || 'VIP Caadi',
                             price: cat.customerPrices?.[custId],
+                            defaultPrice: cat.defaultPrice,
                             savedKg: cat.customerKgs?.[custId]
                         });
                     }
@@ -652,7 +665,20 @@ function DailyBookPageInner() {
     }, [vipCaadiConfig, activeDateStr]);
 
     const activeVipCaadiItems = useMemo(() => {
-        const items: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }> = [];
+        const items: Array<{ 
+            customer?: Customer; 
+            customer_id: string; 
+            dailyKg: number;
+            vipQaaliKg: number;
+            kg: number; 
+            normalKg: number;
+            price?: string; 
+            defaultPrice?: number;
+            effectivePrice?: number | null;
+            categoryLabel: string; 
+            note?: string 
+        }> = [];
+
         for (const [custId, data] of Object.entries(entries)) {
             const actualKg = parseFloat(String(data.kg)) || 0;
             const vipQaaliKg = getVipCount(data.note, actualKg);
@@ -661,21 +687,37 @@ function DailyBookPageInner() {
             if (activeVipCaadiCustMap.has(custId) && maxCaadiKg > 0) {
                 const info = activeVipCaadiCustMap.get(custId)!;
                 const cust = customers.find(c => c.id === custId);
-                // Use saved VIP Caadi KG if present, otherwise default to max available
                 const caadiKg = info.savedKg !== undefined
                     ? Math.min(info.savedKg, maxCaadiKg)
                     : maxCaadiKg;
-                items.push({
-                    customer: cust,
-                    customer_id: custId,
-                    kg: caadiKg,
-                    price: info.price,
-                    categoryLabel: info.label,
-                    note: data.note
-                });
+                const normalKg = Math.max(0, actualKg - vipQaaliKg - caadiKg);
+                const overridePrice = info.price ? parseFloat(info.price) : undefined;
+                const effectivePrice = overridePrice && !isNaN(overridePrice) && overridePrice > 0 
+                    ? overridePrice 
+                    : (info.defaultPrice ?? null);
+
+                if (caadiKg > 0) {
+                    items.push({
+                        customer: cust,
+                        customer_id: custId,
+                        dailyKg: actualKg,
+                        vipQaaliKg,
+                        kg: caadiKg,
+                        normalKg,
+                        price: info.price,
+                        defaultPrice: info.defaultPrice,
+                        effectivePrice,
+                        categoryLabel: info.label,
+                        note: data.note
+                    });
+                }
             }
         }
-        return items;
+        return items.sort((a, b) => {
+            const codeA = parseInt((a.customer?.customer_code || '').replace(/\D/g, ''), 10) || 0;
+            const codeB = parseInt((b.customer?.customer_code || '').replace(/\D/g, ''), 10) || 0;
+            return codeA - codeB;
+        });
     }, [entries, customers, activeVipCaadiCustMap]);
 
     const totalVipCaadiCount = activeVipCaadiItems.length;
@@ -1676,7 +1718,7 @@ function DailyBookPageInner() {
                                                                     {/* 2.5 VIP CAADI */}
                                                                     {(() => {
                                                                         const entryDateStr = entry.date.substring(0, 10);
-                                                                        const idToCategory = new Map<string, { label: string; price?: string }>();
+                                                                        const idToCategory = new Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>();
                                                                         for (const cat of vipCaadiConfig) {
                                                                             const catDate = cat.date ? cat.date.substring(0, 10) : undefined;
                                                                             if (!catDate || catDate === entryDateStr) {
@@ -1684,32 +1726,68 @@ function DailyBookPageInner() {
                                                                                     if (!idToCategory.has(custId)) {
                                                                                         idToCategory.set(custId, {
                                                                                             label: cat.label || 'VIP Caadi',
-                                                                                            price: cat.customerPrices?.[custId]
+                                                                                            price: cat.customerPrices?.[custId],
+                                                                                            defaultPrice: cat.defaultPrice,
+                                                                                            savedKg: cat.customerKgs?.[custId]
                                                                                         });
                                                                                     }
                                                                                 }
                                                                             }
                                                                         }
 
-                                                                        const vipQaaliCustIds = new Set(
-                                                                            entry.items.filter(i => i.note && i.note.toLowerCase().includes('vip')).map(i => i.customer_id)
-                                                                        );
+                                                                        const caadiItems: Array<{ 
+                                                                            customer?: Customer; 
+                                                                            customer_id: string; 
+                                                                            dailyKg: number;
+                                                                            vipQaaliKg: number;
+                                                                            kg: number; 
+                                                                            normalKg: number;
+                                                                            price?: string; 
+                                                                            defaultPrice?: number;
+                                                                            effectivePrice?: number | null;
+                                                                            categoryLabel: string; 
+                                                                            note?: string 
+                                                                        }> = [];
 
-                                                                        const caadiItems: Array<{ customer?: Customer; customer_id: string; kg: number; price?: string; categoryLabel: string; note?: string }> = [];
                                                                         for (const item of entry.items) {
-                                                                            const kg = parseFloat(String(item.kg)) || 0;
-                                                                            if (!vipQaaliCustIds.has(item.customer_id) && idToCategory.has(item.customer_id) && kg > 0) {
+                                                                            const actualKg = parseFloat(String(item.kg)) || 0;
+                                                                            const vipQaaliKg = getVipCount(item.note, actualKg);
+                                                                            const maxCaadiKg = Math.max(0, actualKg - vipQaaliKg);
+
+                                                                            if (idToCategory.has(item.customer_id) && maxCaadiKg > 0) {
                                                                                 const info = idToCategory.get(item.customer_id)!;
-                                                                                caadiItems.push({
-                                                                                    customer: item.customer,
-                                                                                    customer_id: item.customer_id,
-                                                                                    kg,
-                                                                                    price: info.price,
-                                                                                    categoryLabel: info.label,
-                                                                                    note: item.note
-                                                                                });
+                                                                                const caadiKg = info.savedKg !== undefined
+                                                                                    ? Math.min(info.savedKg, maxCaadiKg)
+                                                                                    : maxCaadiKg;
+                                                                                const normalKg = Math.max(0, actualKg - vipQaaliKg - caadiKg);
+                                                                                const overridePrice = info.price ? parseFloat(info.price) : undefined;
+                                                                                const effectivePrice = overridePrice && !isNaN(overridePrice) && overridePrice > 0 
+                                                                                    ? overridePrice 
+                                                                                    : (info.defaultPrice ?? null);
+
+                                                                                if (caadiKg > 0) {
+                                                                                    caadiItems.push({
+                                                                                        customer: item.customer,
+                                                                                        customer_id: item.customer_id,
+                                                                                        dailyKg: actualKg,
+                                                                                        vipQaaliKg,
+                                                                                        kg: caadiKg,
+                                                                                        normalKg,
+                                                                                        price: info.price,
+                                                                                        defaultPrice: info.defaultPrice,
+                                                                                        effectivePrice,
+                                                                                        categoryLabel: info.label,
+                                                                                        note: item.note
+                                                                                    });
+                                                                                }
                                                                             }
                                                                         }
+
+                                                                        caadiItems.sort((a, b) => {
+                                                                            const codeA = parseInt((a.customer?.customer_code || '').replace(/\D/g, ''), 10) || 0;
+                                                                            const codeB = parseInt((b.customer?.customer_code || '').replace(/\D/g, ''), 10) || 0;
+                                                                            return codeA - codeB;
+                                                                        });
 
                                                                         const caadiCount = caadiItems.length;
                                                                         const caadiTotalKg = caadiItems.reduce((s, i) => s + i.kg, 0);
@@ -2061,18 +2139,26 @@ function DailyBookPageInner() {
                                                 {item.categoryLabel}
                                             </span>
                                         </div>
-                                        <div className="flex items-center justify-between mt-1 text-[10px]">
+                                        {/* KG Breakdown */}
+                                        <div className="flex items-center gap-1.5 mt-1 text-[9px] flex-wrap">
                                             <span className="font-mono text-muted-foreground font-semibold">#{item.customer?.customer_code || '—'}</span>
-                                            <div className="flex items-center gap-1.5">
-                                                {item.price && (
-                                                    <span className="font-bold text-amber-700 dark:text-amber-300 bg-white/20 dark:bg-black/30 px-1.5 py-0.5 rounded border border-amber-500/20">
-                                                        ${item.price}
-                                                    </span>
-                                                )}
-                                                <span className="daily-popup-badge bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/25">
-                                                    {formatKg(item.kg)} KG
-                                                </span>
-                                            </div>
+                                            <span className="text-muted-foreground bg-white/10 px-1 py-0.5 rounded">Book: {item.dailyKg} KG</span>
+                                            {item.vipQaaliKg > 0 && (
+                                                <span className="text-purple-600 dark:text-purple-400 bg-purple-500/10 px-1 py-0.5 rounded font-bold">VIP Qaali: {item.vipQaaliKg} KG</span>
+                                            )}
+                                            <span className="text-amber-700 dark:text-amber-300 bg-amber-500/15 px-1 py-0.5 rounded font-bold">VIP Caadi: {item.kg} KG</span>
+                                            {item.normalKg > 0 && (
+                                                <span className="text-teal-700 dark:text-teal-300 bg-teal-500/10 px-1 py-0.5 rounded font-bold">Normal: {item.normalKg} KG</span>
+                                            )}
+                                        </div>
+                                        {/* Price / Effective */}
+                                        <div className="flex items-center justify-between mt-1 text-[10px]">
+                                            <span className="text-muted-foreground">
+                                                Price: <strong className="text-foreground">{item.effectivePrice ? `$${item.effectivePrice}/KG` : 'Default'}</strong>
+                                            </span>
+                                            <span className="daily-popup-badge bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/25 font-bold">
+                                                VIP {formatKg(item.kg)} KG
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
