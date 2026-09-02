@@ -98,6 +98,116 @@ function getFormattedNoteBadges(note: string | undefined): { text: string, isVip
     return badges;
 }
 
+function CustomerVipNotebookPopoverContent({
+    customer,
+    date,
+    entries,
+    setEntries,
+    activeVipCaadiCustMap,
+    onClose
+}: {
+    customer: Customer;
+    date: Date;
+    entries: { [key: string]: { kg: number, present: boolean, note: string } };
+    setEntries: React.Dispatch<React.SetStateAction<{ [key: string]: { kg: number, present: boolean, note: string } }>>;
+    activeVipCaadiCustMap: Map<string, { label: string; price?: string; defaultPrice?: number; savedKg?: number }>;
+    onClose: () => void;
+}) {
+    const bookKg = entries[customer.id]?.kg || 0;
+    const note = entries[customer.id]?.note || '';
+    const vipQaaliKg = getVipCount(note, bookKg);
+    const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+
+    const hasVipQaali = vipQaaliKg > 0;
+    const hasVipCaadi = !!vipCaadiInfo;
+
+    if (hasVipQaali || hasVipCaadi) {
+        // Extract VIP Qaali entries from note (e.g. "10 vip 37")
+        let vipQaaliLines: string[] = [];
+        if (hasVipQaali) {
+            const parts = note.split(',').map(s => s.trim()).filter(Boolean);
+            for (const part of parts) {
+                const match = part.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)(?:\s+(\d+(?:\.\d+)?))?$/);
+                if (match && match[2].toLowerCase().includes('vip')) {
+                    const count = match[1];
+                    const price = match[3];
+                    vipQaaliLines.push(price ? `${count} vip ${price}` : `${count} vip`);
+                }
+            }
+            if (vipQaaliLines.length === 0) {
+                vipQaaliLines.push(`${vipQaaliKg} vip`);
+            }
+        }
+
+        // Extract VIP Caadi entry (e.g. "10 vipcaadi 39")
+        let vipCaadiLine = '';
+        if (hasVipCaadi && vipCaadiInfo) {
+            const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
+            const savedKg = vipCaadiInfo.savedKg;
+            const caadiKg = (savedKg !== undefined && savedKg > 0)
+                ? savedKg
+                : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
+
+            const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
+            const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
+                ? overridePrice
+                : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
+
+            const cleanLabel = (vipCaadiInfo.label || 'vipcaadi').toLowerCase().replace(/\s+/g, '');
+            if (caadiKg > 0) {
+                vipCaadiLine = `${caadiKg} ${cleanLabel} ${effectivePrice}`;
+            }
+        }
+
+        return (
+            <div className="space-y-2 p-1">
+                <div className="border-b border-border/60 pb-1.5">
+                    <div className="font-bold text-xs text-foreground truncate">
+                        #{customer.customer_code} {customer.name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-medium">
+                        {format(date, 'EEEE, MMM dd, yyyy')}
+                    </div>
+                </div>
+                <div className="space-y-1 font-mono text-xs font-bold">
+                    {vipQaaliLines.map((line, idx) => (
+                        <div key={idx} className="text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-1 rounded">
+                            {line}
+                        </div>
+                    ))}
+                    {vipCaadiLine && (
+                        <div className="text-purple-700 dark:text-purple-300 bg-purple-500/10 px-2 py-1 rounded">
+                            {vipCaadiLine}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // CASE 4: Normal customer with no VIP (plain note input)
+    return (
+        <div className="space-y-2 p-1">
+            <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
+            <Input
+                placeholder="e.g. 10 vip 38, 10 vip 37"
+                value={entries[customer.id]?.note || ''}
+                onChange={(e) => setEntries({
+                    ...entries,
+                    [customer.id]: {
+                        kg: entries[customer.id]?.kg || 0,
+                        present: entries[customer.id]?.present ?? true,
+                        note: e.target.value
+                    }
+                })}
+                className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none"
+                autoFocus
+            />
+            <Button size="sm" className="w-full h-7 text-xs font-bold" onClick={onClose}>Done</Button>
+        </div>
+    );
+}
+
 
 function DailyBookPageInner() {
     const [date, setDate] = useState<Date>(new Date());
@@ -913,126 +1023,104 @@ function DailyBookPageInner() {
                                     {/* Vertical Ledger Margin Line */}
                                     <div className="absolute left-[50px] md:left-[70px] top-0 bottom-0 w-[1px] bg-red-400 dark:bg-red-900/50 pointer-events-none z-20" />
                                     {/* Sticky col headers */}
-                                    <div className="sticky top-0 z-30 grid grid-cols-12 px-2 md:px-4 py-2 bg-[#f4ece0] dark:bg-slate-950 border-b-2 border-slate-300 dark:border-slate-700 shadow-sm">
-                                        <div className="col-span-2 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">ID</div>
-                                        <div className="col-span-5 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter pl-4">Customer Name</div>
-                                        <div className="col-span-2 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter text-center">Status</div>
-                                        <div className="col-span-3 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter text-right">KG</div>
+                                    <div className="sticky top-0 z-30 grid grid-cols-12 items-center px-2 md:px-4 py-1.5 bg-[#f4ece0] dark:bg-slate-950 border-b-2 border-slate-300 dark:border-slate-700 shadow-sm text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">
+                                        <div className="col-span-2">ID</div>
+                                        <div className="col-span-4 pl-2 md:pl-4">Customer Name</div>
+                                        <div className="col-span-6 flex items-center justify-end gap-2 pr-1">
+                                            <span>Status</span>
+                                            <span>/</span>
+                                            <span>VIP</span>
+                                            <span>/</span>
+                                            <span>Note</span>
+                                            <span>/</span>
+                                            <span>KG</span>
+                                        </div>
                                     </div>
                                     <div className="divide-y divide-blue-200/30 dark:divide-slate-800/50">
-                                        {paginatedCustomers.map((customer, index) => (
-                                            <div key={customer.id} className="grid grid-cols-12 items-center px-2 md:px-4 py-1.5 transition-colors hover:bg-blue-100/20 dark:hover:bg-slate-800/30 group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0">
-                                                <div className="col-span-2 flex items-center justify-start gap-1">
-                                                    <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors">#{customer.customer_code}</span>
-                                                    {isSuperAdmin && (
-                                                        <button
-                                                            title="Remove customer from Daily Book (history preserved)"
-                                                            onClick={() => setPendingDeleteCustomerId(customer.id)}
-                                                            className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-4 w-4 flex items-center justify-center rounded text-red-400/60 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
-                                                        >
-                                                            <Trash2 className="w-2.5 h-2.5" />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
-                                                    <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
-                                                        <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
-                                                            {customer.name}
-                                                        </span>
-                                                        {entries[customer.id]?.kg > 0 && (
-                                                            processedCustomerIds.has(customer.id) ? (
-                                                                <span title="Processed in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black leading-none">✓</span>
-                                                            ) : (
-                                                                <span title="Not yet in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black leading-none animate-pulse">!</span>
-                                                            )
+                                        {paginatedCustomers.map((customer, index) => {
+                                            const note = entries[customer.id]?.note || '';
+                                            const isVip = note.toLowerCase().includes('vip');
+                                            const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+
+                                            return (
+                                                <div key={customer.id} className="grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors hover:bg-blue-100/20 dark:hover:bg-slate-800/30 group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0">
+                                                    <div className="col-span-2 flex items-center justify-start gap-1">
+                                                        <span className="text-[10px] md:text-[11px] font-mono font-bold text-slate-400 dark:text-slate-500 group-hover:text-primary transition-colors">#{customer.customer_code}</span>
+                                                        {isSuperAdmin && (
+                                                            <button
+                                                                title="Remove customer from Daily Book (history preserved)"
+                                                                onClick={() => setPendingDeleteCustomerId(customer.id)}
+                                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-4 w-4 flex items-center justify-center rounded text-red-400/60 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
+                                                            >
+                                                                <Trash2 className="w-2.5 h-2.5" />
+                                                            </button>
                                                         )}
-                                                        <div className="absolute -bottom-0.5 left-0 w-full h-[1px] bg-blue-200/50 dark:bg-slate-700 pointer-events-none" />
                                                     </div>
-                                                </div>
-                                                <div className="col-span-2 flex items-center justify-center gap-1.5 px-1">
-                                                    <button onClick={() => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, note: entries[customer.id]?.note || '', present: !(entries[customer.id]?.present ?? true) } })} className={`h-5 w-5 md:h-6 md:w-6 rounded flex items-center justify-center text-[10px] md:text-[11px] font-black transition-colors border ${entries[customer.id]?.present !== false ? 'bg-green-100/50 border-green-200 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400' : 'bg-red-100/50 border-red-200 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400'}`}>
-                                                        {entries[customer.id]?.present !== false ? 'P' : 'A'}
-                                                    </button>
-                                                    <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
-                                                        <PopoverTrigger asChild>
-                                                            <Button variant="ghost" size="sm" className={`h-5 w-5 md:h-6 md:w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 ${entries[customer.id]?.note ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
-                                                                <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                                    <div className="col-span-4 flex flex-col justify-center pl-2 md:pl-4 border-l border-red-200/50 dark:border-red-900/30 min-w-0">
+                                                        <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
+                                                            <span className="font-bold text-[11px] md:text-sm text-slate-700 dark:text-slate-300 uppercase truncate">
+                                                                {customer.name}
+                                                            </span>
+                                                            {entries[customer.id]?.kg > 0 && (
+                                                                processedCustomerIds.has(customer.id) ? (
+                                                                    <span title="Processed in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black leading-none">✓</span>
+                                                                ) : (
+                                                                    <span title="Not yet in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black leading-none animate-pulse">!</span>
+                                                                )
+                                                            )}
+                                                            <div className="absolute -bottom-0.5 left-0 w-full h-[1px] bg-blue-200/50 dark:bg-slate-700 pointer-events-none" />
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-span-6 flex items-center justify-end gap-1 md:gap-1.5">
+                                                        {/* Status P/A button */}
+                                                        <button onClick={() => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, note: entries[customer.id]?.note || '', present: !(entries[customer.id]?.present ?? true) } })} className={`h-6 w-6 rounded flex items-center justify-center text-[10px] md:text-[11px] font-black transition-colors border shrink-0 ${entries[customer.id]?.present !== false ? 'bg-green-100/50 border-green-200 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400' : 'bg-red-100/50 border-red-200 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400'}`}>
+                                                            {entries[customer.id]?.present !== false ? 'P' : 'A'}
+                                                        </button>
+
+                                                        {/* Compact VIP Badges */}
+                                                        {isVip && (
+                                                            <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP note" className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 border border-yellow-200 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
+                                                                <span>👑 VIP</span>
+                                                            </button>
+                                                        )}
+                                                        {vipCaadiInfo && (
+                                                            <button onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white border border-violet-300 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
+                                                                <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
+                                                            </button>
+                                                        )}
+
+                                                        {/* Notebook icon with Popover */}
+                                                        <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
+                                                            <PopoverTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className={`h-6 w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 shrink-0 ${entries[customer.id]?.note || vipCaadiInfo ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
+                                                                    <MessageSquare className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent className="w-56 p-2.5 bg-popover border-border shadow-xl rounded-xl z-[10000]">
+                                                                <CustomerVipNotebookPopoverContent
+                                                                    customer={customer}
+                                                                    date={date}
+                                                                    entries={entries}
+                                                                    setEntries={setEntries}
+                                                                    activeVipCaadiCustMap={activeVipCaadiCustMap}
+                                                                    onClose={() => setOpenNoteForCustomerId(null)}
+                                                                />
+                                                            </PopoverContent>
+                                                        </Popover>
+
+                                                        {/* KG Input */}
+                                                        <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-6 md:h-7 w-11 md:w-16 text-right font-black text-xs md:text-base border-0 border-b border-transparent rounded-none bg-transparent px-0.5 focus-visible:ring-0 shadow-none hover:border-blue-300 shrink-0 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
+
+                                                        {/* Delete row button */}
+                                                        {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
+                                                            <Button variant="ghost" size="sm" onClick={() => { const n = { ...entries }; delete n[customer.id]; setEntries(n); }} className="h-6 w-6 p-0 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
+                                                                <Trash2 className="w-3.5 h-3.5" />
                                                             </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-64 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                            {(() => {
-                                                                const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
-                                                                if (vipCaadiInfo) {
-                                                                    const bookKg = entries[customer.id]?.kg || 0;
-                                                                    const note = entries[customer.id]?.note || '';
-                                                                    const vipQaaliKg = getVipCount(note, bookKg);
-                                                                    const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
-                                                                    const savedKg = vipCaadiInfo.savedKg;
-                                                                    const caadiKg = (savedKg !== undefined && savedKg > 0)
-                                                                        ? savedKg
-                                                                        : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
-                                                                    const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
-                                                                    const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
-                                                                        ? overridePrice
-                                                                        : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
-                                                                    const label = vipCaadiInfo.label || 'VIP Caadi';
-                                                                    return (
-                                                                        <div className="space-y-3">
-                                                                            <div className="space-y-0.5">
-                                                                                <div className="font-bold text-sm text-foreground">#{customer.customer_code} {customer.name}</div>
-                                                                                <div className="text-xs text-muted-foreground">{format(date, 'EEEE, MMM dd, yyyy')}</div>
-                                                                                <span className="inline-flex items-center text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded mt-1">👑 {label}</span>
-                                                                            </div>
-                                                                            <div className="border-t border-border/60 pt-2">
-                                                                                <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{label}</div>
-                                                                                <div className="text-base font-black text-foreground font-mono">{caadiKg} KG × ${effectivePrice}</div>
-                                                                            </div>
-                                                                        </div>
-                                                                    );
-                                                                }
-                                                                return (
-                                                                    <div className="space-y-2">
-                                                                        <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-                                                                        <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                                                                        <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
-                                                                        <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                        </PopoverContent>
-                                                    </Popover>
-                                                </div>
-                                                <div className="col-span-3 flex items-center justify-end gap-1">
-                                                    <div className="flex items-center justify-end gap-1 relative w-full">
-                                                        {(() => {
-                                                            const note = entries[customer.id]?.note || '';
-                                                            const isVip = note.toLowerCase().includes('vip');
-                                                            const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
-                                                            return (
-                                                                <>
-                                                                    {isVip && (
-                                                                        <button onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                            <span>👑 VIP</span>
-                                                                        </button>
-                                                                    )}
-                                                                    {vipCaadiInfo && (
-                                                                        <button onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)] border border-violet-300 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                            <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
-                                                                        </button>
-                                                                    )}
-                                                                </>
-                                                            );
-                                                        })()}
-                                                        <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-7 w-16 md:w-20 text-right font-black text-sm md:text-base border-0 border-b border-transparent rounded-none bg-transparent transition-all px-1 focus-visible:ring-0 shadow-none hover:border-blue-300 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
+                                                        )}
                                                     </div>
-                                                    {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
-                                                        <Button variant="ghost" size="sm" onClick={() => { const n = { ...entries }; delete n[customer.id]; setEntries(n); }} className="h-8 w-8 md:h-6 md:w-6 p-0 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
-                                                            <Trash2 className="w-4 h-4 md:w-3 md:h-3" />
-                                                        </Button>
-                                                    )}
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -1090,187 +1178,165 @@ function DailyBookPageInner() {
                                 ) : (
                                     <div className="bg-[#fcf8f1] dark:bg-slate-900 relative overflow-hidden rounded-sm border border-slate-300 dark:border-slate-800 shadow-inner pb-48 md:pb-0 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 scrollbar-track-transparent h-[60vh] md:h-[480px]">
                                         <div className="absolute left-[50px] md:left-[70px] top-0 bottom-0 w-[1px] bg-red-400 dark:bg-red-900/50 pointer-events-none z-20" />
-                                        <div className="sticky top-0 z-30 grid grid-cols-12 px-2 md:px-4 py-2 bg-[#f4ece0] dark:bg-slate-950 border-b-2 border-slate-300 dark:border-slate-700 shadow-sm">
-                                            <div className="col-span-2 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">ID</div>
-                                            <div className="col-span-5 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter pl-4">Customer Name</div>
-                                            <div className="col-span-2 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter text-center">Status</div>
-                                            <div className="col-span-3 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter text-right">KG</div>
+                                        <div className="sticky top-0 z-30 grid grid-cols-12 items-center px-2 md:px-4 py-1.5 bg-[#f4ece0] dark:bg-slate-950 border-b-2 border-slate-300 dark:border-slate-700 shadow-sm text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-tighter">
+                                            <div className="col-span-2">ID</div>
+                                            <div className="col-span-4 pl-2 md:pl-4">Customer Name</div>
+                                            <div className="col-span-6 flex items-center justify-end gap-2 pr-1">
+                                                <span>Status</span>
+                                                <span>/</span>
+                                                <span>VIP</span>
+                                                <span>/</span>
+                                                <span>Note</span>
+                                                <span>/</span>
+                                                <span>KG</span>
+                                            </div>
                                         </div>
                                         <div className="divide-y divide-blue-200/30 dark:divide-slate-800/50">
-                                            {paginatedCustomers.map((customer, index) => (
-                                                <div key={customer.id} className={`grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0 relative ${(customer.is_unassignable || customer.is_kabarka) ? 'bg-amber-50/40 dark:bg-amber-900/10 hover:bg-amber-100/60 dark:hover:bg-amber-900/20' : 'hover:bg-blue-100/20 dark:hover:bg-slate-800/30'}`}>
-                                                    <div className="col-span-2 flex items-center justify-start gap-1">
-                                                        {isSuperAdmin ? (
-                                                            <Popover open={reorderOpenForId === customer.id} onOpenChange={(o) => {
-                                                                setReorderOpenForId(o ? customer.id : null);
-                                                                if (o) setReorderTargetId('');
-                                                            }}>
+                                            {paginatedCustomers.map((customer, index) => {
+                                                const note = entries[customer.id]?.note || '';
+                                                const isVip = note.toLowerCase().includes('vip');
+                                                const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
+
+                                                return (
+                                                    <div key={customer.id} className={`grid grid-cols-12 items-center px-2 md:px-4 py-1 transition-colors group border-b border-blue-50/50 dark:border-slate-800/30 last:border-0 relative ${(customer.is_unassignable || customer.is_kabarka) ? 'bg-amber-50/40 dark:bg-amber-900/10 hover:bg-amber-100/60 dark:hover:bg-amber-900/20' : 'hover:bg-blue-100/20 dark:hover:bg-slate-800/30'}`}>
+                                                        <div className="col-span-2 flex items-center justify-start gap-1">
+                                                            {isSuperAdmin ? (
+                                                                <Popover open={reorderOpenForId === customer.id} onOpenChange={(o) => {
+                                                                    setReorderOpenForId(o ? customer.id : null);
+                                                                    if (o) setReorderTargetId('');
+                                                                }}>
+                                                                    <PopoverTrigger asChild>
+                                                                        <button className={`text-[10px] md:text-[11px] font-mono font-bold hover:text-primary transition-colors cursor-pointer flex items-center gap-1 ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                                                                            #{index + 1}
+                                                                            {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
+                                                                            {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
+                                                                        </button>
+                                                                    </PopoverTrigger>
+                                                                    <PopoverContent side="right" className="w-auto p-3 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100] flex flex-col gap-3">
+                                                                        <div className="flex flex-col gap-2 border-b border-border/50 pb-3">
+                                                                            <div className="flex items-center justify-between gap-4">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="text-xs">🚷</span>
+                                                                                    <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Hide from Assignments</span>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    checked={!!customer.is_unassignable}
+                                                                                    onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_unassignable', checked)}
+                                                                                    disabled={isReordering}
+                                                                                    className="scale-75 origin-right"
+                                                                                />
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between gap-4">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="text-xs">➖</span>
+                                                                                    <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Kabarka Mode (Extra)</span>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    checked={!!customer.is_kabarka}
+                                                                                    onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_kabarka', checked)}
+                                                                                    disabled={isReordering}
+                                                                                    className="scale-75 origin-right"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2">
+                                                                            <span className="text-xs font-bold text-muted-foreground ml-1">Move to #</span>
+                                                                            <Input
+                                                                                autoFocus
+                                                                                type="number"
+                                                                                placeholder="e.g. 20"
+                                                                                value={reorderTargetId}
+                                                                                onChange={(e) => setReorderTargetId(e.target.value)}
+                                                                                className="w-16 h-8 text-xs font-bold bg-background/50 border-input shadow-inner"
+                                                                            />
+                                                                            <Button type="submit" disabled={isReordering || !reorderTargetId} size="icon" className="h-8 w-8 rounded-lg shrink-0">
+                                                                                {isReordering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                                                            </Button>
+                                                                        </form>
+                                                                    </PopoverContent>
+                                                                </Popover>
+                                                            ) : (
+                                                                <span className={`text-[10px] md:text-[11px] font-mono font-bold group-hover:text-primary transition-colors flex items-center gap-1 ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                                                                    #{customer.customer_code}
+                                                                    {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
+                                                                    {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
+                                                                </span>
+                                                            )}
+                                                            {isSuperAdmin && (
+                                                                <button
+                                                                    title="Remove customer from Daily Book (history preserved)"
+                                                                    onClick={() => setPendingDeleteCustomerId(customer.id)}
+                                                                    className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-4 w-4 flex items-center justify-center rounded text-red-400/60 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
+                                                                >
+                                                                    <Trash2 className="w-2.5 h-2.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="col-span-4 flex flex-col justify-center pl-2 md:pl-4 border-l border-red-200/50 dark:border-red-900/30 min-w-0">
+                                                            <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
+                                                                <span className={`font-bold text-[11px] md:text-sm uppercase truncate ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                                    {customer.name}
+                                                                </span>
+                                                                {entries[customer.id]?.kg > 0 && (
+                                                                    processedCustomerIds.has(customer.id) ? (
+                                                                        <span title="Processed in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black leading-none">✓</span>
+                                                                    ) : (
+                                                                        <span title="Not yet in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black leading-none animate-pulse">!</span>
+                                                                    )
+                                                                )}
+                                                                <div className="absolute -bottom-0.5 left-0 w-full h-[1px] bg-blue-200/50 dark:bg-slate-700 pointer-events-none" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="col-span-6 flex items-center justify-end gap-1 md:gap-1.5">
+                                                            {/* Status P/A button */}
+                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, note: entries[customer.id]?.note || '', present: !(entries[customer.id]?.present ?? true) } })} className={`h-6 w-6 rounded flex items-center justify-center text-[10px] md:text-[11px] font-black transition-colors border shrink-0 ${entries[customer.id]?.present !== false ? 'bg-green-100/50 border-green-200 text-green-700 hover:bg-green-100 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400' : 'bg-red-100/50 border-red-200 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400'}`}>
+                                                                {entries[customer.id]?.present !== false ? 'P' : 'A'}
+                                                            </button>
+
+                                                            {/* Compact VIP Badges */}
+                                                            {isVip && (
+                                                                <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to view VIP note" className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 border border-yellow-200 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
+                                                                    <span>👑 VIP</span>
+                                                                </button>
+                                                            )}
+                                                            {vipCaadiInfo && (
+                                                                <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="h-5 px-1 py-0 rounded text-[8.5px] md:text-[9px] font-black uppercase tracking-tight bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white border border-violet-300 shadow-xs whitespace-nowrap shrink-0 flex items-center justify-center gap-0.5 cursor-pointer hover:scale-105 active:scale-95 transition-transform">
+                                                                    <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
+                                                                </button>
+                                                            )}
+
+                                                            {/* Notebook icon with Popover */}
+                                                            <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
                                                                 <PopoverTrigger asChild>
-                                                                    <button className={`text-[10px] md:text-[11px] font-mono font-bold hover:text-primary transition-colors cursor-pointer flex items-center gap-1 ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                                                                        #{index + 1}
-                                                                        {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
-                                                                        {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
-                                                                    </button>
+                                                                    <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} className={`h-6 w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 shrink-0 ${entries[customer.id]?.note || vipCaadiInfo ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
+                                                                        <MessageSquare className="w-3.5 h-3.5" />
+                                                                    </Button>
                                                                 </PopoverTrigger>
-                                                                <PopoverContent side="right" className="w-auto p-3 bg-background/40 backdrop-blur-xl border-border/50 shadow-2xl rounded-xl z-[100] flex flex-col gap-3">
-                                                                    <div className="flex flex-col gap-2 border-b border-border/50 pb-3">
-                                                                        <div className="flex items-center justify-between gap-4">
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                <span className="text-xs">🚷</span>
-                                                                                <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Hide from Assignments</span>
-                                                                            </div>
-                                                                            <Switch
-                                                                                checked={!!customer.is_unassignable}
-                                                                                onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_unassignable', checked)}
-                                                                                disabled={isReordering}
-                                                                                className="scale-75 origin-right"
-                                                                            />
-                                                                        </div>
-                                                                        <div className="flex items-center justify-between gap-4">
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                <span className="text-xs">➖</span>
-                                                                                <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">Kabarka Mode (Extra)</span>
-                                                                            </div>
-                                                                            <Switch
-                                                                                checked={!!customer.is_kabarka}
-                                                                                onCheckedChange={(checked) => handleToggleStatus(customer.id, 'is_kabarka', checked)}
-                                                                                disabled={isReordering}
-                                                                                className="scale-75 origin-right"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                    <form onSubmit={(e) => handleReorderCustomer(customer.id, e)} className="flex items-center gap-2">
-                                                                        <span className="text-xs font-bold text-muted-foreground ml-1">Move to #</span>
-                                                                        <Input
-                                                                            autoFocus
-                                                                            type="number"
-                                                                            placeholder="e.g. 20"
-                                                                            value={reorderTargetId}
-                                                                            onChange={(e) => setReorderTargetId(e.target.value)}
-                                                                            className="w-16 h-8 text-xs font-bold bg-background/50 border-input shadow-inner"
-                                                                        />
-                                                                        <Button type="submit" disabled={isReordering || !reorderTargetId} size="icon" className="h-8 w-8 rounded-lg shrink-0">
-                                                                            {isReordering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                                                                        </Button>
-                                                                    </form>
+                                                                <PopoverContent className="w-56 p-2.5 bg-popover border-border shadow-xl rounded-xl z-[10000]">
+                                                                    <CustomerVipNotebookPopoverContent
+                                                                        customer={customer}
+                                                                        date={date}
+                                                                        entries={entries}
+                                                                        setEntries={setEntries}
+                                                                        activeVipCaadiCustMap={activeVipCaadiCustMap}
+                                                                        onClose={() => setOpenNoteForCustomerId(null)}
+                                                                    />
                                                                 </PopoverContent>
                                                             </Popover>
-                                                        ) : (
-                                                            <span className={`text-[10px] md:text-[11px] font-mono font-bold group-hover:text-primary transition-colors flex items-center gap-1 ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                                                                #{customer.customer_code}
-                                                                {customer.is_unassignable && <span title="Hidden from Assignments">🚷</span>}
-                                                                {customer.is_kabarka && <span title="Kabarka Mode">➖</span>}
-                                                            </span>
-                                                        )}
-                                                        {isSuperAdmin && (
-                                                            <button
-                                                                title="Remove customer from Daily Book (history preserved)"
-                                                                onClick={() => setPendingDeleteCustomerId(customer.id)}
-                                                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-4 w-4 flex items-center justify-center rounded text-red-400/60 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
-                                                            >
-                                                                <Trash2 className="w-2.5 h-2.5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    <div className="col-span-5 flex flex-col justify-center pl-4 border-l border-red-200/50 dark:border-red-900/30">
-                                                        <div className="relative inline-flex items-center gap-1.5 w-fit max-w-full">
-                                                            <span className={`font-bold text-[11px] md:text-sm uppercase truncate ${customer.is_kabarka ? 'text-red-600 dark:text-red-400' : customer.is_unassignable ? 'text-orange-600 dark:text-orange-400' : 'text-slate-700 dark:text-slate-300'}`}>
-                                                                {customer.name}
-                                                            </span>
-                                                            {entries[customer.id]?.kg > 0 && (
-                                                                processedCustomerIds.has(customer.id) ? (
-                                                                    <span title="Processed in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[8px] font-black leading-none">✓</span>
-                                                                ) : (
-                                                                    <span title="Not yet in Buuga Maqalka" className="shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[8px] font-black leading-none animate-pulse">!</span>
-                                                                )
-                                                            )}
-                                                            <div className="absolute -bottom-0.5 left-0 w-full h-[1px] bg-blue-200/50 dark:bg-slate-700 pointer-events-none" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="col-span-2 flex items-center justify-center gap-1.5 px-1">
-                                                        <button onPointerDown={(e) => e.preventDefault()} onClick={() => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, note: entries[customer.id]?.note || '', present: !(entries[customer.id]?.present ?? true) } })} className={`h-8 w-8 md:h-9 md:w-9 rounded flex items-center justify-center text-xs md:text-sm font-black transition-all border shadow-sm active:scale-95 ${entries[customer.id]?.present !== false ? 'bg-green-100 border-green-300 text-green-700 hover:bg-green-200 dark:bg-green-900/40 dark:border-green-700/50 dark:text-green-400' : 'bg-red-100 border-red-300 text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:border-red-700/50 dark:text-red-400'}`}>
-                                                            {entries[customer.id]?.present !== false ? 'P' : 'A'}
-                                                        </button>
-                                                        <Popover open={openNoteForCustomerId === customer.id} onOpenChange={(o) => setOpenNoteForCustomerId(o ? customer.id : null)}>
-                                                            <PopoverTrigger asChild>
-                                                                <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} className={`h-5 w-5 md:h-6 md:w-6 p-0 rounded-md hover:bg-blue-100 dark:hover:bg-slate-800 ${entries[customer.id]?.note ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-600'}`}>
-                                                                    <MessageSquare className="w-3 h-3 md:w-3.5 md:h-3.5" />
+
+                                                            {/* KG Input */}
+                                                            <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-6 md:h-7 w-11 md:w-16 text-right font-black text-xs md:text-base border-0 border-b border-transparent rounded-none bg-transparent px-0.5 focus-visible:ring-0 shadow-none hover:border-blue-300 shrink-0 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
+
+                                                            {/* Delete row button */}
+                                                            {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
+                                                                <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} onClick={() => { const n = { ...entries }; delete n[customer.id]; setEntries(n); }} className="h-6 w-6 p-0 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
+                                                                    <Trash2 className="w-3.5 h-3.5" />
                                                                 </Button>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent className="w-64 p-3 bg-popover border-border shadow-xl rounded-xl z-[10000]">
-                                                                {(() => {
-                                                                    const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
-                                                                    if (vipCaadiInfo) {
-                                                                        const bookKg = entries[customer.id]?.kg || 0;
-                                                                        const note = entries[customer.id]?.note || '';
-                                                                        const vipQaaliKg = getVipCount(note, bookKg);
-                                                                        const maxCaadiKg = Math.max(0, bookKg - vipQaaliKg);
-                                                                        const savedKg = vipCaadiInfo.savedKg;
-                                                                        const caadiKg = (savedKg !== undefined && savedKg > 0)
-                                                                            ? savedKg
-                                                                            : (maxCaadiKg > 0 ? maxCaadiKg : bookKg);
-                                                                        const overridePrice = vipCaadiInfo.price ? parseFloat(vipCaadiInfo.price) : undefined;
-                                                                        const effectivePrice = (overridePrice && !isNaN(overridePrice) && overridePrice > 0)
-                                                                            ? overridePrice
-                                                                            : ((vipCaadiInfo.defaultPrice && vipCaadiInfo.defaultPrice > 0) ? vipCaadiInfo.defaultPrice : 36);
-                                                                        const label = vipCaadiInfo.label || 'VIP Caadi';
-                                                                        return (
-                                                                            <div className="space-y-3">
-                                                                                <div className="space-y-0.5">
-                                                                                    <div className="font-bold text-sm text-foreground">#{customer.customer_code} {customer.name}</div>
-                                                                                    <div className="text-xs text-muted-foreground">{format(date, 'EEEE, MMM dd, yyyy')}</div>
-                                                                                    <span className="inline-flex items-center text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded mt-1">👑 {label}</span>
-                                                                                </div>
-                                                                                <div className="border-t border-border/60 pt-2">
-                                                                                    <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{label}</div>
-                                                                                    <div className="text-base font-black text-foreground font-mono">{caadiKg} KG × ${effectivePrice}</div>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                    return (
-                                                                        <div className="space-y-2">
-                                                                            <h4 className="font-medium text-xs text-muted-foreground leading-none">Note for {customer.name}</h4>
-                                                                            <p className="text-[10px] text-muted-foreground/60">Tip: <span className="font-bold text-amber-600">10 vip 38, 10 vip 37</span> for split VIP prices</p>
-                                                                            <Input placeholder="e.g. 10 vip 38, 10 vip 37" value={entries[customer.id]?.note || ''} onChange={(e) => setEntries({ ...entries, [customer.id]: { kg: entries[customer.id]?.kg || 0, present: entries[customer.id]?.present ?? true, note: e.target.value } })} className="h-8 text-xs bg-background border-input focus-visible:ring-1 focus-visible:ring-primary shadow-none" autoFocus />
-                                                                            <Button size="sm" className="w-full h-7 text-xs" onClick={() => setOpenNoteForCustomerId(null)}>Done</Button>
-                                                                        </div>
-                                                                    );
-                                                                })()}
-                                                            </PopoverContent>
-                                                        </Popover>
-                                                    </div>
-                                                    <div className="col-span-3 flex items-center justify-end gap-1">
-                                                        <div className="flex items-center justify-end gap-1 relative w-full">
-                                                            {(() => {
-                                                                const note = entries[customer.id]?.note || '';
-                                                                const isVip = note.toLowerCase().includes('vip');
-                                                                const vipCaadiInfo = activeVipCaadiCustMap.get(customer.id);
-                                                                return (
-                                                                    <>
-                                                                        {isVip && (
-                                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title="Click to edit VIP note" className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 text-yellow-950 shadow-[0_0_12px_rgba(251,191,36,0.6)] border border-yellow-200 whitespace-nowrap animate-pulse cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                                <span>👑 VIP</span>
-                                                                            </button>
-                                                                        )}
-                                                                        {vipCaadiInfo && (
-                                                                            <button onPointerDown={(e) => e.preventDefault()} onClick={() => setOpenNoteForCustomerId(customer.id)} title={`Click to view ${vipCaadiInfo.label || 'VIP Caadi'}`} className="inline-flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-violet-400 via-purple-400 to-violet-500 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)] border border-violet-300 whitespace-nowrap cursor-pointer hover:scale-105 active:scale-95 transition-transform gap-0.5">
-                                                                                <span>👑 {vipCaadiInfo.label || 'VIP Caadi'}</span>
-                                                                            </button>
-                                                                        )}
-                                                                    </>
-                                                                );
-                                                            })()}
-                                                            <Input type="number" step="any" placeholder="0" inputMode="decimal" value={entries[customer.id]?.kg || ''} disabled={entries[customer.id]?.present === false} onChange={(e) => setEntries({ ...entries, [customer.id]: { present: entries[customer.id]?.present ?? true, note: entries[customer.id]?.note || '', kg: parseFloat(e.target.value) || 0 } })} onKeyDown={(e) => handleKeyPress(e, index)} className={`ledger-input h-7 w-16 md:w-20 text-right font-black text-sm md:text-base border-0 border-b border-transparent rounded-none bg-transparent transition-all px-1 focus-visible:ring-0 shadow-none hover:border-blue-300 ${entries[customer.id]?.kg > 0 ? 'border-primary text-primary bg-primary/5 dark:bg-primary/10' : 'text-slate-400 dark:text-slate-500'} ${entries[customer.id]?.present === false ? 'opacity-50' : ''}`} />
+                                                            )}
                                                         </div>
-                                                        {(entries[customer.id]?.kg > 0 || entries[customer.id]?.present === false || entries[customer.id]?.note) && (
-                                                            <Button variant="ghost" size="sm" onPointerDown={(e) => e.preventDefault()} onClick={() => { const n = { ...entries }; delete n[customer.id]; setEntries(n); }} className="h-8 w-8 md:h-6 md:w-6 p-0 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
-                                                                <Trash2 className="w-4 h-4 md:w-3 md:h-3" />
-                                                            </Button>
-                                                        )}
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
