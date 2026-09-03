@@ -149,6 +149,32 @@ describe('Authoritative Maqal Holiday-Aware Pairing & Immutability Verification'
             '2026-08-29'  // Old Day 1 (correct MQ#24)
         ]);
     });
+
+    test('TEST 10: Customers Page pair_date1/pair_date2 — Sep 1 ABSENCE yields MQ#25 = Aug 31 + Sep 2 (not Sep 1)', () => {
+        // This test verifies the exact invariant that the Customers API now uses.
+        // Before the fix, app/api/customers/route.ts computed pair_date1/pair_date2 using raw
+        // epoch arithmetic: '2026-06-28'::date + (offset/2*2), producing Sep 1 instead of Sep 2.
+        // After the fix it reads from MAQAL_PAIRS_CTE which respects BusinessDay ABSENCE.
+
+        const pairs = computeWorkingDatePairs({ absenceDates: ['2026-09-01'] });
+
+        // The "latest" authoritative pair is the one with the highest mq_num covering today/future.
+        // Simulate what the customers API NOW does: ORDER BY mq_num DESC LIMIT 1
+        const sortedDesc = pairs.slice().sort((a, b) => b.mq_num - a.mq_num);
+        const targetPair = sortedDesc.find(p => p.date1 >= '2026-08-31');
+
+        assert.ok(targetPair, 'A future-covering target pair must exist');
+
+        // Specifically MQ#25 should be the active pair around Sep 2026
+        const mq25 = pairs.find(p => p.mq_num === 25);
+        assert.ok(mq25, 'MQ#25 must exist');
+        assert.strictEqual(mq25.date1, '2026-08-31',
+            'Customers page pair_date1 for MQ#25 MUST be 2026-08-31');
+        assert.strictEqual(mq25.date2, '2026-09-02',
+            'Customers page pair_date2 for MQ#25 MUST be 2026-09-02 (NOT 2026-09-01)');
+
+        // Negative assertion: the old calendar arithmetic would have produced Sep 1
+        assert.notStrictEqual(mq25.date2, '2026-09-01',
+            'pair_date2 must NOT be 2026-09-01 — that was the legacy epoch-arithmetic bug');
+    });
 });
-
-

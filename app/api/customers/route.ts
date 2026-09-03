@@ -8,6 +8,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import bcrypt from 'bcryptjs';
 import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
+import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
 
 import { getAllCustomerStats, getCachedAllCustomerStats } from '@/app/utils/rankHelpers';
 import { z } from 'zod';
@@ -112,24 +113,19 @@ export async function getCustomers(options: {
     else if (sort === 'least_kg') orderClause = "ORDER BY total_kg ASC NULLS LAST";
 
     const query = `
-        -- ── PAIR EPOCH = 2026-06-28. offset = CURRENT_DATE - epoch ─────────────────
-        WITH target_pair AS (
-            SELECT
-                ('2026-06-28'::date + (
-                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
-                )::int * '1 day'::interval)::date AS date1,
-                ('2026-06-28'::date + (
-                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
-                )::int * '1 day'::interval)::date AS date2
+        -- ── Authoritative holiday-aware Maqal pairs (reads BusinessDay ABSENCE) ─────
+        ${MAQAL_PAIRS_CTE},
+        target_pair AS (
+            SELECT date1, date2
+            FROM pairs
+            ORDER BY mq_num DESC
+            LIMIT 1
         ),
         prev_pair AS (
-            SELECT
-                ('2026-06-28'::date + (
-                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 2
-                )::int * '1 day'::interval)::date AS date1,
-                ('2026-06-28'::date + (
-                    GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 - 1
-                )::int * '1 day'::interval)::date AS date2
+            SELECT date1, date2
+            FROM pairs
+            ORDER BY mq_num DESC
+            OFFSET 1 LIMIT 1
         ),
         latest_product_receipt_raw AS (
             SELECT 
@@ -432,14 +428,13 @@ const getCachedCustomersLite = unstable_cache(
 const getCachedCustomersLedger = unstable_cache(
     async () => {
         const query = `
-            WITH target_pair AS (
-                SELECT
-                    ('2026-06-28'::date + (
-                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2
-                    )::int * '1 day'::interval)::date AS date1,
-                    ('2026-06-28'::date + (
-                        GREATEST(0, ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) - 2) / 2 * 2 + 1
-                    )::int * '1 day'::interval)::date AS date2
+            -- ── Authoritative holiday-aware Maqal pairs ──────────────────────────────
+            ${MAQAL_PAIRS_CTE},
+            target_pair AS (
+                SELECT date1, date2
+                FROM pairs
+                ORDER BY mq_num DESC
+                LIMIT 1
             )
             SELECT
                 c.id, c.name, c.customer_code, c.is_kabarka, c.is_unassignable,
