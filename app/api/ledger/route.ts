@@ -7,6 +7,7 @@ import { calculateMaqalCharge } from '@/lib/ledger-utils';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
 import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
+import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -248,20 +249,19 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
         let customerStatus = { unprocessed_books_count: 0, is_target_days_done: true };
         try {
             const { rows: statusRows } = await pool.query(`
-                WITH prev_pair AS (
-                    SELECT
-                        ('2026-06-28'::date + (
-                            ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 2
-                        )::int * '1 day'::interval)::date AS date1,
-                        ('2026-06-28'::date + (
-                            ((NOW() AT TIME ZONE 'Africa/Mogadishu')::date - '2026-06-28'::date) / 2 * 2 - 1
-                        )::int * '1 day'::interval)::date AS date2
+                ${MAQAL_PAIRS_CTE},
+                target_pair AS (
+                    SELECT date1, date2
+                    FROM pairs
+                    WHERE date2 < (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+                    ORDER BY date2 DESC
+                    LIMIT 1
                 )
                 SELECT
                     CASE WHEN ROUND(COALESCE(dbk.total_daily_kg, 0)::numeric, 2) > ROUND(COALESCE(lk.total_ledger_kg, 0)::numeric, 2) THEN 1 ELSE 0 END as unprocessed_books_count,
                     CASE
-                        WHEN COALESCE(td.prev_pair_ledger_count, 0) >= 2 THEN true
-                        WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM prev_pair) THEN true
+                        WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
+                        WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
                         ELSE false
                     END as is_target_days_done
                 FROM "Customer" c
@@ -275,11 +275,11 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
                 ) lk ON c.id = lk.customer_id
                 LEFT JOIN (
                     SELECT customer_id,
-                        COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as prev_pair_ledger_count
+                        COUNT(DISTINCT COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)) as target_pair_ledger_count
                     FROM "Ledger"
                     WHERE customer_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL
                       AND COALESCE((reference_date AT TIME ZONE 'Africa/Mogadishu')::date, (created_at AT TIME ZONE 'Africa/Mogadishu')::date)
-                            IN (SELECT date1 FROM prev_pair UNION SELECT date2 FROM prev_pair)
+                            IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
                     GROUP BY customer_id
                 ) td ON c.id = td.customer_id
                 WHERE c.id = $1

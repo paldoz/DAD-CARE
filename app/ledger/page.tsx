@@ -1313,11 +1313,23 @@ export default function LedgerPage() {
                                                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                                     <User className={`w-5 h-5 ${selectedCustomerId ? 'text-primary' : 'text-muted-foreground'}`} />
                                                 </div>
-                                                <span className="truncate">
+                                                <span className="truncate flex items-center">
                                                     {selectedCustomerId
                                                         ? (() => {
                                                             const c = allCustomers.find(c => c.id === selectedCustomerId);
-                                                            return c ? `${c.name.toUpperCase()} (ID: ${c.customer_code})` : "Select Customer...";
+                                                            if (!c) return "Select Customer...";
+                                                            const isCompleted = c.id === lastSavedCustomerId || c.is_target_days_done;
+                                                            const isWarning = !isCompleted && ((c.total_books_count ?? 0) > 0 || (c.unprocessed_books_count ?? 0) > 0);
+                                                            return (
+                                                                <span className="flex items-center truncate">
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5 inline-block shrink-0" />
+                                                                    ) : isWarning ? (
+                                                                        <span className="mr-1.5 inline-block shrink-0">⚠️</span>
+                                                                    ) : null}
+                                                                    {c.name.toUpperCase()} (ID: {c.customer_code})
+                                                                </span>
+                                                            );
                                                         })()
                                                         : "Select Customer..."}
                                                 </span>
@@ -1367,23 +1379,32 @@ export default function LedgerPage() {
 
                                                     // CRITICAL: renderCustomer MUST be defined before it is called below.
                                                     // Defining it after the isSuperAdmin guard caused a Temporal Dead Zone crash.
-                                                    const renderCustomer = (c: any) => (
-                                                        <div 
-                                                            key={c.id}
-                                                            className={cn(
-                                                                "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
-                                                                selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
-                                                            )}
-                                                            onClick={() => {
-                                                                handleCustomerChange(c.id);
-                                                                setCustomerPopoverOpen(false);
-                                                                setCustomerSearch('');
-                                                            }}
-                                                        >
-                                                            {c.id === lastSavedCustomerId || c.is_target_days_done ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5" /> : (c.unprocessed_books_count ? '⚠️ ' : '')}
-                                                            {c.name.toUpperCase()} (ID: {c.customer_code})
-                                                        </div>
-                                                    );
+                                                    const renderCustomer = (c: any) => {
+                                                        const isCompleted = c.id === lastSavedCustomerId || c.is_target_days_done;
+                                                        const isWarning = !isCompleted && (c.total_books_count > 0 || c.unprocessed_books_count > 0);
+                                                        return (
+                                                            <div 
+                                                                key={c.id}
+                                                                className={cn(
+                                                                    "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
+                                                                    selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
+                                                                )}
+                                                                onClick={() => {
+                                                                    handleCustomerChange(c.id);
+                                                                    setCustomerPopoverOpen(false);
+                                                                    setCustomerSearch('');
+                                                                }}
+                                                            >
+                                                                {isCompleted ? (
+                                                                    <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5 shrink-0" />
+                                                                ) : isWarning ? (
+                                                                    <span className="mr-1.5 shrink-0">⚠️ </span>
+                                                                ) : null}
+                                                                {c.name.toUpperCase()} (ID: {c.customer_code})
+                                                                {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
+                                                            </div>
+                                                        );
+                                                    };
 
                                                     if (!isSuperAdmin) {
                                                         return (
