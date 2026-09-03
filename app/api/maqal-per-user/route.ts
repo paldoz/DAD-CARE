@@ -2,23 +2,21 @@ import { NextResponse, NextRequest } from 'next/server';
 import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
-import { MAQAL_EPOCH } from '@/lib/maqal-utils';
+import { fetchAuthoritativeMaqalPairs } from '@/lib/maqal-utils';
 
 export const dynamic = 'force-dynamic'; // Always fetch fresh — no caching
 
 // Returns per-user maqal progress based on assigned_customer_ids.
 //
-// PAIR LOGIC (updated):
-//   Uses authoritative MAQAL_EPOCH ('2026-07-14'). Each pair is 2 days.
-//   offset = days since epoch in Africa/Mogadishu time.
-//
-//   current pair = floor(offset / 2) * 2   → pair that INCLUDES today
-//   ACTIVE pair  = current pair - 2         → the pair BEFORE today (users must have processed this)
-//   WAITING pair = current pair             → the next pair users will work on
+// PAIR LOGIC:
+//   Uses authoritative pairs from fetchAuthoritativeMaqalPairs (holiday-aware).
+//   current pair = pair that INCLUDES today (or latest pair if today is ahead)
+//   ACTIVE pair  = pair immediately before current pair
+//   WAITING pair = current pair (or active pair + 1)
 //
 //   AUTO-ADVANCE: The active pair advances from (ACTIVE→WAITING) only when
-//   a DailyBook entry exists for (waitingPairDay2 + 1 day), i.e. the day AFTER
-//   the waiting pair ends. Until then the tracker stays locked on the ACTIVE pair.
+//   a DailyBook entry exists for the trigger date (start of the pair after waiting).
+//   Until then the tracker stays locked on the ACTIVE pair.
 
 async function getMaqalData() {
         // 1. Get all users with assigned_customer_ids
@@ -33,58 +31,61 @@ async function getMaqalData() {
             return { users: [] };
         }
 
-        // 2. Compute pair offsets
+        // 2. Load authoritative pairs (single fast batch query, zero N+1)
+        const pairs = await fetchAuthoritativeMaqalPairs(pool);
+        if (pairs.length === 0) {
+            return { users: [], date1: null, date2: null };
+        }
+
         const formatter = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'Africa/Mogadishu',
             year: 'numeric', month: '2-digit', day: '2-digit'
         });
         const todayStr = formatter.format(new Date());
-        const epochMs = new Date(`${MAQAL_EPOCH}T00:00:00Z`).getTime();
-        const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
-        const diffDaysToday = Math.floor((todayMs - epochMs) / 86400000);
 
-        const currentPairOffset = Math.floor(diffDaysToday / 2) * 2;
-        const activePairOffset = Math.max(0, currentPairOffset - 2);
-        const waitingPairOffset = activePairOffset + 2;
+        // Find pair index matching today or closest current pair
+        let currentIdx = pairs.findIndex(p => todayStr >= p.date1 && todayStr <= p.date2);
+        if (currentIdx === -1) {
+            // If today is past the last pair, use the last pair; if before, use first
+            currentIdx = todayStr > pairs[pairs.length - 1].date2 ? pairs.length - 1 : 0;
+        }
 
-        const toDateStr = (offsetDays: number): string => {
-            const d = new Date(epochMs + offsetDays * 86400000);
-            const y = d.getUTCFullYear();
-            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-            const day = String(d.getUTCDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        };
+        const activeIdx = Math.max(0, currentIdx - 1);
+        const waitingIdx = Math.min(pairs.length - 1, activeIdx + 1);
 
-        const activePairDate1 = toDateStr(activePairOffset);
-        const activePairDate2 = toDateStr(activePairOffset + 1);
-        const waitingPairDate1 = toDateStr(waitingPairOffset);
-        const waitingPairDate2 = toDateStr(waitingPairOffset + 1);
-        const autoAdvanceTriggerDate = toDateStr(waitingPairOffset + 2);
+        const activePair = pairs[activeIdx];
+        const waitingPair = pairs[waitingIdx];
+        const pairAfterWaiting = waitingIdx + 1 < pairs.length ? pairs[waitingIdx + 1] : null;
 
-        const triggerRes = await pool.query(`
-            SELECT EXISTS (
-                SELECT 1 FROM "DailyBook"
-                WHERE deleted_at IS NULL
-                  AND (date AT TIME ZONE 'Africa/Mogadishu')::date = $1::date
-            ) as has_trigger
-        `, [autoAdvanceTriggerDate]);
-        const hasAutoAdvanceTrigger = triggerRes.rows[0]?.has_trigger === true;
+        const autoAdvanceTriggerDate = pairAfterWaiting ? pairAfterWaiting.date1 : null;
+
+        let hasAutoAdvanceTrigger = false;
+        if (autoAdvanceTriggerDate) {
+            const triggerRes = await pool.query(`
+                SELECT EXISTS (
+                    SELECT 1 FROM "DailyBook"
+                    WHERE deleted_at IS NULL
+                      AND (date AT TIME ZONE 'Africa/Mogadishu')::date = $1::date
+                ) as has_trigger
+            `, [autoAdvanceTriggerDate]);
+            hasAutoAdvanceTrigger = triggerRes.rows[0]?.has_trigger === true;
+        }
 
         let trackerDate1: string;
         let trackerDate2: string;
-        let nextDate1: string;
-        let nextDate2: string;
+        let nextDate1: string | null;
+        let nextDate2: string | null;
 
-        if (hasAutoAdvanceTrigger) {
-            trackerDate1 = waitingPairDate1;
-            trackerDate2 = waitingPairDate2;
-            nextDate1 = toDateStr(waitingPairOffset + 2);
-            nextDate2 = toDateStr(waitingPairOffset + 3);
+        if (hasAutoAdvanceTrigger && pairAfterWaiting) {
+            trackerDate1 = waitingPair.date1;
+            trackerDate2 = waitingPair.date2;
+            nextDate1 = pairAfterWaiting.date1;
+            nextDate2 = pairAfterWaiting.date2;
         } else {
-            trackerDate1 = activePairDate1;
-            trackerDate2 = activePairDate2;
-            nextDate1 = waitingPairDate1;
-            nextDate2 = waitingPairDate2;
+            trackerDate1 = activePair.date1;
+            trackerDate2 = activePair.date2;
+            nextDate1 = waitingPair.date1;
+            nextDate2 = waitingPair.date2;
         }
 
         if (!trackerDate1 || !trackerDate2) {

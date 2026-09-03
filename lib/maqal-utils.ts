@@ -12,17 +12,56 @@
 export const MAQAL_EPOCH = '2026-07-14';
 
 export const MAQAL_PAIRS_CTE = `
-    WITH pairs AS (
+    WITH historical_pairs AS (
         SELECT
             (1 + i)::int AS mq_num,
             (('${MAQAL_EPOCH}'::date + (i * 2)))::date AS date1,
             (('${MAQAL_EPOCH}'::date + (i * 2 + 1)))::date AS date2,
             (9 + i)::int AS maqal_id
+        FROM generate_series(0, 23) AS i
+    ),
+    recorded_dates AS (
+        SELECT DISTINCT date::date AS d FROM "DailyBook" WHERE deleted_at IS NULL AND date >= '2026-08-31'::date
+        UNION
+        SELECT DISTINCT reference_date::date AS d FROM "Ledger" WHERE type = 'PRODUCT' AND deleted_at IS NULL AND reference_date >= '2026-08-31'::date
+    ),
+    effective_absence AS (
+        SELECT b.date::date AS d
+        FROM "BusinessDay" b
+        WHERE b.status = 'ABSENCE'
+          AND b.date >= '2026-08-31'::date
+          AND b.date::date NOT IN (SELECT d FROM recorded_dates)
+    ),
+    future_calendar AS (
+        SELECT ('2026-08-31'::date + s)::date AS cal_date
         FROM generate_series(0, GREATEST(
-            CEIL(((CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date - '${MAQAL_EPOCH}'::date) / 2.0)::int + 1,
-            COALESCE((SELECT CEIL((MAX(date) - '${MAQAL_EPOCH}'::date) / 2.0)::int FROM "DailyBook" WHERE deleted_at IS NULL), 0),
-            COALESCE((SELECT CEIL((MAX(reference_date) - '${MAQAL_EPOCH}'::date) / 2.0)::int FROM "Ledger" WHERE deleted_at IS NULL), 0)
-        )) AS i
+            ((CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date - '2026-08-31'::date) + 60,
+            COALESCE((SELECT (MAX(date) - '2026-08-31'::date)::int + 10 FROM "DailyBook" WHERE deleted_at IS NULL), 0),
+            COALESCE((SELECT (MAX(reference_date) - '2026-08-31'::date)::int + 10 FROM "Ledger" WHERE deleted_at IS NULL), 0),
+            60
+        )) AS s
+    ),
+    future_working_dates AS (
+        SELECT
+            cal_date,
+            ROW_NUMBER() OVER (ORDER BY cal_date ASC) AS rn
+        FROM future_calendar
+        WHERE cal_date NOT IN (SELECT d FROM effective_absence)
+    ),
+    future_pairs AS (
+        SELECT
+            (24 + CEIL(w1.rn / 2.0))::int AS mq_num,
+            w1.cal_date AS date1,
+            w2.cal_date AS date2,
+            (32 + CEIL(w1.rn / 2.0))::int AS maqal_id
+        FROM future_working_dates w1
+        JOIN future_working_dates w2 ON w2.rn = w1.rn + 1
+        WHERE w1.rn % 2 = 1
+    ),
+    pairs AS (
+        SELECT mq_num, date1, date2, maqal_id FROM historical_pairs
+        UNION ALL
+        SELECT mq_num, date1, date2, maqal_id FROM future_pairs
     )
 `;
 
@@ -113,5 +152,58 @@ export async function fetchAuthoritativeMaqalPairs(client: any): Promise<Authori
 
     validateMaqalPairs(pairs);
 
+    return pairs;
+}
+
+/**
+ * Pure TypeScript reference implementation of the authoritative two-phase Maqal pairing engine.
+ * Matches MAQAL_PAIRS_CTE 1-to-1 without requiring database access.
+ */
+export function computeWorkingDatePairs(options?: {
+    absenceDates?: string[];
+    recordedDates?: string[];
+    futureDaysCount?: number;
+}): AuthoritativeMqPair[] {
+    const absenceSet = new Set((options?.absenceDates || []).map(d => d.split('T')[0]));
+    const recordedSet = new Set((options?.recordedDates || []).map(d => d.split('T')[0]));
+    const futureDays = options?.futureDaysCount ?? 60;
+
+    const pairs: AuthoritativeMqPair[] = [];
+
+    // Phase 1: Historical Maqals (MQ#1 through MQ#24) — permanently locked
+    const epochDate = new Date(`${MAQAL_EPOCH}T00:00:00Z`);
+    for (let i = 0; i < 24; i++) {
+        const d1 = new Date(epochDate.getTime() + (i * 2) * 86400000).toISOString().split('T')[0];
+        const d2 = new Date(epochDate.getTime() + (i * 2 + 1) * 86400000).toISOString().split('T')[0];
+        pairs.push({
+            mq_num: i + 1,
+            date1: d1,
+            date2: d2
+        });
+    }
+
+    // Phase 2: Future / Working dates starting from 2026-08-31
+    const phase2Start = new Date('2026-08-31T00:00:00Z');
+    const workingDates: string[] = [];
+
+    for (let s = 0; s < futureDays; s++) {
+        const d = new Date(phase2Start.getTime() + s * 86400000).toISOString().split('T')[0];
+        // Saved Activity Lock: if recorded, it's always worked. Otherwise, skip if absent.
+        const isRecorded = recordedSet.has(d);
+        const isAbsent = absenceSet.has(d) && !isRecorded;
+        if (!isAbsent) {
+            workingDates.push(d);
+        }
+    }
+
+    for (let i = 0; i + 1 < workingDates.length; i += 2) {
+        pairs.push({
+            mq_num: pairs.length + 1,
+            date1: workingDates[i],
+            date2: workingDates[i + 1]
+        });
+    }
+
+    validateMaqalPairs(pairs);
     return pairs;
 }

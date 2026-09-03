@@ -139,53 +139,93 @@ export default function SettingsPage() {
     const [isOverridesOpen, setIsOverridesOpen] = useState(false);
     const [maqalPairDates, setMaqalPairDates] = useState<{ date1: string | null; date2: string | null; waitingDate1: string | null; waitingDate2: string | null }>({ date1: null, date2: null, waitingDate1: null, waitingDate2: null });
     
+    // Fetch authoritative Maqal pairs (cached via SWR, holiday-aware)
+    const { data: maqalPairs } = useSWR<any[]>(
+        '/api/maqal-pairs',
+        (url: string) => fetch(url, { credentials: 'include' }).then(res => res.json()),
+        { revalidateOnFocus: false, dedupingInterval: 600000, revalidateIfStale: false }
+    );
+
+    const authoritativePairs = useMemo(() => {
+        if (!maqalPairs || !Array.isArray(maqalPairs)) return [];
+        return maqalPairs
+            .filter(p => p && p.date1 && p.date2)
+            .map(p => ({
+                ...p,
+                date1: String(p.date1).split('T')[0],
+                date2: String(p.date2).split('T')[0],
+            }))
+            .sort((a, b) => a.date1.localeCompare(b.date1));
+    }, [maqalPairs]);
+
     const allowedDates = useMemo(() => {
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const formatToDateStr = (ms: number) => {
-            const d = new Date(ms);
-            return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-        };
+        if (authoritativePairs.length > 0) {
+            let activeIdx = -1;
+            if (maqalPairDates.date1) {
+                activeIdx = authoritativePairs.findIndex(
+                    p => p.date1 === maqalPairDates.date1 || p.date2 === maqalPairDates.date2
+                );
+            }
+            if (activeIdx === -1) {
+                const todayStr = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'Africa/Mogadishu',
+                    year: 'numeric', month: '2-digit', day: '2-digit'
+                }).format(new Date());
 
-        if (maqalPairDates.date1) {
-            // Focus on ACTIVE (New) and PREVIOUS (Old) pairs
-            const activeDay1Ms = new Date(maqalPairDates.date1).getTime();
-            const activeDay2Ms = maqalPairDates.date2 ? new Date(maqalPairDates.date2).getTime() : activeDay1Ms + 86400000;
-            
-            const prevDay1Ms = activeDay1Ms - 2 * 86400000;
-            const prevDay2Ms = activeDay2Ms - 2 * 86400000;
+                let currentIdx = authoritativePairs.findIndex(p => todayStr >= p.date1 && todayStr <= p.date2);
+                if (currentIdx === -1) {
+                    currentIdx = todayStr > authoritativePairs[authoritativePairs.length - 1].date2
+                        ? authoritativePairs.length - 1
+                        : 0;
+                }
+                activeIdx = Math.max(0, currentIdx - 1);
+            }
 
-            return [
-                formatToDateStr(activeDay2Ms), // New Day 2
-                formatToDateStr(activeDay1Ms), // New Day 1
-                formatToDateStr(prevDay2Ms),   // Old Day 2
-                formatToDateStr(prevDay1Ms),   // Old Day 1
-            ];
+            if (activeIdx >= 0 && activeIdx < authoritativePairs.length) {
+                const activePair = authoritativePairs[activeIdx];
+                const prevPair = activeIdx > 0 ? authoritativePairs[activeIdx - 1] : null;
+
+                const activeDay2 = activePair.date2;
+                const activeDay1 = activePair.date1;
+                const prevDay2 = prevPair ? prevPair.date2 : '';
+                const prevDay1 = prevPair ? prevPair.date1 : '';
+
+                return [
+                    activeDay2, // New Day 2
+                    activeDay1, // New Day 1
+                    prevDay2,   // Old Day 2
+                    prevDay1,   // Old Day 1
+                ];
+            }
         }
 
-        let localMaqalPairDates: any[] = [];
+        let localMaqalPairDates: string[] = [];
         if (typeof window !== 'undefined') {
             try {
                 localMaqalPairDates = JSON.parse(localStorage.getItem('dadwork_maqal_pair_dates') || '[]');
             } catch(e) {}
         }
-        if (localMaqalPairDates && localMaqalPairDates.length >= 4) {
+        if (Array.isArray(localMaqalPairDates) && localMaqalPairDates.length >= 4 && localMaqalPairDates.every(Boolean)) {
             return localMaqalPairDates.map((d: string) => d.split('T')[0]);
         }
-        
-        // Fallback for strict alignment: 
-        const today = new Date();
-        const activePairOffset = Math.floor(today.getDate() / 2) * 2;
-        const prevPairOffset = activePairOffset - 2;
-        const fallbackToDateStr = (ms: number) => new Date(ms).toISOString().split('T')[0];
-        
-        const epochMs = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
-        return [
-            fallbackToDateStr(epochMs + (activePairOffset + 1) * 86400000),
-            fallbackToDateStr(epochMs + activePairOffset * 86400000),
-            fallbackToDateStr(epochMs + (prevPairOffset + 1) * 86400000),
-            fallbackToDateStr(epochMs + prevPairOffset * 86400000),
-        ];
-    }, [maqalPairDates.date1, maqalPairDates.date2]);
+
+        return ['', '', '', ''];
+    }, [authoritativePairs, maqalPairDates.date1, maqalPairDates.date2]);
+
+    useEffect(() => {
+        if (allowedDates.length >= 4 && allowedDates[0] && allowedDates[1] && allowedDates[2] && allowedDates[3]) {
+            try {
+                localStorage.setItem('dadwork_maqal_pair_dates', JSON.stringify(allowedDates));
+            } catch (e) {}
+        }
+    }, [allowedDates]);
+
+    useEffect(() => {
+        if (allowedDates[0]) {
+            setNewDatePrice(prev => (prev.date ? prev : { ...prev, date: allowedDates[0] }));
+            setNewOverride(prev => (prev.date ? prev : { ...prev, date: allowedDates[0] }));
+        }
+    }, [allowedDates]);
 
     const [newDatePrice, setNewDatePrice] = useState({ date: allowedDates[0], price: '' });
     const [newOverride, setNewOverride] = useState<{date: string, customerIds: string[], price: string}>({ date: allowedDates[0], customerIds: [], price: '' });
@@ -979,7 +1019,7 @@ export default function SettingsPage() {
             return;
         }
         
-        let updated = { ...dateSpecificPrices, [newDatePrice.date]: newDatePrice.price };
+        let updated: Record<string, string> = { ...dateSpecificPrices, [newDatePrice.date]: newDatePrice.price };
         
         handleSaveDatePrice(updated, 'add');
         
