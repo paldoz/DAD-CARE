@@ -115,16 +115,21 @@ export async function getCustomers(options: {
     const query = `
         -- ── Authoritative holiday-aware Maqal pairs (reads BusinessDay ABSENCE) ─────
         ${MAQAL_PAIRS_CTE},
+        -- target_pair = most recently completed pair (date2 strictly before today)
+        -- This mirrors maqal-per-user semantics: the pair customers are being reminded about.
+        -- On Sep 3 with Sep 1 = ABSENCE: MQ#25 = Aug31+Sep2 (date2=Sep2 < Sep3) ✓
         target_pair AS (
             SELECT date1, date2
             FROM pairs
-            ORDER BY mq_num DESC
+            WHERE date2 < (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+            ORDER BY date2 DESC
             LIMIT 1
         ),
         prev_pair AS (
             SELECT date1, date2
             FROM pairs
-            ORDER BY mq_num DESC
+            WHERE date2 < (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+            ORDER BY date2 DESC
             OFFSET 1 LIMIT 1
         ),
         latest_product_receipt_raw AS (
@@ -430,10 +435,12 @@ const getCachedCustomersLedger = unstable_cache(
         const query = `
             -- ── Authoritative holiday-aware Maqal pairs ──────────────────────────────
             ${MAQAL_PAIRS_CTE},
+            -- target_pair = most recently completed pair (date2 < today)
             target_pair AS (
                 SELECT date1, date2
                 FROM pairs
-                ORDER BY mq_num DESC
+                WHERE date2 < (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+                ORDER BY date2 DESC
                 LIMIT 1
             )
             SELECT

@@ -150,31 +150,51 @@ describe('Authoritative Maqal Holiday-Aware Pairing & Immutability Verification'
         ]);
     });
 
-    test('TEST 10: Customers Page pair_date1/pair_date2 — Sep 1 ABSENCE yields MQ#25 = Aug 31 + Sep 2 (not Sep 1)', () => {
-        // This test verifies the exact invariant that the Customers API now uses.
-        // Before the fix, app/api/customers/route.ts computed pair_date1/pair_date2 using raw
-        // epoch arithmetic: '2026-06-28'::date + (offset/2*2), producing Sep 1 instead of Sep 2.
-        // After the fix it reads from MAQAL_PAIRS_CTE which respects BusinessDay ABSENCE.
+    test('TEST 10: Customers Page pair_date1/pair_date2 — correct selection semantics with Sep 1 ABSENCE', () => {
+        // WHAT THE FIX DOES:
+        // The customers API now uses:
+        //   WHERE date2 < today ORDER BY date2 DESC LIMIT 1
+        // = "most recently COMPLETED pair" — mirrors maqal-per-user active pair semantics.
+        //
+        // OLD BUG (two layers):
+        //   Layer 1: epoch arithmetic '2026-06-28' + offset → ignored ABSENCE → returned Sep 1
+        //   Layer 2: ORDER BY mq_num DESC LIMIT 1 → returned furthest future pair (Oct/Nov)
+        //
+        // With today = 2026-09-03 and Sep 1 = ABSENCE:
+        //   MQ#25 = Aug31 + Sep2 (date2=Sep2 < Sep3 ✓)
+        //   MQ#26 = Sep3 + Sep4 (date2=Sep4 >= Sep3 — NOT yet completed)
+        //   → target_pair = MQ#25 ✅
 
         const pairs = computeWorkingDatePairs({ absenceDates: ['2026-09-01'] });
+        const todayStr = '2026-09-03'; // simulated today
 
-        // The "latest" authoritative pair is the one with the highest mq_num covering today/future.
-        // Simulate what the customers API NOW does: ORDER BY mq_num DESC LIMIT 1
-        const sortedDesc = pairs.slice().sort((a, b) => b.mq_num - a.mq_num);
-        const targetPair = sortedDesc.find(p => p.date1 >= '2026-08-31');
+        // Simulate: WHERE date2 < today ORDER BY date2 DESC LIMIT 1
+        const completedPairs = pairs.filter(p => p.date2 < todayStr);
+        completedPairs.sort((a, b) => b.date2.localeCompare(a.date2));
+        const targetPair = completedPairs[0];
 
-        assert.ok(targetPair, 'A future-covering target pair must exist');
+        assert.ok(targetPair, 'A completed target pair must exist');
+        assert.strictEqual(targetPair.date1, '2026-08-31',
+            'pair_date1 MUST be 2026-08-31 (MQ#25 day 1)');
+        assert.strictEqual(targetPair.date2, '2026-09-02',
+            'pair_date2 MUST be 2026-09-02 (MQ#25 day 2, not Sep 1)');
+        assert.strictEqual(targetPair.mq_num, 25,
+            'Selected pair MUST be MQ#25');
 
-        // Specifically MQ#25 should be the active pair around Sep 2026
+        // Negative: old 'ORDER BY mq_num DESC LIMIT 1' would have returned a far-future pair
+        const wrongPair = pairs[pairs.length - 1]; // highest mq_num = far future
+        assert.ok(wrongPair.date1 > '2026-09-10',
+            'ORDER BY mq_num DESC LIMIT 1 returns a far-future pair — proves the old fix was wrong');
+        assert.notStrictEqual(wrongPair.date2, '2026-09-02',
+            'Far-future pair must not be MQ#25 — it would show wrong Oct/Nov dates');
+
+        // Also verify the authoritative sequence is intact
         const mq25 = pairs.find(p => p.mq_num === 25);
-        assert.ok(mq25, 'MQ#25 must exist');
-        assert.strictEqual(mq25.date1, '2026-08-31',
-            'Customers page pair_date1 for MQ#25 MUST be 2026-08-31');
-        assert.strictEqual(mq25.date2, '2026-09-02',
-            'Customers page pair_date2 for MQ#25 MUST be 2026-09-02 (NOT 2026-09-01)');
-
-        // Negative assertion: the old calendar arithmetic would have produced Sep 1
-        assert.notStrictEqual(mq25.date2, '2026-09-01',
-            'pair_date2 must NOT be 2026-09-01 — that was the legacy epoch-arithmetic bug');
+        const mq26 = pairs.find(p => p.mq_num === 26);
+        const mq27 = pairs.find(p => p.mq_num === 27);
+        assert.ok(mq25 && mq26 && mq27);
+        assert.deepStrictEqual([mq25.date1, mq25.date2], ['2026-08-31', '2026-09-02']);
+        assert.deepStrictEqual([mq26.date1, mq26.date2], ['2026-09-03', '2026-09-04']);
+        assert.deepStrictEqual([mq27.date1, mq27.date2], ['2026-09-05', '2026-09-06']);
     });
 });
