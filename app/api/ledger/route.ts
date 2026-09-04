@@ -7,7 +7,7 @@ import { calculateMaqalCharge } from '@/lib/ledger-utils';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { rateLimitResponse } from '@/lib/rate-limit';
 import { groupTransactionsInfoReceipts } from '@/app/utils/ledgerHelpers';
-import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
+import { MAQAL_PAIRS_CTE, resolveMaqalFromDate } from '@/lib/maqal-utils';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -75,9 +75,8 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
         let runningDebt = 0;
         let customerName = '';
         let entriesToInsert: any[] = [];
-        // authoritative_maqal_id: final value used for ALL rows in this batch.
-        // Resolved below after reading the DB.
-        let authoritative_maqal_id: number | null = client_maqal_id;
+        // authoritative_maqal_id: resolved server-side from existing receipt or authoritative date logic
+        let authoritative_maqal_id: number = 0;
 
         try {
             await client.query('BEGIN');
@@ -91,22 +90,41 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
             customerName = customers[0].name;
 
             // 1b. AUTHORITATIVE MAQAL_ID & CUSTOMER ISOLATION RESOLUTION:
-            // If this batch uses an existing receipt_id, verify it belongs strictly to this customer
-            // and look up the authoritative maqal_id from the existing PRODUCT rows.
+            let entriesToProcess = isBatch ? items : [body];
+            let foundExistingMaqal = false;
+
             if (receipt_id) {
-                const { rows: existingProducts } = await client.query(
-                    `SELECT maqal_id, customer_id FROM "Ledger" WHERE receipt_id = $1 AND type = 'PRODUCT' AND deleted_at IS NULL LIMIT 1`,
+                const { rows: existingLedger } = await client.query(
+                    `SELECT maqal_id, customer_id, type FROM "Ledger" WHERE receipt_id = $1 AND deleted_at IS NULL`,
                     [receipt_id]
                 );
-                if (existingProducts.length > 0) {
-                    if (existingProducts[0].customer_id && existingProducts[0].customer_id !== customerId) {
+                if (existingLedger.length > 0) {
+                    const products = existingLedger.filter((r: any) => r.type === 'PRODUCT');
+                    if (products.length === 0) {
+                        throw new Error(`Receipt ${receipt_id} is already in use by a non-product transaction and cannot be modified.`);
+                    }
+                    if (products[0].customer_id && products[0].customer_id !== customerId) {
                         throw new Error('Customer Isolation Error: Receipt belongs to a different customer');
                     }
-                    if (existingProducts[0].maqal_id != null) {
-                        authoritative_maqal_id = existingProducts[0].maqal_id;
+                    if (products[0].maqal_id != null) {
+                        authoritative_maqal_id = Number(products[0].maqal_id);
+                        foundExistingMaqal = true;
                     }
                 }
-                // else: new receipt, use client-sent maqal_id (which should be the current unprocessed maqal).
+            }
+
+            if (!foundExistingMaqal) {
+                // New receipt or new batch: resolve authoritative Maqal from entries dates
+                const allDates = entriesToProcess
+                    .map((e: any) => e.date ? String(e.date).split('T')[0] : null)
+                    .filter(Boolean) as string[];
+
+                const targetDate = allDates.length > 0 ? allDates[0] : new Date().toISOString().split('T')[0];
+                const resolved = await resolveMaqalFromDate(targetDate, client);
+                if (!resolved) {
+                    throw new Error(`Could not resolve authoritative Maqal for date ${targetDate}. Transaction cannot be saved without a valid Maqal.`);
+                }
+                authoritative_maqal_id = resolved.maqal_id;
             }
 
             // 2. GET CURRENT LATEST DEBT (Atomic start point)
@@ -121,7 +139,7 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 
             // 3. PROCESS ENTRIES
             entriesToInsert = [];
-            let entriesToProcess = isBatch ? items : [body];
+            entriesToProcess = isBatch ? items : [body];
 
             // Re-order so Payments are processed FIRST
             // This ensures they apply to the old debt before new product debt is added,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidateTag } from 'next/cache';
 import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
+import { resolveMaqalFromDate } from '@/lib/maqal-utils';
 
 export async function POST(request: Request) {
     const { session, errorResponse } = await requireSession(request);
@@ -34,11 +35,59 @@ export async function POST(request: Request) {
                     [payload.amount, payload.kg, payload.price_per_kg, refDate, approval.ledger_id]
                 );
             } else if (approval.action_type === 'ADD_LATE_PAYMENT') {
-                const refDate = payload.reference_date || new Date().toISOString().split('T')[0];
-                // Insert Ledger Payment
+                const customerId = payload.customerId || approval.customer_id;
+                if (!customerId || typeof customerId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId.trim())) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ error: 'Security: Invalid customer ID format' }, { status: 400 });
+                }
+
+                // Verify customer exists
+                const { rows: custCheck } = await client.query(`SELECT id FROM "Customer" WHERE id = $1 AND deleted_at IS NULL`, [customerId]);
+                if (custCheck.length === 0) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ error: 'Security: Customer not found' }, { status: 404 });
+                }
+
+                const refDate = payload.reference_date ? String(payload.reference_date).split('T')[0] : new Date().toISOString().split('T')[0];
+                let authoritative_maqal_id: number;
+
+                if (payload.receipt_id) {
+                    const { rows: existingLedger } = await client.query(
+                        `SELECT type, maqal_id, customer_id FROM "Ledger"
+                         WHERE receipt_id = $1 AND deleted_at IS NULL`,
+                        [payload.receipt_id]
+                    );
+                    if (existingLedger.length === 0) {
+                        await client.query('ROLLBACK');
+                        return NextResponse.json({ error: `Security: Receipt ${payload.receipt_id} does not exist.` }, { status: 400 });
+                    }
+                    const products = existingLedger.filter((r: any) => r.type === 'PRODUCT');
+                    if (products.length === 0) {
+                        await client.query('ROLLBACK');
+                        return NextResponse.json({ error: `Security: Receipt ${payload.receipt_id} contains no active products.` }, { status: 400 });
+                    }
+                    if (products[0].customer_id !== customerId) {
+                        await client.query('ROLLBACK');
+                        return NextResponse.json({ error: 'Customer Isolation Error: Receipt belongs to a different customer.' }, { status: 400 });
+                    }
+                    if (products[0].maqal_id == null) {
+                        await client.query('ROLLBACK');
+                        return NextResponse.json({ error: `Security: Receipt ${payload.receipt_id} has no valid maqal_id.` }, { status: 400 });
+                    }
+                    authoritative_maqal_id = Number(products[0].maqal_id);
+                } else {
+                    const resolved = await resolveMaqalFromDate(refDate, client);
+                    if (!resolved) {
+                        await client.query('ROLLBACK');
+                        return NextResponse.json({ error: `Security: Could not resolve authoritative Maqal for reference date ${refDate}.` }, { status: 400 });
+                    }
+                    authoritative_maqal_id = resolved.maqal_id;
+                }
+
+                // Insert Ledger Payment with verified authoritative values
                 await client.query(
                     `INSERT INTO "Ledger" (id, customer_id, type, amount, reference_date, previous_debt, new_debt, maqal_id, receipt_id) VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, 0, $5, $6)`,
-                    [payload.customerId || approval.customer_id, 'PAYMENT', payload.amount, refDate, payload.maqal_id || null, payload.receipt_id || null]
+                    [customerId, 'PAYMENT', payload.amount, refDate, authoritative_maqal_id, payload.receipt_id || null]
                 );
             } else if (approval.action_type === 'UNDO_LEDGER') {
                 // Soft delete and recalculate

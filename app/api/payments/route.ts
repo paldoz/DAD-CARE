@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/require-session';
 import { logAudit } from '@/lib/audit';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { revalidateTag } from 'next/cache';
-import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
+import { MAQAL_PAIRS_CTE, resolveMaqalFromDate } from '@/lib/maqal-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,9 +157,78 @@ export const POST = trackApiRoute('/api/payments', async (request: Request) => {
             return NextResponse.json({ error: 'Customer and amount required' }, { status: 400 });
         }
 
+        // Guard 1: Validate customerId is a valid UUID format (not an integer or customer_code)
+        if (typeof customerId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customerId.trim())) {
+            return NextResponse.json({ error: 'Invalid customer ID format' }, { status: 400 });
+        }
+
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+
+            // Verify customer exists and acquire row lock
+            const { rows: customers } = await client.query(
+                `SELECT id, name FROM "Customer" WHERE id = $1 FOR UPDATE`,
+                [customerId]
+            );
+            if (customers.length === 0) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+            }
+
+            // Authoritative Maqal Resolution (Receipt-first, then Reference Date)
+            const refDate = (date ? String(date).split('T')[0] : new Date().toISOString().split('T')[0]);
+            let authoritative_maqal_id: number;
+
+            if (body.receipt_id) {
+                const { rows: existingLedger } = await client.query(
+                    `SELECT type, maqal_id, customer_id FROM "Ledger"
+                     WHERE receipt_id = $1 AND deleted_at IS NULL`,
+                    [body.receipt_id]
+                );
+
+                if (existingLedger.length === 0) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ 
+                        error: `Receipt ${body.receipt_id} does not exist.` 
+                    }, { status: 400 });
+                }
+
+                const products = existingLedger.filter((r: any) => r.type === 'PRODUCT');
+                if (products.length === 0) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ 
+                        error: `Receipt ${body.receipt_id} contains no active products.` 
+                    }, { status: 400 });
+                }
+
+                if (products[0].customer_id !== customerId) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ 
+                        error: 'Customer Isolation Error: Receipt belongs to a different customer.' 
+                    }, { status: 400 });
+                }
+
+                if (products[0].maqal_id == null) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ 
+                        error: `Receipt ${body.receipt_id} has no valid maqal_id.` 
+                    }, { status: 400 });
+                }
+
+                authoritative_maqal_id = Number(products[0].maqal_id);
+            } else {
+                // Standalone payment without receipt_id: resolve authoritative Maqal from reference_date
+                const resolved = await resolveMaqalFromDate(refDate, client);
+                if (!resolved) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ 
+                        error: `Could not resolve authoritative Maqal for reference date ${refDate}. Transaction cannot be recorded without a valid Maqal.` 
+                    }, { status: 400 });
+                }
+
+                authoritative_maqal_id = resolved.maqal_id;
+            }
 
             // Lock the customer row and get latest debt atomically
             const { rows: lastEntries } = await client.query(
@@ -173,12 +242,11 @@ export const POST = trackApiRoute('/api/payments', async (request: Request) => {
             const previousDebt = lastEntries[0]?.new_debt || 0;
             const paymentAmount = Math.round(parseFloat(amount));
             const newDebt = Math.round(previousDebt - paymentAmount);
-            const refDate = date || new Date().toISOString().split('T')[0];
 
             await client.query(
                 `INSERT INTO "Ledger" (id, customer_id, type, reference_date, amount, previous_debt, new_debt, note, receipt_id, maqal_id)
                  VALUES (gen_random_uuid(), $1, 'PAYMENT', $2, $3, $4, $5, $6, $7, $8)`,
-                [customerId, refDate, paymentAmount, previousDebt, newDebt, note || null, body.receipt_id || null, maqal_id || null]
+                [customerId, refDate, paymentAmount, previousDebt, newDebt, note || null, body.receipt_id || null, authoritative_maqal_id]
             );
 
             await client.query('COMMIT');

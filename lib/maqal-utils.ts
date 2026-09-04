@@ -207,3 +207,37 @@ export function computeWorkingDatePairs(options?: {
     validateMaqalPairs(pairs);
     return pairs;
 }
+
+export interface ResolvedMaqalIdentity {
+    mq_num: number;
+    maqal_id: number;
+    date1: string;
+    date2: string;
+}
+
+/**
+ * Authoritatively resolves the Maqal (both mq_num and DB maqal_id) for a reference date.
+ * Queries MAQAL_PAIRS_CTE. Returns ResolvedMaqalIdentity or null if the date is not part of any working pair.
+ */
+export async function resolveMaqalFromDate(
+    dateStr: string,
+    client: any
+): Promise<ResolvedMaqalIdentity | null> {
+    if (!dateStr) return null;
+    const cleanDate = dateStr.split('T')[0];
+    const res = await client.query(`
+        ${MAQAL_PAIRS_CTE}
+        SELECT mq_num, maqal_id, date1::text as date1, date2::text as date2
+        FROM pairs
+        WHERE $1::date IN (date1, date2)
+        LIMIT 1;
+    `, [cleanDate]);
+
+    if (res.rows.length === 0) return null;
+    return {
+        mq_num: Number(res.rows[0].mq_num),
+        maqal_id: Number(res.rows[0].maqal_id),
+        date1: String(res.rows[0].date1).split('T')[0],
+        date2: String(res.rows[0].date2).split('T')[0]
+    };
+}
