@@ -103,15 +103,23 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         !processedDates.has(p.date2)
     );
 
+    // Business-date rule: a pair is "current" only after BOTH its dates have passed.
+    // Use Mogadishu local date as the reference (same timezone as receipt timestamps).
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Mogadishu' }); // YYYY-MM-DD
+
+    // Due pairs: unprocessed AND date2 is strictly before today (both dates have passed)
+    const duePairs = unprocessedPairs.filter(p => p.date2 < todayStr);
+
     const allUnprocessedDates: string[] = [];
     for (const p of unprocessedPairs) {
         allUnprocessedDates.push(p.date1, p.date2);
     }
 
-    // Target pair to show: oldest unprocessed pair
-    const pairToShow = unprocessedPairs.length > 0
-        ? unprocessedPairs[0]
-        : (allPairs.length > 0 ? allPairs[allPairs.length - 1] : null);
+    // Target pair to show: oldest DUE unprocessed pair.
+    // If no pairs are due yet (all are future/waiting), pairToShow is null → blank form.
+    const pairToShow = duePairs.length > 0
+        ? duePairs[0]
+        : null;
 
     const day1Str = pairToShow ? pairToShow.date1 : new Date().toISOString().split('T')[0];
     const day2Str = pairToShow ? pairToShow.date2 : new Date().toISOString().split('T')[0];
