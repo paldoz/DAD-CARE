@@ -116,14 +116,22 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
     }
 
     // Target pair to show: oldest DUE unprocessed pair.
-    // If no pairs are due yet (all are future/waiting), pairToShow is null → blank form.
+    // If no pairs are due yet (all are future/waiting), pairToShow is null → return empty result.
     const pairToShow = duePairs.length > 0
         ? duePairs[0]
         : null;
 
-    const day1Str = pairToShow ? pairToShow.date1 : new Date().toISOString().split('T')[0];
-    const day2Str = pairToShow ? pairToShow.date2 : new Date().toISOString().split('T')[0];
-    const currentMaqalId = pairToShow ? pairToShow.maqal_id : 9;
+    if (!pairToShow) {
+        return {
+            result: [],
+            allUnprocessedDates,
+            maqalId: null
+        };
+    }
+
+    const day1Str = pairToShow.date1;
+    const day2Str = pairToShow.date2;
+    const currentMaqalId = pairToShow.maqal_id;
 
     const { rows: items } = await pool.query(`
         SELECT TO_CHAR(db.date, 'YYYY-MM-DD') AS date,
@@ -180,7 +188,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
         const res = NextResponse.json(data.result, {
             headers: {
                 'x-all-unprocessed-dates': JSON.stringify(data.allUnprocessedDates),
-                'x-maqal-id': String(data.maqalId),
+                'x-maqal-id': data.maqalId != null ? String(data.maqalId) : '',
             }
         });
 

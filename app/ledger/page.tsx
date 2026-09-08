@@ -634,12 +634,15 @@ export default function LedgerPage() {
         // Customer fetching is now handled seamlessly by SWR!
     }, [mutateCustomers, mutateDailyEntries, mutateLedger]);
 
-    // Ensure new customers without history don't get stuck in 'Read Last Maqal' mode
+    // Ensure new customers without history don't get stuck in 'Read Last Maqal' mode,
+    // and customers with history show their last maqal when no new pair is due yet.
     useEffect(() => {
         if (ledgerData && (!history || history.length === 0)) {
             setShowLastMaqal(false);
+        } else if (dailyEntriesRaw && (!dailyEntriesRaw.dailyData || dailyEntriesRaw.dailyData.length === 0) && history && history.length > 0) {
+            setShowLastMaqal(true);
         }
-    }, [ledgerData, history]);
+    }, [ledgerData, history, dailyEntriesRaw]);
 
     // Save draft to localStorage on every change (survives navigation)
     useEffect(() => {
@@ -669,6 +672,15 @@ export default function LedgerPage() {
             setCurrentMaqalId(maqalId);
             setCustomerDailyDates(dailyData || []);
             
+            if (!dailyData || dailyData.length === 0) {
+                setDateEntries([]);
+                if (history && history.length > 0) {
+                    setShowLastMaqal(true);
+                }
+                return;
+            }
+
+            setShowLastMaqal(false);
             setDateEntries(prev => {
                 const newExpandedIds = new Set<string>();
                 let newEntries;
@@ -717,14 +729,14 @@ export default function LedgerPage() {
         } finally {
             setFetchingDetails(false);
         }
-    }, [dailyEntriesRaw, defaultPrice, dateSpecificPrices]);
+    }, [dailyEntriesRaw, defaultPrice, dateSpecificPrices, history]);
 
     const handleCustomerChange = (customerId: string) => {
         setSelectedCustomerId(customerId);
         setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
-        setShowLastMaqal(false);
+        setShowLastMaqal(true);
         setUpdateLastMaqal(false);
         setExpandedExtraEntryIds(new Set());
         setStartDate('');
@@ -801,20 +813,19 @@ export default function LedgerPage() {
 
         // 2. Unprocessed dates (from API — always includes waiting pair as last item)
         if (allUnprocessedDates && allUnprocessedDates.length > 0) {
-            const totalPairs = Math.ceil(allUnprocessedDates.length / 2);
+            const todayMog = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Mogadishu' });
             for (let i = 0; i < allUnprocessedDates.length; i += 2) {
                 const d1 = allUnprocessedDates[i];
                 const d2 = allUnprocessedDates[i + 1];
                 const pairIndex = i / 2;
-                const isCurrentReady = pairIndex === 0; // First unprocessed pair in sequence is ALWAYS Current
-                const isWaitingPair = pairIndex === totalPairs - 1 && totalPairs > 1; // Trailing waiting pair
+                const isDue = d2 ? d2 < todayMog : false;
                 
                 let prefix: string;
                 let suffix: string;
-                if (isCurrentReady) {
+                if (isDue && pairIndex === 0) {
                     prefix = '📌';
                     suffix = '(Current)';
-                } else if (isWaitingPair) {
+                } else if (!isDue) {
                     prefix = '⏳';
                     suffix = '(Waiting)';
                 } else {
@@ -1113,9 +1124,7 @@ export default function LedgerPage() {
             
             // Workflow Auto-Transition:
             if (isReadOnlyMode) {
-                setShowLastMaqal(false);
                 setUpdateLastMaqal(false);
-                setOldMaqalDone(true);
                 setFetchingDetails(false); // End blink effect
 
                 // Fetch new dates for the SAME customer since we just paid the old maqal
@@ -1124,6 +1133,8 @@ export default function LedgerPage() {
                 // Repopulate the screen with the fresh next pair from the server response
                 const targetDaily = freshDaily?.dailyData || dailyEntriesRaw?.dailyData;
                 if (targetDaily && targetDaily.length > 0) {
+                    setShowLastMaqal(false);
+                    setOldMaqalDone(true);
                     const newExpandedIds = new Set<string>();
                     const newEntries = targetDaily.flatMap((d: any, idx: number) => {
                         const entryId = (Date.now() + idx).toString();
@@ -1137,7 +1148,9 @@ export default function LedgerPage() {
                     setDateEntries(newEntries);
                     setExpandedExtraEntryIds(newExpandedIds);
                 } else {
-                    setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
+                    // No new due pair yet — keep showing the updated last maqal with its fresh balance!
+                    setShowLastMaqal(true);
+                    setDateEntries([]);
                 }
             } else {
                 // Normal save completed.
@@ -1287,7 +1300,7 @@ export default function LedgerPage() {
                                                 Current Balance: ${formatMoney(Math.abs(effectiveBalance))}
                                                 {effectiveBalance > 0 ? " (OWED)" : " (CREDIT)"}
                                             </div>
-                                            {history.length > 0 && !oldMaqalDone && (
+                                            {history.length > 0 && (
                                                 <Button type="button" variant="outline" size="sm" onClick={() => {
                                                     const nextShow = !showLastMaqal;
                                                     setShowLastMaqal(nextShow);
