@@ -115,9 +115,16 @@ export const POST = trackApiRoute('/api/ledger', async (request: Request) => {
 
             if (!foundExistingMaqal) {
                 // New receipt or new batch: resolve authoritative Maqal from entries dates
-                const allDates = entriesToProcess
-                    .map((e: any) => e.date ? String(e.date).split('T')[0] : null)
-                    .filter(Boolean) as string[];
+                // PRODUCT entries carry authoritative Maqal identity — prioritize them over adjustments/payments
+                const productDatesForMaqal = entriesToProcess
+                    .filter((e: any) => e.type === 'PRODUCT' && e.date)
+                    .map((e: any) => String(e.date).split('T')[0]);
+
+                const allDates = productDatesForMaqal.length > 0
+                    ? productDatesForMaqal
+                    : entriesToProcess
+                        .map((e: any) => e.date ? String(e.date).split('T')[0] : null)
+                        .filter(Boolean) as string[];
 
                 const targetDate = allDates.length > 0 ? allDates[0] : new Date().toISOString().split('T')[0];
                 const resolved = await resolveMaqalFromDate(targetDate, client);

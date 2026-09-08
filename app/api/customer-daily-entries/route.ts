@@ -59,11 +59,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
     `, [customerId]);
 
     const processedMaqalIds = new Set<number>();
+    const processedDates = new Set<string>();
 
     for (const row of processedRes.rows) {
-        if (row.maqal_id != null && !isNaN(Number(row.maqal_id))) {
-            processedMaqalIds.add(Number(row.maqal_id));
-        } else {
+        if (row.date_str) {
+            processedDates.add(row.date_str);
             const mqFromDate = dateToMaqalId.get(row.date_str);
             if (mqFromDate != null) {
                 processedMaqalIds.add(mqFromDate);
@@ -97,7 +97,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         ? allPairs.filter(p => p.date2 >= earliestDate)
         : allPairs;
 
-    const unprocessedPairs = eligiblePairs.filter(p => !processedMaqalIds.has(p.maqal_id));
+    const unprocessedPairs = eligiblePairs.filter(p => 
+        !processedMaqalIds.has(p.maqal_id) &&
+        !processedDates.has(p.date1) &&
+        !processedDates.has(p.date2)
+    );
 
     const allUnprocessedDates: string[] = [];
     for (const p of unprocessedPairs) {

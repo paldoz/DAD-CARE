@@ -724,7 +724,7 @@ export default function LedgerPage() {
         setDateEntries([{ id: Date.now().toString(), date: '', kg: '', pricePerKg: defaultPrice, extraKg: '', extraPricePerKg: defaultPrice, extraNote: 'Notebook' }]);
         setPaymentEntries([{ id: Date.now().toString(), date: '', amount: '' }]);
         setCustomerDailyDates([]);
-        setShowLastMaqal(true);
+        setShowLastMaqal(false);
         setUpdateLastMaqal(false);
         setExpandedExtraEntryIds(new Set());
         setStartDate('');
@@ -1119,13 +1119,13 @@ export default function LedgerPage() {
                 setFetchingDetails(false); // End blink effect
 
                 // Fetch new dates for the SAME customer since we just paid the old maqal
-                mutateDailyEntries();
+                const freshDaily = await mutateDailyEntries();
                 
-                // SWR might ignore the fetch if the new pairs are identical to the cached ones (which is true when just adding a payment).
-                // So we manually repopulate the screen with the existing next pair instantly to avoid a blank screen!
-                if (dailyEntriesRaw && dailyEntriesRaw.dailyData) {
+                // Repopulate the screen with the fresh next pair from the server response
+                const targetDaily = freshDaily?.dailyData || dailyEntriesRaw?.dailyData;
+                if (targetDaily && targetDaily.length > 0) {
                     const newExpandedIds = new Set<string>();
-                    const newEntries = dailyEntriesRaw.dailyData.flatMap((d: any, idx: number) => {
+                    const newEntries = targetDaily.flatMap((d: any, idx: number) => {
                         const entryId = (Date.now() + idx).toString();
                         const { entry, secondEntry, shouldExpandExtra } = buildEntryFromDailyRecord(entryId, d, defaultPrice, dateSpecificPrices, dateSpecificOverrides, selectedCustomerId, vipCaadiConfig);
                         if (shouldExpandExtra) {
