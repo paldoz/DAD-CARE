@@ -116,10 +116,11 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
     }
 
     // Target pair to show: oldest DUE unprocessed pair.
-    // If no pairs are due yet (all are future/waiting), pairToShow is null → return empty result.
-    const pairToShow = duePairs.length > 0
+    // If no pairs are due yet, load the upcoming waiting pair (e.g. Sep 07 & Sep 08).
+    const isDue = duePairs.length > 0;
+    const pairToShow = isDue
         ? duePairs[0]
-        : null;
+        : (unprocessedPairs.length > 0 ? unprocessedPairs[0] : null);
 
     if (!pairToShow) {
         return {
@@ -129,6 +130,7 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
         };
     }
 
+    const isPairDue = pairToShow.date2 < todayStr;
     const day1Str = pairToShow.date1;
     const day2Str = pairToShow.date2;
     const currentMaqalId = pairToShow.maqal_id;
@@ -154,19 +156,20 @@ const fetchCustomerDailyEntriesData = async (customerId: string) => {
                 kg: Number(item.kg),
                 note: (item.note as string | null) ?? null,
                 processed: false,
-                isReady: true,
+                isReady: isPairDue,
             });
         }
     }
 
     const result = [];
-    result.push(uniqueDatesMap.get(day1Str) ?? { date: day1Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
-    result.push(uniqueDatesMap.get(day2Str) ?? { date: day2Str, kg: 0, note: 'Notebook', processed: false, isReady: true });
+    result.push(uniqueDatesMap.get(day1Str) ?? { date: day1Str, kg: 0, note: 'Notebook', processed: false, isReady: isPairDue });
+    result.push(uniqueDatesMap.get(day2Str) ?? { date: day2Str, kg: 0, note: 'Notebook', processed: false, isReady: isPairDue });
 
     return {
         result,
         allUnprocessedDates,
-        maqalId: currentMaqalId
+        maqalId: currentMaqalId,
+        isDue: isPairDue
     };
 };
 
@@ -189,6 +192,7 @@ export const GET = trackApiRoute('/api/customer-daily-entries', async (request: 
             headers: {
                 'x-all-unprocessed-dates': JSON.stringify(data.allUnprocessedDates),
                 'x-maqal-id': data.maqalId != null ? String(data.maqalId) : '',
+                'x-is-due': String(data.isDue ?? false),
             }
         });
 

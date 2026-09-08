@@ -53,7 +53,8 @@ const dailyEntriesFetcher = async (url: string) => {
     return {
         dailyData: data,
         allUnprocessedDates: JSON.parse(res.headers.get('x-all-unprocessed-dates') || '[]'),
-        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null
+        maqalId: res.headers.get('x-maqal-id') ? parseInt(res.headers.get('x-maqal-id')!, 10) : null,
+        isDue: res.headers.get('x-is-due') === 'true'
     };
 };
 
@@ -634,15 +635,12 @@ export default function LedgerPage() {
         // Customer fetching is now handled seamlessly by SWR!
     }, [mutateCustomers, mutateDailyEntries, mutateLedger]);
 
-    // Ensure new customers without history don't get stuck in 'Read Last Maqal' mode,
-    // and customers with history show their last maqal when no new pair is due yet.
+    // Ensure new customers without history don't get stuck in 'Read Last Maqal' mode
     useEffect(() => {
         if (ledgerData && (!history || history.length === 0)) {
             setShowLastMaqal(false);
-        } else if (dailyEntriesRaw && (!dailyEntriesRaw.dailyData || dailyEntriesRaw.dailyData.length === 0) && history && history.length > 0) {
-            setShowLastMaqal(true);
         }
-    }, [ledgerData, history, dailyEntriesRaw]);
+    }, [ledgerData, history]);
 
     // Save draft to localStorage on every change (survives navigation)
     useEffect(() => {
@@ -667,20 +665,16 @@ export default function LedgerPage() {
 
         setFetchingDetails(true);
         try {
-            const { dailyData, allUnprocessedDates, maqalId } = dailyEntriesRaw;
+            const { dailyData, allUnprocessedDates, maqalId, isDue } = dailyEntriesRaw;
             setAllUnprocessedDates(allUnprocessedDates);
             setCurrentMaqalId(maqalId);
             setCustomerDailyDates(dailyData || []);
             
-            if (!dailyData || dailyData.length === 0) {
-                setDateEntries([]);
-                if (history && history.length > 0) {
-                    setShowLastMaqal(true);
-                }
-                return;
+            // If the incoming pair is DUE (e.g. on Sep 9), automatically open new maqal form
+            if (isDue) {
+                setShowLastMaqal(false);
             }
 
-            setShowLastMaqal(false);
             setDateEntries(prev => {
                 const newExpandedIds = new Set<string>();
                 let newEntries;
