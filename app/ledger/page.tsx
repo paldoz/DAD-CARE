@@ -669,12 +669,6 @@ export default function LedgerPage() {
             setAllUnprocessedDates(allUnprocessedDates);
             setCurrentMaqalId(maqalId);
             setCustomerDailyDates(dailyData || []);
-            
-            // If the incoming pair is DUE (e.g. on Sep 9), automatically open new maqal form
-            if (isDue) {
-                setShowLastMaqal(false);
-            }
-
             setDateEntries(prev => {
                 const newExpandedIds = new Set<string>();
                 let newEntries;
