@@ -31,6 +31,9 @@ export const metadata: Metadata = {
       { url: '/icons/icon-192.png?v=3' }
     ]
   },
+  verification: {
+    google: 'HNF7M4TLFDOA2ke26ARDnEDWn37ljTX9h6rOh2v_Wec',
+  },
   manifest: '/manifest.json?v=3',
   appleWebApp: {
     capable: true,
