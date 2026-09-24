@@ -11,8 +11,17 @@ import { SWRProvider } from '@/components/swr-provider';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'DadCare',
-  description: 'Professional Business Accounting & Distribution Management',
+  metadataBase: new URL('https://www.buugaxisaabta.online'),
+  title: 'Buuga Xisaabta - Nidaamka Maamulka Ganacsiga & Maqalka',
+  description: 'Buuga Xisaabta waa nidaam casri ah oo lagu maamulo xisaabaadka ganacsiga, maqalka, daymaha, iyo lacagaha.',
+  openGraph: {
+    title: 'Buuga Xisaabta - Nidaamka Maamulka Ganacsiga & Maqalka',
+    description: 'Buuga Xisaabta waa nidaam casri ah oo lagu maamulo xisaabaadka ganacsiga, maqalka, daymaha, iyo lacagaha.',
+    url: 'https://www.buugaxisaabta.online',
+    siteName: 'Buuga Xisaabta',
+    locale: 'so_SO',
+    type: 'website',
+  },
   icons: {
     icon: [
       { url: '/icons/icon-192.png?v=3', sizes: '192x192', type: 'image/png' },
@@ -26,7 +35,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'DadCare',
+    title: 'Buuga Xisaabta',
   },
 };
 
