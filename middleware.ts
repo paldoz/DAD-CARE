@@ -85,6 +85,6 @@ export async function middleware(request: NextRequest) {
 export const config = {
     // Run on every route EXCEPT Next.js internals, static files, and public assets
     matcher: [
-        '/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json|sw\\.js|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico|.*\\.webp).*)',
+        '/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json|sw\\.js|sitemap\\.xml|robots\\.txt|.*\\.png|.*\\.jpg|.*\\.jpeg|.*\\.svg|.*\\.ico|.*\\.webp).*)',
     ],
 };
