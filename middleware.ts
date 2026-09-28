@@ -6,7 +6,7 @@ export const SESSION_COOKIE = 'dadwork_session';
 export const CLAIM_COOKIE = 'dadwork_claim';
 
 // Routes that do NOT require authentication
-const PUBLIC_PAGE_ROUTES = ['/login'];
+const PUBLIC_PAGE_ROUTES = ['/', '/login'];
 const PUBLIC_API_ROUTES = [
     '/api/auth/login',
     '/api/auth/verify',
