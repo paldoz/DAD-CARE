@@ -13,8 +13,15 @@ import { SecurityBell } from '@/components/security-bell';
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-    const [currentUser, setCurrentUser] = useState<any>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
+        // Initialize synchronously on the client so '/' never flashes the loading spinner
+        if (typeof window === 'undefined') return null; // SSR: unknown
+        return !!localStorage.getItem('currentUser');
+    });
+    const [currentUser, setCurrentUser] = useState<any>(() => {
+        if (typeof window === 'undefined') return null;
+        try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch { return null; }
+    });
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -70,18 +77,45 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         window.location.href = '/login';
     };
 
+    const isLandingPage = pathname === '/';
     const isLoginPage = pathname === '/login';
-    const isPublicPage = pathname === '/' || isLoginPage;
 
-    // Show a premium themed security verification screen during state changes/checks
-    if (isAuthenticated === null || (!isAuthenticated && !isPublicPage) || (isAuthenticated && isLoginPage)) {
+    // 1. Landing page is 100% public — render immediately (no spinner, no auth check, perfect for SSR & Google)
+    if (isLandingPage) {
+        return <>{children}</>;
+    }
+
+    // 2. Login page: render login form directly; only show securing screen if user is already authenticated and being redirected to dashboard
+    if (isLoginPage) {
+        if (isAuthenticated === true) {
+            return (
+                <div className="flex h-screen w-full items-center justify-center bg-background">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="relative">
+                            <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+                            <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-primary/10 shadow-lg">
+                                <img src="/icons/icon-192.png" alt="Buuga Xisaabta" className="w-full h-full object-cover" />
+                            </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground uppercase font-black tracking-widest animate-pulse">
+                            Securing session...
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+        return <>{children}</>;
+    }
+
+    // 3. Protected pages: if not authenticated or checking, show loading screen
+    if (!isAuthenticated) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
                     <div className="relative">
                         <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
                         <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-primary/10 shadow-lg">
-                            <img src="/icons/icon-192.png" alt="DADWORK" className="w-full h-full object-cover" />
+                            <img src="/icons/icon-192.png" alt="Buuga Xisaabta" className="w-full h-full object-cover" />
                         </div>
                     </div>
                     <p className="text-xs text-muted-foreground uppercase font-black tracking-widest animate-pulse">
@@ -90,10 +124,6 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
                 </div>
             </div>
         );
-    }
-
-    if (isPublicPage) {
-        return <>{children}</>;
     }
 
     return (
