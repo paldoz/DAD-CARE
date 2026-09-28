@@ -31,7 +31,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         const loggedIn = !!storedUser;
         setIsAuthenticated(loggedIn);
 
-        if (!loggedIn && pathname !== '/login') {
+        const PUBLIC_ROUTES = ['/', '/login'];
+        if (!loggedIn && !PUBLIC_ROUTES.includes(pathname)) {
             router.replace('/login');
         } else if (loggedIn && pathname === '/login') {
             router.replace('/dashboard');
@@ -70,9 +71,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     };
 
     const isLoginPage = pathname === '/login';
+    const isPublicPage = pathname === '/' || isLoginPage;
 
     // Show a premium themed security verification screen during state changes/checks
-    if (isAuthenticated === null || (!isAuthenticated && !isLoginPage) || (isAuthenticated && isLoginPage)) {
+    if (isAuthenticated === null || (!isAuthenticated && !isPublicPage) || (isAuthenticated && isLoginPage)) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
@@ -90,7 +92,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         );
     }
 
-    if (isLoginPage) {
+    if (isPublicPage) {
         return <>{children}</>;
     }
 
