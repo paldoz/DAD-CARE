@@ -74,7 +74,7 @@
     {
       "source": "/api/admin-sessions",
       "headers": [
-        { "key": "Cache-Control", "value": "public, s-maxage=60, stale-while-revalidate=120" }
+        { "key": "Cache-Control", "value": "private, no-store" }
       ]
     }
   ]

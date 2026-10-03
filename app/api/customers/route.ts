@@ -36,6 +36,23 @@ export async function getCustomers(options: {
     const { maqalD1, maqalD2, maxAllTimeDate, page = 1, limit = 20, search, tab = 'active', sort, username } = options;
     const offset = (page - 1) * limit;
 
+    // ── Parameterised query builder ────────────────────────────────────────────
+    // Validate all date-shaped query params: only accept YYYY-MM-DD so they can
+    // never carry SQL fragments into the query string.
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    const safeMaqalD1        = maqalD1        && DATE_RE.test(maqalD1)        ? maqalD1        : null;
+    const safeMaqalD2        = maqalD2        && DATE_RE.test(maqalD2)        ? maqalD2        : null;
+    const safeMaxAllTimeDate = maxAllTimeDate && DATE_RE.test(maxAllTimeDate) ? maxAllTimeDate : null;
+
+    const queryParams: any[] = [];
+    const addParam = (v: any): number => { queryParams.push(v); return queryParams.length; };
+
+    // search is always $1 when present — searchCondition already hard-codes $1
+    const searchIdx  = search                               ? addParam(`%${search}%`) : null;
+    const d1Idx      = (safeMaqalD1 && safeMaqalD2)         ? addParam(safeMaqalD1)        : null;
+    const d2Idx      = (safeMaqalD1 && safeMaqalD2)         ? addParam(safeMaqalD2)        : null;
+    const maxDateIdx = safeMaxAllTimeDate                   ? addParam(safeMaxAllTimeDate) : null;
+
     const stats = await getCachedAllCustomerStats();
     const jsScoresCte = `
         js_scores (customer_id, reliability_score, perfect_maqals, last_completed_reesto, rank_maqal) AS (
@@ -82,10 +99,10 @@ export async function getCustomers(options: {
     if (sort === 'priority' && username) {
         // Use the User table's assigned_customer_ids array to determine priority.
         // This is the canonical source of truth (set in Settings → Users).
-        const safeUsername = username.replace(/'/g, "''");
+        const usernameIdx = addParam(username);
         priorityJoin = `LEFT JOIN LATERAL (
             SELECT (u.assigned_customer_ids @> ARRAY[c.id::text]) AS is_priority
-            FROM "User" u WHERE u.username = '${safeUsername}' LIMIT 1
+            FROM "User" u WHERE u.username = $${usernameIdx} LIMIT 1
         ) prio ON true`;
         orderClause = "ORDER BY CASE WHEN prio.is_priority = true THEN 0 ELSE 1 END ASC, CASE WHEN c.customer_code ~ '^[0-9]+$' THEN c.customer_code::int ELSE 9999 END ASC, c.name ASC";
     }
@@ -111,6 +128,10 @@ export async function getCustomers(options: {
     else if (sort === 'least_paid') orderClause = "ORDER BY total_paid ASC NULLS LAST";
     else if (sort === 'most_kg') orderClause = "ORDER BY total_kg DESC NULLS LAST";
     else if (sort === 'least_kg') orderClause = "ORDER BY total_kg ASC NULLS LAST";
+
+    // Finalise limit / offset — must come after username param (if any)
+    const limitIdx  = addParam(limit);
+    const offsetIdx = addParam(offset);
 
     const query = `
         -- ── Authoritative holiday-aware Maqal pairs (reads BusinessDay ABSENCE) ─────
@@ -186,7 +207,7 @@ export async function getCustomers(options: {
                 MAX(created_at) as last_receipt_created_at
             FROM "Ledger"
             WHERE type = 'PRODUCT' AND deleted_at IS NULL
-            ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) IN ('${maqalD1}', '${maqalD2}')` : `AND 1=0`}
+            ${d1Idx && d2Idx ? `AND COALESCE(reference_date::date, created_at::date) IN ($${d1Idx}, $${d2Idx})` : `AND 1=0`}
             GROUP BY customer_id
         ),
         selected_product_next_receipts AS (
@@ -215,7 +236,7 @@ export async function getCustomers(options: {
             JOIN "Ledger" l ON l.customer_id = spr.customer_id 
                 AND l.type IN ('PRODUCT', 'ADJUSTMENT') 
                 AND l.deleted_at IS NULL
-                ${maqalD1 && maqalD2 ? `AND COALESCE(l.reference_date::date, l.created_at::date) IN ('${maqalD1}', '${maqalD2}')` : `AND 1=0`}
+                ${d1Idx && d2Idx ? `AND COALESCE(l.reference_date::date, l.created_at::date) IN ($${d1Idx}, $${d2Idx})` : `AND 1=0`}
             GROUP BY spr.customer_id
         ),
         selected_prev_debt AS (
@@ -224,7 +245,7 @@ export async function getCustomers(options: {
                 SUM(amount)::float as prev_debt
             FROM "Ledger"
             WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
-            ${maqalD1 && maqalD2 ? `AND COALESCE(reference_date::date, created_at::date) < '${maqalD1}'` : `AND 1=0`}
+            ${d1Idx ? `AND COALESCE(reference_date::date, created_at::date) < $${d1Idx}` : `AND 1=0`}
             GROUP BY customer_id
         ),
 
@@ -303,7 +324,7 @@ export async function getCustomers(options: {
             SELECT customer_id, SUM(amount) as total_paid
             FROM "Ledger"
             WHERE type = 'PAYMENT' AND deleted_at IS NULL
-            ${maxAllTimeDate ? `AND COALESCE(reference_date::date, created_at::date) <= '${maxAllTimeDate}'` : ''}
+            ${maxDateIdx ? `AND COALESCE(reference_date::date, created_at::date) <= $${maxDateIdx}` : ''}
             GROUP BY customer_id
         ) p ON c.id = p.customer_id
         LEFT JOIN (
@@ -323,7 +344,7 @@ export async function getCustomers(options: {
                 SUM(amount) as total_ledger_debt
             FROM "Ledger"
             WHERE type IN ('PRODUCT', 'ADJUSTMENT') AND deleted_at IS NULL
-            ${maxAllTimeDate ? `AND COALESCE(reference_date::date, created_at::date) <= '${maxAllTimeDate}'` : ''}
+            ${maxDateIdx ? `AND COALESCE(reference_date::date, created_at::date) <= $${maxDateIdx}` : ''}
             GROUP BY customer_id
         ) lk ON c.id = lk.customer_id
         LEFT JOIN (
@@ -346,17 +367,10 @@ export async function getCustomers(options: {
         LEFT JOIN reliability_scores rs ON c.id::text = rs.customer_id::text
         ${priorityJoin}
         ${orderClause}
-        LIMIT $${search ? '2' : '1'} OFFSET $${search ? '3' : '2'};
+        LIMIT $${limitIdx} OFFSET $${offsetIdx};
     `;
 
-    const values: any[] = [];
-    if (search) {
-        values.push(`%${search}%`);
-    }
-    values.push(limit);
-    values.push(offset);
-
-    const { rows } = await pool.query(query, values);
+    const { rows } = await pool.query(query, queryParams);
     
     // PERFECT LABEL SYNC LOGIC
     if (rows.length > 0) {

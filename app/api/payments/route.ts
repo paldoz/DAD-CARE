@@ -138,7 +138,7 @@ export const GET = trackApiRoute('/api/payments', async (request: Request) => {
             todayTotal: period === 'today' ? periodTotal : 0,
             count: payments.length
         });
-        response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+        response.headers.set('Cache-Control', 'private, no-store');
         return response;
     } catch (error: any) {
         console.error('Payments Fetch Error:', error);
@@ -235,7 +235,7 @@ export const POST = trackApiRoute('/api/payments', async (request: Request) => {
                 `SELECT new_debt FROM "Ledger"
                  WHERE customer_id = $1 AND deleted_at IS NULL
                  ORDER BY created_at DESC, id DESC LIMIT 1
-                 FOR UPDATE SKIP LOCKED`,
+                 FOR UPDATE`,
                 [customerId]
             );
 
