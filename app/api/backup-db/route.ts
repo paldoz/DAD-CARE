@@ -4,53 +4,87 @@ import { requireSession } from '@/lib/require-session';
 import { rateLimitResponse } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
-    // Only superadmin can run backup — prevents accidental egress spikes
     const { session, errorResponse } = await requireSession(request);
     if (errorResponse) return errorResponse;
-    if (session?.role !== 'ADMIN') {
+    if (session?.role !== 'ADMIN' && session?.role !== 'SUPER_ADMIN') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Rate Limit: 1 backup allowed per hour per IP/User to protect bandwidth
-    const limited = rateLimitResponse(request, 1, 3_600_000);
-    if (limited) return NextResponse.json({ error: 'Rate limit exceeded. You can only backup the database once per hour.' }, { status: 429 });
+    // Rate Limit: 10 backups allowed per hour per IP/User
+    const limited = rateLimitResponse(request, 10, 3_600_000);
+    if (limited) {
+        return NextResponse.json({ error: 'Rate limit exceeded. You can only download a backup 10 times per hour.' }, { status: 429 });
+    }
 
     try {
-        // Fetch only the columns needed — avoids downloading avatar_url blobs etc.
-        const [usersRes, customersRes, ledgerRes, dailyBookRes, dailyBookItemsRes] = await Promise.all([
-            pool.query('SELECT id, username, name, role, is_active, phone, created_at FROM "User"'),
-            pool.query('SELECT id, customer_code, name, created_at FROM "Customer"'),
-            pool.query('SELECT id, customer_id, type, reference_date, kg, price_per_kg, amount, previous_debt, new_debt, note, created_at FROM "Ledger" WHERE deleted_at IS NULL'),
-            pool.query('SELECT id, date, created_at FROM "DailyBook" WHERE deleted_at IS NULL'),
-            pool.query('SELECT id, daily_book_id, customer_id, kg, present, note FROM "DailyBookItem"'),
+        // Query 100% of rows with ALL columns — NO LIMIT, NO TRUNCATION
+        const [
+            customersRes,
+            ledgerRes,
+            dailyBookRes,
+            dailyBookItemsRes,
+            usersRes,
+            settingsRes,
+            businessDaysRes,
+            pendingApprovalsRes,
+            auditLogsRes
+        ] = await Promise.all([
+            pool.query('SELECT * FROM "Customer" ORDER BY created_at ASC'),
+            pool.query('SELECT * FROM "Ledger" ORDER BY created_at ASC'),
+            pool.query('SELECT * FROM "DailyBook" ORDER BY date ASC'),
+            pool.query('SELECT * FROM "DailyBookItem" ORDER BY id ASC'),
+            pool.query('SELECT * FROM "User" ORDER BY created_at ASC'),
+            pool.query('SELECT * FROM "Settings" ORDER BY key ASC'),
+            pool.query('SELECT * FROM "BusinessDay" ORDER BY date ASC'),
+            pool.query('SELECT * FROM "PendingApprovals" ORDER BY created_at ASC'),
+            pool.query('SELECT * FROM "AuditLog" ORDER BY created_at ASC'),
         ]);
 
-        const backupData = {
-            users: usersRes.rows,
+        const counts = {
+            customers: customersRes.rowCount ?? customersRes.rows.length,
+            ledger: ledgerRes.rowCount ?? ledgerRes.rows.length,
+            dailyBook: dailyBookRes.rowCount ?? dailyBookRes.rows.length,
+            dailyBookItems: dailyBookItemsRes.rowCount ?? dailyBookItemsRes.rows.length,
+            users: usersRes.rowCount ?? usersRes.rows.length,
+            settings: settingsRes.rowCount ?? settingsRes.rows.length,
+            businessDay: businessDaysRes.rowCount ?? businessDaysRes.rows.length,
+            pendingApprovals: pendingApprovalsRes.rowCount ?? pendingApprovalsRes.rows.length,
+            auditLog: auditLogsRes.rowCount ?? auditLogsRes.rows.length,
+        };
+
+        const backupPayload = {
+            version: '2.0',
+            exportedAt: new Date().toISOString(),
+            exportedBy: session.username,
+            recordCounts: counts,
+            // Full table arrays with all columns preserved
             customers: customersRes.rows,
             ledger: ledgerRes.rows,
             dailyBook: dailyBookRes.rows,
             dailyBookItems: dailyBookItemsRes.rows,
-            timestamp: new Date().toISOString()
+            users: usersRes.rows,
+            settings: settingsRes.rows,
+            businessDay: businessDaysRes.rows,
+            pendingApprovals: pendingApprovalsRes.rows,
+            auditLog: auditLogsRes.rows,
         };
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             success: true,
-            message: 'Backup successful!',
-            counts: {
-                users: backupData.users.length,
-                customers: backupData.customers.length,
-                ledger: backupData.ledger.length,
-                dailyBook: backupData.dailyBook.length,
-                dailyBookItems: backupData.dailyBookItems.length,
-            },
-            data: backupData,
+            message: 'Full database backup export successful',
+            counts,
+            timestamp: backupPayload.exportedAt,
+            data: backupPayload,
         });
 
+        response.headers.set('Cache-Control', 'private, no-store');
+        return response;
     } catch (error: any) {
-        console.error('Backup Failed:', error);
+        console.error('Backup DB Export Failed:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }
+

@@ -3234,60 +3234,74 @@ export default function SettingsPage() {
                     {isAnyAdmin && (
                         <TabsContent value="backup" className="mt-3">
                             <div className="space-y-3">
-                                {/* ★ OneDrive Backup — NEW */}
+                                {/* ★ Database Backup Export — Safe & Complete */}
                                 <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-sm">
                                     <div className="px-4 py-3 border-b border-border/40 bg-gradient-to-r from-blue-500/5 to-transparent">
                                         <div className="flex items-center gap-2.5">
                                             <div className="p-1.5 rounded-lg bg-blue-500/15">
-                                                <HardDrive className="w-4 h-4 text-blue-500" />
+                                                <Download className="w-4 h-4 text-blue-500" />
                                             </div>
                                             <div>
-                                                <h3 className="text-sm font-bold text-foreground">☁️ Save to OneDrive</h3>
-                                                <p className="text-[10px] text-muted-foreground">Buuga Maqalka + Buuga Maalinlaha — saved to your OneDrive folder</p>
+                                                <h3 className="text-sm font-bold text-foreground">📥 Download Full Database Backup</h3>
+                                                <p className="text-[10px] text-muted-foreground">Complete, untruncated JSON export of all customers, ledger, daily books, and settings</p>
                                             </div>
                                         </div>
                                     </div>
                                     <div className="p-4 space-y-3">
                                         <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/30 rounded-xl p-3 text-xs text-blue-800 dark:text-blue-300 space-y-1">
-                                            <p className="font-bold">📁 Files saved to:</p>
-                                            <p className="font-mono text-[10px] opacity-80">OneDrive/Desktop/dadcare app/Backups/</p>
-                                            <p>Each backup includes:</p>
+                                            <p className="font-bold">🛡️ 100% Complete & Verifiable Backup:</p>
                                             <ul className="list-disc list-inside text-[11px] space-y-0.5 ml-1 opacity-90">
-                                                <li><strong>Buuga Maqalka</strong> — Full ledger history for every customer</li>
-                                                <li><strong>Buuga Maalinlaha</strong> — Complete daily book record</li>
-                                                <li><strong>Beautiful HTML</strong> — Open in any browser to print</li>
-                                                <li><strong>Text files</strong> — Readable on any device forever</li>
+                                                <li><strong>All Customers</strong> — Names, phone numbers, codes, and metadata</li>
+                                                <li><strong>All Ledger Records</strong> — Full debt, payment, and receipt history (no truncation)</li>
+                                                <li><strong>All Daily Books & Items</strong> — Every single recorded day and customer entry</li>
+                                                <li><strong>Settings & Approvals</strong> — Full system state configuration</li>
                                             </ul>
+                                            <p className="text-[10px] opacity-75 pt-1">
+                                                💡 <em>Tip: Save the downloaded file into your local OneDrive or Google Drive folder to synchronize it to your personal cloud.</em>
+                                            </p>
                                         </div>
                                         <Button
                                             onClick={async () => {
                                                 setLoading(true);
                                                 try {
-                                                    const res = await fetch('/api/backup', { method: 'POST' });
-                                                    const data = await res.json();
-                                                    if (res.ok && data.success) {
-                                                        toast.success(`✅ Backup saved! ${data.stats.filesGenerated} files saved to OneDrive`);
+                                                    const res = await fetch('/api/backup-db', { cache: 'no-store' });
+                                                    const json = await res.json();
+                                                    if (res.ok && json.success) {
+                                                        const dateStr = new Date().toISOString().split('T')[0];
+                                                        const fileName = `buugaxisaabta-backup-${dateStr}.json`;
+                                                        const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+                                                        const url = URL.createObjectURL(blob);
+                                                        const a = document.createElement('a');
+                                                        a.href = url;
+                                                        a.download = fileName;
+                                                        document.body.appendChild(a);
+                                                        a.click();
+                                                        document.body.removeChild(a);
+                                                        URL.revokeObjectURL(url);
+
+                                                        const { counts } = json;
+                                                        toast.success(`✅ Backup downloaded! Customers: ${counts.customers} | Ledger: ${counts.ledger} | Daily Books: ${counts.dailyBook}`);
                                                     } else {
-                                                        toast.error('Backup failed: ' + (data.error || 'Unknown error'));
+                                                        toast.error('Backup download failed: ' + (json.error || 'Unknown error'));
                                                     }
                                                 } catch (e) {
-                                                    toast.error('Network error during backup');
+                                                    toast.error('Network error during backup download');
                                                 } finally {
                                                     setLoading(false);
                                                 }
                                             }}
                                             disabled={loading}
-                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-all"
+                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-all cursor-pointer"
                                         >
                                             {loading ? (
                                                 <>
                                                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                                    Generating backup...
+                                                    Preparing full backup download...
                                                 </>
                                             ) : (
                                                 <>
-                                                    <HardDrive className="w-4 h-4 mr-2" />
-                                                    ☁️ Generate OneDrive Backup Now
+                                                    <Download className="w-4 h-4 mr-2" />
+                                                    📥 Download Database Backup (.json)
                                                 </>
                                             )}
                                         </Button>
@@ -3542,7 +3556,7 @@ export default function SettingsPage() {
                                     <div className="p-4 space-y-3">
                                         {[
                                             { title: 'Cloud Database', desc: 'All data stored in Supabase (99.9% uptime) — never lost.' },
-                                            { title: 'OneDrive Sync', desc: 'Backups auto-sync to Microsoft cloud via OneDrive.' },
+                                            { title: 'Independent Backups', desc: 'Download complete database JSON snapshots anytime for safe offsite keeping.' },
                                             { title: 'Proof of Record', desc: 'Every transaction logged with timestamp & ID.' },
                                         ].map((item, i) => (
                                             <div key={i} className="flex gap-3 items-start">
