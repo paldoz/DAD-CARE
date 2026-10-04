@@ -98,3 +98,8 @@ verify-schema.js
 supabase_schema.sql
 prisma.config.ts.bak
 scratch/
+
+# PostgreSQL disaster-recovery backups — NEVER commit
+/backups/
+*.sql
+supabase/.temp/
