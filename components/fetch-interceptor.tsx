@@ -17,7 +17,8 @@ export function FetchInterceptor() {
         const originalFetch = window.fetch;
 
         window.fetch = async function (...args) {
-            let [resource, config] = args as [RequestInfo | URL, RequestInit?];
+            const resource = args[0] as RequestInfo | URL;
+            let config = args[1] as RequestInit | undefined;
 
             // Initialize config and headers if missing
             if (!config) config = {};
@@ -55,9 +56,12 @@ export function FetchInterceptor() {
 
             // Auto-redirect to login on 401 from any of our API endpoints
             if (response.status === 401 && isOwnApi) {
-                // Don't redirect if we're already on the login page or calling the login API
+                // Don't redirect if we're on the public landing page or login page
+                const currentPath = window.location.pathname;
+                const isPublicPage = currentPath === '/' || currentPath === '/login';
                 const isLoginCall = urlString.includes('/api/auth/login');
-                if (!isLoginCall) {
+
+                if (!isPublicPage && !isLoginCall) {
                     localStorage.removeItem('currentUser');
                     localStorage.removeItem('dadwork_session_token');
                     router.replace('/login');

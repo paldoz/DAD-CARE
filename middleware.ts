@@ -6,7 +6,6 @@ export const SESSION_COOKIE = 'dadwork_session';
 export const CLAIM_COOKIE = 'dadwork_claim';
 
 // Routes that do NOT require authentication
-const PUBLIC_PAGE_ROUTES = ['/', '/login'];
 const PUBLIC_API_ROUTES = [
     '/api/auth/login',
     '/api/auth/verify',
@@ -22,7 +21,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Allow all public page routes
-    if (PUBLIC_PAGE_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+    if (pathname === '/' || pathname === '/login' || pathname.startsWith('/login/')) {
         return NextResponse.next();
     }
 

@@ -4,39 +4,45 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 import { AppSidebar } from './app-sidebar';
 import { MobileNav } from './mobile-nav';
-import { LogOut, ChevronDown } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { logout } from '@/lib/session';
 import { subscribeToDailyDates } from '@/lib/hijri-date';
 import { IdleMonitor } from './idle-monitor';
 import { SecurityBell } from '@/components/security-bell';
 
+interface UserProfile {
+    id?: string;
+    username?: string;
+    name?: string;
+    role?: string;
+    avatar_url?: string;
+    [key: string]: unknown;
+}
+
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
+    const [isAuthenticated] = useState<boolean | null>(() => {
         // Initialize synchronously on the client so '/' never flashes the loading spinner
         if (typeof window === 'undefined') return null; // SSR: unknown
         return !!localStorage.getItem('currentUser');
     });
-    const [currentUser, setCurrentUser] = useState<any>(() => {
+    const [currentUser] = useState<UserProfile | null>(() => {
         if (typeof window === 'undefined') return null;
         try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch { return null; }
     });
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    // Guard: only run SUPER_ADMIN background prefetch once per session mount
-    const hasFetchedAdminDataRef = useRef(false);
 
     useEffect(() => {
-        const storedUser = localStorage.getItem('currentUser');
-        if (storedUser) {
-            try {
-                setCurrentUser(JSON.parse(storedUser));
-            } catch (e) { }
+        // Don't redirect if we are on landing page or pathname not yet resolved
+        if (!pathname || pathname === '/' || pathname === '') {
+            return;
         }
+
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
         const loggedIn = !!storedUser;
-        setIsAuthenticated(loggedIn);
 
         const PUBLIC_ROUTES = ['/', '/login'];
         if (!loggedIn && !PUBLIC_ROUTES.includes(pathname)) {
@@ -77,7 +83,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         window.location.href = '/login';
     };
 
-    const isLandingPage = pathname === '/';
+    const isLandingPage = !pathname || pathname === '/' || pathname === '';
     const isLoginPage = pathname === '/login';
 
     // 1. Landing page is 100% public — render immediately (no spinner, no auth check, perfect for SSR & Google)
