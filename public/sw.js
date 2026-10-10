@@ -1,6 +1,6 @@
-const CACHE_NAME = 'dadcare-v5-fast';
+// v6-landing: Bumped to force-clear old cache that had stale / route
+const CACHE_NAME = 'dadcare-v6-landing';
 const STATIC_ASSETS = [
-  '/',
   '/dashboard',
   '/customers',
   '/ledger',
@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
+  // NOTE: '/' (landing page) intentionally excluded — must always fetch fresh
 ];
 
 self.addEventListener('install', (e) => {

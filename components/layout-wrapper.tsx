@@ -22,33 +22,40 @@ interface UserProfile {
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const [isAuthenticated] = useState<boolean | null>(() => {
-        // Initialize synchronously on the client so '/' never flashes the loading spinner
-        if (typeof window === 'undefined') return null; // SSR: unknown
-        return !!localStorage.getItem('currentUser');
-    });
-    const [currentUser] = useState<UserProfile | null>(() => {
-        if (typeof window === 'undefined') return null;
-        try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); } catch { return null; }
-    });
+    const currentPath = pathname || (typeof window !== 'undefined' ? window.location.pathname : '');
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     const [dates, setDates] = useState({ standard: '', hijri: '' });
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        // Don't redirect if we are on landing page or pathname not yet resolved
-        if (!pathname || pathname === '/' || pathname === '') {
+        // Read auth state after hydration to prevent SSR mismatch
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
+        const loggedIn = !!storedUser;
+        setIsAuthenticated(loggedIn);
+
+        if (storedUser) {
+            try {
+                setCurrentUser(JSON.parse(storedUser));
+            } catch {
+                setCurrentUser(null);
+            }
+        }
+
+        // NEVER redirect if we are on landing page or login page
+        const isPublic = !currentPath || currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/login/');
+        if (isPublic) {
+            if (loggedIn && (currentPath === '/login' || currentPath.startsWith('/login/'))) {
+                router.replace('/dashboard');
+            }
             return;
         }
 
-        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
-        const loggedIn = !!storedUser;
-
-        const PUBLIC_ROUTES = ['/', '/login'];
-        if (!loggedIn && !PUBLIC_ROUTES.includes(pathname)) {
+        // Protected routes: redirect unauthenticated users to /login
+        if (!loggedIn) {
             router.replace('/login');
-        } else if (loggedIn && pathname === '/login') {
-            router.replace('/dashboard');
+            return;
         }
 
         // Compute dates — updates automatically at midnight
@@ -56,7 +63,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             setDates({ standard, hijri });
         });
         return () => unsub();
-    }, [pathname, router]);
+    }, [pathname, currentPath, router]);
 
     // ── Global Heartbeat Completely Disabled ──
     // Eliminates all background egress and network calls
@@ -83,8 +90,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         window.location.href = '/login';
     };
 
-    const isLandingPage = !pathname || pathname === '/' || pathname === '';
-    const isLoginPage = pathname === '/login';
+    const isLandingPage = !currentPath || currentPath === '/' || currentPath === '';
+    const isLoginPage = currentPath === '/login' || currentPath.startsWith('/login/');
 
     // 1. Landing page is 100% public — render immediately (no spinner, no auth check, perfect for SSR & Google)
     if (isLandingPage) {

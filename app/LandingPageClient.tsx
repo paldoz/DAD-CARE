@@ -1,335 +1,300 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
-// ── Scroll-reveal hook ────────────────────────────────────────────────────
-function useReveal() {
+// Scroll-reveal hook
+function useReveal(threshold: number = 0.12) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) { setVisible(true); return; }
     const obs = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { threshold: 0.1 }
+      { threshold }
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [threshold]);
   return { ref, visible };
 }
 
-// ── Data ─────────────────────────────────────────────────────────────────
+// Data
 const features = [
-  { icon: '📒', title: 'Buugga Maalinlaha', desc: 'Duubi dakhliga iyo kharashka maalin walba si taxaddar leh. Hel kooxayn buuxda markii aad u baahantahay.', color: 'rgba(99,102,241,0.15)', border: 'rgba(99,102,241,0.35)', glow: 'rgba(99,102,241,0.4)' },
-  { icon: '👥', title: 'Xisaabaadka Macaamiisha', desc: 'Raac daymaha macaamiisha, lacagaha la bixiyey, iyo taariikhda macaamiil kasta hal meel.', color: 'rgba(139,92,246,0.15)', border: 'rgba(139,92,246,0.35)', glow: 'rgba(139,92,246,0.4)' },
-  { icon: '💳', title: 'Maqalka & Lacag Bixinta', desc: 'Maaree lacag bixinta iyo maqalka si sahlan — xisaab kasta lagu daabi karaa oo la xaqiijin karo.', color: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.3)', glow: 'rgba(56,189,248,0.35)' },
-  { icon: '📊', title: 'Warbixinnada Xisaabaadka', desc: 'Hel warbixinno dhammaystiran oo ku saabsan xaalada maaliyadeed ganacsigaaga — mar kasta.', color: 'rgba(52,211,153,0.12)', border: 'rgba(52,211,153,0.3)', glow: 'rgba(52,211,153,0.35)' },
-  { icon: '🔒', title: 'Ammaan & Kalsoonaan', desc: 'Xogta ganacsigaaga waxay ku amaan tahay nidaam sireed oo casri ah — gelitaan xaddidan.', color: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)', glow: 'rgba(251,191,36,0.35)' },
-  { icon: '⚡', title: "Degdeg & Faa'iido", desc: "Nidaam degdeg ah oo shaqeeyaa telefoonka, kombiyuutarka, iyo tablet-ka — xiriir kasta.", color: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)', glow: 'rgba(239,68,68,0.3)' },
+  { icon: '📒', title: 'Buugga Maalinlaha', desc: 'Duubi dakhliga iyo kharashka maalin walba si taxaddar leh oo si fudud.', color: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.3)', glow: '#6366f1' },
+  { icon: '👥', title: 'Xisaabaadka Macaamiisha', desc: 'Raac daymaha macaamiisha, lacagaha la bixiyey, iyo taariikhda macaamil kasta.', color: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.3)', glow: '#8b5cf6' },
+  { icon: '💳', title: 'Maqalka & Lacag Bixinta', desc: 'Maaree lacag bixinta iyo maqalka si sahlan oo aad u degdeg.', color: 'rgba(56,189,248,0.1)', border: 'rgba(56,189,248,0.28)', glow: '#38bdf8' },
+  { icon: '📊', title: 'Warbixinnada Xisaabaadka', desc: 'Hel warbixinno dhamaystiran oo ku saabsan xaaladda maaliyadeed ee ganacsigaaga.', color: 'rgba(52,211,153,0.1)', border: 'rgba(52,211,153,0.28)', glow: '#34d399' },
+  { icon: '🔒', title: 'Ammaan & Kalsoonaan', desc: 'Maamul xogta ganacsigaaga adigoo adeegsanaya nidaamka amniga ee jira.', color: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.28)', glow: '#fbbf24' },
+  { icon: '⚡', title: 'Degdeg & Fudud', desc: 'Nidaam ku shaqeeya telefoonka, kombiyuutarka, iyo tablet-ka.', color: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.28)', glow: '#ef4444' },
 ];
 
-const stats = [
-  { value: '100%', label: 'Aamin', sub: 'Xog Sugnaanta' },
-  { value: '24/7', label: 'La Heli Karo', sub: 'Waqti Kasta' },
-  { value: '0', label: 'Khasaare', sub: 'Xog Lumay' },
-  { value: 'PWA', label: 'App', sub: 'Phone & Desktop' },
+const trustItems = [
+  { icon: '✅', label: '100% Aamin', sub: 'Xog Sugnaanta' },
+  { icon: '🕐', label: '24/7 La Heli Karo', sub: 'Waqti Kasta' },
+  { icon: '📈', label: 'Xisaab La Socod', sub: 'Dakhliga & Kharashka' },
+  { icon: '⚡', label: 'Waxqabadka Nidaamka', sub: 'Degdeg & Xasilloon' },
 ];
 
-const steps = [
-  { num: '01', title: 'Gal Nidaamka', desc: 'Isticmaal magacaaga iyo furaha sirta si aad u gasho xisaabaadkaaga.' },
-  { num: '02', title: 'Ku Dar Macaamiisha', desc: 'Abuur xisaab macaamiil kasta oo raac daymaha iyo lacagaha.' },
-  { num: '03', title: 'Raac Xisaabaadka', desc: 'Dakhli, kharash, iyo maqal — wax walba hal meel.' },
-  { num: '04', title: 'Hel Warbixinta', desc: 'Daabac ama soo deji warbixin kasta marka aad u baahato.' },
-];
-
-// ── Lightning beams ───────────────────────────────────────────────────────
-function LightningLayer({ opacity = 0.35 }: { opacity?: number }) {
-  return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', opacity }}>
-      <div style={{ position: 'absolute', top: '-20%', left: '18%', width: 2, height: '150%', background: 'linear-gradient(to bottom, transparent, #818cf8 40%, transparent)', transform: 'rotate(18deg)', filter: 'blur(1px)', animation: 'lp-pulse 4s ease-in-out infinite' }} />
-      <div style={{ position: 'absolute', top: '-20%', left: '18%', width: 40, height: '150%', background: 'rgba(99,102,241,0.07)', transform: 'rotate(18deg)', filter: 'blur(22px)' }} />
-      <div style={{ position: 'absolute', top: '25%', left: '58%', width: 1, height: '80%', background: 'linear-gradient(to bottom, transparent, #93c5fd 40%, transparent)', transform: 'rotate(38deg)', filter: 'blur(1px)', animation: 'lp-pulse 5s ease-in-out 1.2s infinite' }} />
-      <div style={{ position: 'absolute', top: '25%', left: '58%', width: 24, height: '80%', background: 'rgba(56,189,248,0.07)', transform: 'rotate(38deg)', filter: 'blur(16px)' }} />
-      <div style={{ position: 'absolute', top: '35%', right: '12%', width: 1, height: '100%', background: 'linear-gradient(to bottom, transparent, #c4b5fd 40%, transparent)', transform: 'rotate(-22deg)', filter: 'blur(1px)', animation: 'lp-lightning 6.5s infinite' }} />
-      <div style={{ position: 'absolute', top: '35%', right: '12%', width: 55, height: '100%', background: 'rgba(139,92,246,0.05)', transform: 'rotate(-22deg)', filter: 'blur(28px)', animation: 'lp-lightning 6.5s infinite' }} />
-    </div>
-  );
+interface ShowcaseItem {
+  image: string;
+  title: string;
+  sub: string;
+  desc: string;
+  badge: string;
+  align: string;
+  accent: string;
 }
 
-// ── Feature card ─────────────────────────────────────────────────────────
+const showcaseSections: ShowcaseItem[] = [
+  { image: '/screenshots/customers.png', title: 'Xisaabaadka Macaamiisha', sub: 'Raac daymaha iyo lacagaha la bixiyey', desc: 'Arag macaamiishaada oo dhan hal meel — magacooda, lambarka, daymaha hadda, iyo taariikhda lacag bixinta. Nidaamku wuxuu ku siiyaa xog cad oo ku saabsan kiligaa macaamil.', badge: '👥 Customers', align: 'image-right', accent: '#6366f1' },
+  { image: '/screenshots/reports.png', title: 'Warbixinnada Xisaabaadka', sub: 'Hel warbixinno buuxa markii aad u baahantahay', desc: 'Eeg wadarta daymaha guud, lacagaha la bixiyey, iyo xilliga waxqabadka macaamiisha. Advanced Reports-ku wuxuu ku siiyaa xog dhammaystiran oo ku saabsan ganacsigaaga.', badge: '📊 Reports', align: 'image-left', accent: '#34d399' },
+  { image: '/screenshots/lacagaha.png', title: 'Lacagaha & Maqalka', sub: 'Raac dhammaan lacag bixinta hal meel', desc: 'Arag taariikhda lacag bixinta oo dhammaystiran — lacagta la bixiyey, taariikhda, iyo macaamil kasta oo la xiriira. 4,749 oo lacag bixin ayaa la daaweyn karo.', badge: '💳 Lacagaha', align: 'image-right', accent: '#38bdf8' },
+  { image: '/screenshots/maqal.png', title: 'Buuga Maqalka', sub: 'Ku dhammaystir macaamiladaada si degdeg ah', desc: 'Nidaamka Maqalka wuxuu ku oggolaanayaa in aad si fudud uga doonto macaamiisha, xushid kuwa ku jira PRIORITY, oo aad ku buuxiso foom lacag bixin si aan waxba u dhibaatoonayn.', badge: '📒 Buuga Maqalka', align: 'image-left', accent: '#8b5cf6' },
+  { image: '/screenshots/settings.png', title: 'Maamulka & Amniga', sub: 'Xog buuxda oo ku saabsan nidaamka', desc: 'SUPER_ADMIN wuxuu arki karaa cidda online ah, dhacdooyinka nidaamka dhammaantood, iyo qalabka maamulka sida User Management, Theme, iyo Audit Logs — wax walba hal meel.', badge: '🔒 Settings & Security', align: 'image-right', accent: '#fbbf24' },
+];
+
+// Feature Card component
 function FeatureCard({ f, delay }: { f: typeof features[0]; delay: number }) {
   const { ref, visible } = useReveal();
   const [hovered, setHovered] = useState(false);
   return (
-    <div
-      ref={ref}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <div ref={ref} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{
-        padding: '1.75rem',
-        borderRadius: 20,
-        background: hovered ? f.color : 'rgba(255,255,255,0.035)',
-        border: `1px solid ${hovered ? f.border : 'rgba(255,255,255,0.07)'}`,
-        backdropFilter: 'blur(12px)',
-        transition: 'all 0.32s cubic-bezier(0.4,0,0.2,1)',
-        transform: visible ? (hovered ? 'translateY(-6px) scale(1.01)' : 'translateY(0)') : 'translateY(28px)',
-        opacity: visible ? 1 : 0,
-        transitionDelay: `${delay}ms`,
-        cursor: 'default',
-        boxShadow: hovered ? `0 20px 50px ${f.color}` : 'none',
-      }}
-    >
-      <div style={{
-        width: 52, height: 52, borderRadius: 14,
-        background: f.color, border: `1px solid ${f.border}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '1.5rem', marginBottom: '1.1rem',
-        boxShadow: hovered ? `0 0 28px ${f.glow}` : 'none',
-        transition: 'box-shadow 0.3s',
+        padding: 'clamp(1.1rem,2.5vw,1.6rem)', borderRadius: 16,
+        background: hovered ? f.color : 'rgba(255,255,255,0.03)',
+        border: '1px solid ' + (hovered ? f.border : 'rgba(255,255,255,0.07)'),
+        backdropFilter: 'blur(10px)',
+        transition: 'all 0.3s cubic-bezier(0.4,0,0.2,1)',
+        transform: visible ? (hovered ? 'translateY(-4px)' : 'translateY(0)') : 'translateY(22px)',
+        opacity: visible ? 1 : 0, transitionDelay: delay + 'ms', cursor: 'default',
+        boxShadow: hovered ? '0 14px 36px ' + f.color : 'none',
       }}>
-        {f.icon}
-      </div>
-      <h3 style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: '0.55rem', color: '#f1f5f9' }}>{f.title}</h3>
-      <p style={{ color: 'rgba(248,250,252,0.5)', fontSize: '0.9rem', lineHeight: 1.7 }}>{f.desc}</p>
+      <div style={{ width: 44, height: 44, borderRadius: 11, background: f.color, border: '1px solid ' + f.border, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', marginBottom: '0.8rem' }}>{f.icon}</div>
+      <h3 style={{ fontWeight: 800, fontSize: 'clamp(0.9rem,1.8vw,1rem)', marginBottom: '0.4rem', color: '#f1f5f9' }}>{f.title}</h3>
+      <p style={{ color: 'rgba(248,250,252,0.46)', fontSize: 'clamp(0.8rem,1.6vw,0.88rem)', lineHeight: 1.65 }}>{f.desc}</p>
     </div>
   );
 }
 
-// ── Step card ─────────────────────────────────────────────────────────────
-function StepCard({ step, delay }: { step: typeof steps[0]; delay: number }) {
-  const { ref, visible } = useReveal();
+// Browser frame wrapper
+function BrowserFrame({ src, alt, priority }: { src: string; alt: string; priority?: boolean }) {
   return (
-    <div ref={ref} style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start', opacity: visible ? 1 : 0, transform: visible ? 'translateX(0)' : 'translateX(-24px)', transition: `all 0.55s cubic-bezier(0.4,0,0.2,1) ${delay}ms` }}>
-      <div style={{ flexShrink: 0, width: 50, height: 50, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(99,102,241,0.28), rgba(139,92,246,0.18))', border: '1px solid rgba(99,102,241,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.82rem', color: '#818cf8', boxShadow: '0 0 20px rgba(99,102,241,0.2)' }}>
-        {step.num}
-      </div>
-      <div style={{ paddingTop: '0.15rem' }}>
-        <h3 style={{ fontWeight: 800, fontSize: '1.05rem', color: '#f1f5f9', marginBottom: '0.35rem' }}>{step.title}</h3>
-        <p style={{ color: 'rgba(248,250,252,0.5)', fontSize: '0.9rem', lineHeight: 1.65 }}>{step.desc}</p>
-      </div>
-    </div>
-  );
-}
-
-// ── Stat block ────────────────────────────────────────────────────────────
-function StatBlock({ stat, delay }: { stat: typeof stats[0]; delay: number }) {
-  const { ref, visible } = useReveal();
-  return (
-    <div ref={ref} style={{ textAlign: 'center', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.9)', transition: `all 0.6s cubic-bezier(0.34,1.56,0.64,1) ${delay}ms` }}>
-      <div style={{ fontSize: 'clamp(1.9rem, 4vw, 3rem)', fontWeight: 900, background: 'linear-gradient(135deg, #818cf8, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1, letterSpacing: '-0.03em' }}>{stat.value}</div>
-      <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#e2e8f0', marginTop: '0.4rem' }}>{stat.label}</div>
-      <div style={{ fontSize: '0.7rem', color: 'rgba(248,250,252,0.32)', marginTop: '0.15rem', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{stat.sub}</div>
-    </div>
-  );
-}
-
-// ── Mock dashboard visual ─────────────────────────────────────────────────
-function HowVisual() {
-  const { ref, visible } = useReveal();
-  return (
-    <div ref={ref} style={{ position: 'relative', borderRadius: 24, overflow: 'hidden', background: 'linear-gradient(145deg, #0a0f1e, #161040)', border: '1px solid rgba(99,102,241,0.22)', padding: '2.25rem', boxShadow: '0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(99,102,241,0.1)', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0) scale(1)' : 'translateY(32px) scale(0.97)', transition: 'all 0.7s cubic-bezier(0.4,0,0.2,1)' }}>
-      <LightningLayer opacity={0.18} />
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        {/* Browser bar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '1.5rem' }}>
-          {['#ef4444','#f59e0b','#10b981'].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c, opacity: 0.8 }} />)}
-          <div style={{ flex: 1, marginLeft: '0.5rem', height: 22, borderRadius: 6, background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', paddingLeft: '0.6rem' }}>
-            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.28)' }}>buugaxisaabta.online/dashboard</span>
-          </div>
+    <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 24px 64px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05)' }}>
+      <div style={{ height: 32, background: 'rgba(15,23,42,0.98)', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 5 }}>
+        {['#ef4444','#f59e0b','#10b981'].map(c => <div key={c} style={{ width: 9, height: 9, borderRadius: '50%', background: c, opacity: 0.8 }} />)}
+        <div style={{ flex: 1, marginLeft: 8, height: 18, borderRadius: 4, background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', paddingLeft: 7 }}>
+          <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.28)' }}>buugaxisaabta.online</span>
         </div>
-        {/* Summary cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem', marginBottom: '1.1rem' }}>
-          {[{ l: 'Dakhli', v: '$1,240', c: '#10b981' }, { l: 'Kharash', v: '$380', c: '#f87171' }, { l: "Faa'iido", v: '$860', c: '#818cf8' }].map(r => (
-            <div key={r.l} style={{ padding: '0.7rem', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.63rem', color: 'rgba(255,255,255,0.38)', fontWeight: 600, marginBottom: '0.3rem' }}>{r.l}</div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 800, color: r.c }}>{r.v}</div>
-            </div>
-          ))}
-        </div>
-        {/* Customer rows */}
-        <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.28)', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Macaamiisha</div>
-        {[{ n: 'Axmed Cali', a: '$200', paid: true }, { n: 'Faadumo Warsame', a: '$150', paid: false }, { n: 'Maxamed Xirsi', a: '$320', paid: true }].map(c => (
-          <div key={c.n} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.6rem 0.75rem', borderRadius: 9, background: 'rgba(255,255,255,0.025)', marginBottom: '0.45rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-              <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 800, color: '#fff', flexShrink: 0 }}>{c.n[0]}</div>
-              <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.62)', fontWeight: 600 }}>{c.n}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f1f5f9' }}>{c.a}</span>
-              <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.18rem 0.45rem', borderRadius: 999, background: c.paid ? 'rgba(16,185,129,0.14)' : 'rgba(239,68,68,0.14)', color: c.paid ? '#10b981' : '#f87171', border: `1px solid ${c.paid ? 'rgba(16,185,129,0.28)' : 'rgba(239,68,68,0.28)'}` }}>{c.paid ? 'Bixi' : 'Dayn'}</span>
-            </div>
-          </div>
-        ))}
       </div>
-      <div style={{ position: 'absolute', bottom: -40, left: '50%', transform: 'translateX(-50%)', width: 280, height: 120, background: 'radial-gradient(ellipse, rgba(99,102,241,0.22), transparent 70%)', filter: 'blur(28px)', pointerEvents: 'none' }} />
+      <Image src={src} alt={alt} width={960} height={580} priority={priority} loading={priority ? 'eager' : 'lazy'} style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }} />
     </div>
   );
 }
 
-// ── Main export ───────────────────────────────────────────────────────────
+// Showcase section
+function ShowcaseSection({ section, index }: { section: ShowcaseItem; index: number }) {
+  const { ref, visible } = useReveal(0.08);
+  const isImgLeft = section.align === 'image-left';
+  return (
+    <div ref={ref} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,420px),1fr))', gap: 'clamp(2rem,5vw,4rem)', alignItems: 'center', opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(28px)', transition: 'all 0.7s cubic-bezier(0.4,0,0.2,1)' }}>
+      <div style={{ order: isImgLeft ? 2 : 1 }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.28rem 0.85rem', borderRadius: 999, background: section.accent + '1f', border: '1px solid ' + section.accent + '3f', fontSize: '0.7rem', fontWeight: 700, color: section.accent, marginBottom: '0.85rem', letterSpacing: '0.06em' }}>{section.badge}</div>
+        <h2 style={{ fontSize: 'clamp(1.5rem,3.5vw,2.3rem)', fontWeight: 900, letterSpacing: '-0.024em', lineHeight: 1.18, color: '#f8fafc', marginBottom: '0.5rem' }}>{section.title}</h2>
+        <p style={{ fontSize: 'clamp(0.9rem,1.8vw,1rem)', fontWeight: 700, color: section.accent, marginBottom: '0.8rem' }}>{section.sub}</p>
+        <p style={{ color: 'rgba(248,250,252,0.48)', fontSize: 'clamp(0.85rem,1.8vw,0.95rem)', lineHeight: 1.78, marginBottom: '1.5rem' }}>{section.desc}</p>
+        <Link href="/login" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.65rem 1.5rem', borderRadius: 10, background: 'linear-gradient(135deg,' + section.accent + ',' + section.accent + 'cc)', color: '#fff', fontWeight: 700, fontSize: '0.88rem', textDecoration: 'none', boxShadow: '0 4px 18px ' + section.accent + '3f', transition: 'all 0.22s' }}>Bilow Hadda →</Link>
+      </div>
+      <div style={{ order: isImgLeft ? 1 : 2, position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: '-18px', background: 'radial-gradient(ellipse at center,' + section.accent + '16,transparent 70%)', borderRadius: 24, filter: 'blur(28px)', pointerEvents: 'none' }} />
+        <BrowserFrame src={section.image} alt={section.title} priority={index === 0} />
+        <div style={{ position: 'absolute', bottom: -12, right: 16, background: 'rgba(9,14,28,0.92)', border: '1px solid ' + section.accent + '3f', borderRadius: 10, padding: '0.45rem 0.9rem', backdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          <span style={{ fontSize: '0.9rem' }}>{section.badge.split(' ')[0]}</span>
+          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: section.accent }}>{section.title}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Main component
 export default function LandingPageClient() {
   const [scrolled, setScrolled] = useState(false);
-  const { ref: ctaRef, visible: ctaVisible } = useReveal();
-  const { ref: featHeadRef, visible: featHeadVisible } = useReveal();
-  const { ref: howHeadRef, visible: howHeadVisible } = useReveal();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { ref: heroImgRef, visible: heroImgVisible } = useReveal(0.01);
+  const { ref: heroTxtRef, visible: heroTxtVisible } = useReveal(0.01);
+  const { ref: trustRef, visible: trustVisible } = useReveal(0.1);
+  const { ref: featHeadRef, visible: featHeadVisible } = useReveal(0.1);
+  const { ref: ctaRef, visible: ctaVisible } = useReveal(0.1);
 
+  const handleScroll = useCallback(() => { setScrolled(window.scrollY > 20); }, []);
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth >= 768) setMobileMenuOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  const navLinks = [{ label: 'Guriga', href: '#top' }, { label: 'Waxqabadka', href: '#features' }, { label: 'Sida', href: '#showcase' }, { label: 'Ku Saabsan', href: '#cta' }];
+  const dots = ['#ef4444','#f59e0b','#10b981'];
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
-        @keyframes lp-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }
-        @keyframes lp-lightning { 0%,92%,97%,100%{opacity:.38} 93%{opacity:1;filter:brightness(2)} 95%{opacity:.6} 96%{opacity:1;filter:brightness(1.7)} }
-        @keyframes lp-float { 0%,100%{transform:translateY(0) rotate(0deg)} 33%{transform:translateY(-12px) rotate(1deg)} 66%{transform:translateY(-5px) rotate(-1deg)} }
-        @keyframes lp-shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
-        @keyframes lp-beacon { 0%,100%{opacity:.14;transform:scale(1)} 50%{opacity:.3;transform:scale(1.07)} }
-        @keyframes lp-in { from{opacity:0;transform:translateY(28px);filter:blur(6px)} to{opacity:1;transform:translateY(0);filter:blur(0)} }
-        .lp-btn-p{transition:all .25s cubic-bezier(.4,0,.2,1)}
-        .lp-btn-p:hover{opacity:.87;transform:translateY(-2px);box-shadow:0 14px 44px rgba(99,102,241,.62)!important}
-        .lp-btn-g{transition:all .25s cubic-bezier(.4,0,.2,1)}
-        .lp-btn-g:hover{background:rgba(255,255,255,.1)!important;transform:translateY(-2px)}
-        .lp-nl:hover{color:#a5b4fc!important}
-        .lp-nl{transition:color .2s}
-        .lp-fl:hover{color:rgba(248,250,252,.55)!important}
-        .lp-fl{transition:color .2s}
-      `}</style>
+      <style>{"\n        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');\n        @keyframes lp-in { from{opacity:0;transform:translateY(20px);filter:blur(3px)} to{opacity:1;transform:translateY(0);filter:blur(0)} }\n        @keyframes lp-pulse { 0%,100%{opacity:.4} 50%{opacity:.85} }\n        @keyframes lp-beacon { 0%,100%{opacity:.1;transform:scale(1)} 50%{opacity:.22;transform:scale(1.06)} }\n        @keyframes lp-float { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-9px) rotate(1deg)} }\n        @keyframes lp-shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }\n        .lp-btn-p{transition:all .22s cubic-bezier(.4,0,.2,1)}\n        .lp-btn-p:hover{opacity:.88;transform:translateY(-2px);box-shadow:0 14px 40px rgba(99,102,241,.5)!important}\n        .lp-btn-g{transition:all .22s cubic-bezier(.4,0,.2,1)}\n        .lp-btn-g:hover{background:rgba(255,255,255,.1)!important;transform:translateY(-1px)}\n        .lp-nl{transition:color .18s}\n        .lp-nl:hover{color:#a5b4fc!important}\n        .lp-fl{transition:color .18s}\n        .lp-fl:hover{color:rgba(248,250,252,.6)!important}\n        .lp-mm{animation:lp-in .2s cubic-bezier(.4,0,.2,1) both}\n        @media(min-width:768px){.lp-dnav{display:flex!important}.lp-ham{display:none!important}}\n        @media(max-width:767px){.lp-dnav{display:none!important}.lp-ham{display:flex!important}}\n        @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}}\n      "}</style>
 
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #090e1c 0%, #0f172a 28%, #19103d 62%, #0f172a 100%)', fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", color: '#f8fafc', overflowX: 'hidden' }}>
+      <div id="top" style={{ minHeight:'100vh', background:'linear-gradient(160deg,#090e1c 0%,#0f172a 30%,#18103a 62%,#0f172a 100%)', fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", color:'#f8fafc', overflowX:'hidden', maxWidth:'100vw' }}>
 
-        {/* ── NAVBAR ─────────────────────────────────────────────── */}
-        <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 clamp(1.25rem,5vw,4rem)', height: 68, background: scrolled ? 'rgba(9,14,28,0.9)' : 'transparent', backdropFilter: scrolled ? 'blur(24px)' : 'none', borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : '1px solid transparent', transition: 'all .4s cubic-bezier(.4,0,.2,1)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
-            <div style={{ width: 38, height: 38, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 0 18px rgba(99,102,241,0.3)', flexShrink: 0 }}>
-              <img src="/icons/icon-192.png" alt="Buuga Xisaabta" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {/* NAVBAR */}
+        <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 clamp(1rem,5vw,3.5rem)', height:62, background:scrolled?'rgba(9,14,28,0.93)':'transparent', backdropFilter:scrolled?'blur(20px)':'none', borderBottom:scrolled?'1px solid rgba(255,255,255,0.07)':'1px solid transparent', transition:'all .32s cubic-bezier(.4,0,.2,1)' }}>
+          <a href="#top" style={{ display:'flex', alignItems:'center', gap:'0.55rem', textDecoration:'none' }}>
+            <div style={{ width:34, height:34, borderRadius:8, overflow:'hidden', border:'1px solid rgba(255,255,255,0.15)', boxShadow:'0 0 12px rgba(99,102,241,0.3)', flexShrink:0 }}><img src="/icons/icon-192.png" alt="Buuga Xisaabta" style={{ width:'100%', height:'100%', objectFit:'cover' }} /></div>
+            <span style={{ fontWeight:900, fontSize:'1rem', letterSpacing:'-0.02em', color:'#f8fafc' }}>Buuga <span style={{ color:'#818cf8' }}>Xisaabta</span></span>
+          </a>
+          <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+            <div className="lp-dnav" style={{ alignItems:'center', gap:'1.4rem' }}>
+              {navLinks.map(l => <a key={l.label} href={l.href} className="lp-nl" style={{ fontSize:'0.855rem', fontWeight:600, color:'rgba(248,250,252,0.5)', textDecoration:'none' }}>{l.label}</a>)}
             </div>
-            <span style={{ fontWeight: 900, fontSize: '1.08rem', letterSpacing: '-0.022em' }}>Buuga <span style={{ color: '#818cf8' }}>Xisaabta</span></span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.75rem' }}>
-            <a href="#features" className="lp-nl" style={{ fontSize: '0.875rem', fontWeight: 600, color: 'rgba(248,250,252,0.5)', textDecoration: 'none' }}>Waxqabadka</a>
-            <a href="#how" className="lp-nl" style={{ fontSize: '0.875rem', fontWeight: 600, color: 'rgba(248,250,252,0.5)', textDecoration: 'none' }}>Sida</a>
-            <Link href="/login" className="lp-btn-p" style={{ padding: '0.5rem 1.35rem', borderRadius: 10, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none', boxShadow: '0 4px 18px rgba(99,102,241,0.38)', display: 'inline-block' }}>Gal →</Link>
+            <Link href="/login" id="nav-login-btn" className="lp-btn-p" style={{ padding:'0.44rem 1.15rem', borderRadius:8, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff', fontWeight:700, fontSize:'0.855rem', textDecoration:'none', boxShadow:'0 4px 14px rgba(99,102,241,0.35)', display:'inline-block' }}>Gal</Link>
+            <button className="lp-ham" onClick={() => setMobileMenuOpen(v=>!v)} aria-label="Toggle navigation" style={{ display:'flex', flexDirection:'column', justifyContent:'center', gap:4, padding:'0.45rem', borderRadius:7, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)', cursor:'pointer', flexShrink:0 }}>
+              {[0,1,2].map(i => <span key={i} style={{ display:'block', width:18, height:2, background:'#f8fafc', borderRadius:2, transition:'all .2s', transform:mobileMenuOpen?(i===0?'rotate(45deg) translate(4px,4px)':i===1?'scaleX(0)':'rotate(-45deg) translate(4px,-4px)'):'none', opacity:mobileMenuOpen&&i===1?0:1 }} />)}
+            </button>
           </div>
         </nav>
 
-        {/* ── HERO ──────────────────────────────────────────────── */}
-        <section style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: 'clamp(8.5rem,16vw,13rem) clamp(1.5rem,5vw,4rem) clamp(5rem,10vw,8rem)', overflow: 'hidden' }}>
-          {/* Orbs */}
-          <div style={{ position: 'absolute', top: '5%', left: '4%', width: 520, height: 520, borderRadius: '50%', background: 'radial-gradient(circle,rgba(99,102,241,0.2),transparent 70%)', filter: 'blur(70px)', pointerEvents: 'none', animation: 'lp-beacon 7s ease-in-out infinite' }} />
-          <div style={{ position: 'absolute', bottom: '0%', right: '4%', width: 420, height: 420, borderRadius: '50%', background: 'radial-gradient(circle,rgba(139,92,246,0.17),transparent 70%)', filter: 'blur(60px)', pointerEvents: 'none', animation: 'lp-beacon 9s ease-in-out 2s infinite' }} />
-          <div style={{ position: 'absolute', top: '45%', left: '50%', width: 700, height: 320, background: 'radial-gradient(ellipse,rgba(99,102,241,0.09),transparent 70%)', filter: 'blur(48px)', pointerEvents: 'none', transform: 'translate(-50%,-50%)' }} />
-          {/* Lightning */}
-          <LightningLayer opacity={0.28} />
-          {/* Grid dots */}
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'radial-gradient(rgba(99,102,241,0.11) 1px,transparent 1px)', backgroundSize: '38px 38px', maskImage: 'radial-gradient(ellipse 82% 65% at 50% 50%,black,transparent)', WebkitMaskImage: 'radial-gradient(ellipse 82% 65% at 50% 50%,black,transparent)' }} />
-
-          {/* Badge */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 1.1rem', borderRadius: 999, background: 'rgba(99,102,241,0.11)', border: '1px solid rgba(99,102,241,0.32)', fontSize: '0.77rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '2rem', letterSpacing: '0.06em', animation: 'lp-in .7s cubic-bezier(.34,1.56,.64,1) both' }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#818cf8', display: 'inline-block', boxShadow: '0 0 8px #818cf8', animation: 'lp-beacon 2s ease-in-out infinite' }} />
-            Nidaamka Ganacsiga Casriga ah
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="lp-mm" style={{ position:'fixed', top:62, left:0, right:0, zIndex:190, background:'rgba(9,14,28,0.97)', borderBottom:'1px solid rgba(255,255,255,0.07)', backdropFilter:'blur(20px)', padding:'0.75rem clamp(1rem,5vw,2rem) 1.25rem' }}>
+            {navLinks.map(l => <a key={l.label} href={l.href} onClick={() => setMobileMenuOpen(false)} style={{ display:'block', padding:'0.7rem 0', fontSize:'0.95rem', fontWeight:600, color:'rgba(248,250,252,0.7)', textDecoration:'none', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>{l.label}</a>)}
+            <Link href="/login" onClick={() => setMobileMenuOpen(false)} style={{ display:'block', marginTop:'0.9rem', padding:'0.75rem', borderRadius:10, textAlign:'center', background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff', fontWeight:700, fontSize:'0.95rem', textDecoration:'none' }}>Gal Xisaabaadkaaga →</Link>
           </div>
+        )}
 
-          {/* H1 */}
-          <h1 style={{ fontSize: 'clamp(2.6rem,7.2vw,5.4rem)', fontWeight: 900, lineHeight: 1.04, letterSpacing: '-0.036em', maxWidth: 840, marginBottom: '1.6rem', animation: 'lp-in .8s cubic-bezier(.4,0,.2,1) .1s both' }}>
-            Maaree Ganacsigaaga{' '}
-            <span style={{ backgroundImage: 'linear-gradient(135deg,#818cf8 0%,#c084fc 50%,#818cf8 100%)', backgroundSize: '200% auto', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', animation: 'lp-shimmer 3.8s linear infinite' }}>Si Xirfadleh</span>
-          </h1>
-
-          {/* Sub */}
-          <p style={{ fontSize: 'clamp(1rem,2.2vw,1.22rem)', color: 'rgba(248,250,252,0.56)', maxWidth: 620, lineHeight: 1.78, marginBottom: '2.8rem', animation: 'lp-in .8s cubic-bezier(.4,0,.2,1) .2s both' }}>
-            Buuga Xisaabta waa nidaam casri ah oo aad ku maamusho xisaabaadka ganacsiga,
-            maqalka, daymaha, iyo lacagaha — meel kasta, mar kasta.
-          </p>
-
-          {/* CTA buttons */}
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center', animation: 'lp-in .8s cubic-bezier(.4,0,.2,1) .3s both' }}>
-            <Link href="/login" className="lp-btn-p" style={{ padding: '0.95rem 2.5rem', borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 800, fontSize: '1rem', textDecoration: 'none', boxShadow: '0 8px 32px rgba(99,102,241,0.44)', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              Bilow Hadda
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </Link>
-            <a href="#features" className="lp-btn-g" style={{ padding: '0.95rem 2.5rem', borderRadius: 14, background: 'rgba(255,255,255,0.056)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(248,250,252,0.8)', fontWeight: 700, fontSize: '1rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              Waxqabadka
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M4 9l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </a>
+        {/* HERO */}
+        <section style={{ position:'relative', padding:'clamp(7rem,13vw,10rem) clamp(1rem,5vw,3.5rem) clamp(3.5rem,7vw,5.5rem)', maxWidth:1200, margin:'0 auto', overflow:'hidden' }}>
+          <div style={{ position:'absolute', top:'8%', left:'2%', width:'clamp(240px,38vw,460px)', height:'clamp(240px,38vw,460px)', borderRadius:'50%', background:'radial-gradient(circle,rgba(99,102,241,0.17),transparent 70%)', filter:'blur(56px)', pointerEvents:'none', animation:'lp-beacon 7s ease-in-out infinite' }} />
+          <div style={{ position:'absolute', bottom:'5%', right:'3%', width:'clamp(190px,28vw,360px)', height:'clamp(190px,28vw,360px)', borderRadius:'50%', background:'radial-gradient(circle,rgba(139,92,246,0.13),transparent 70%)', filter:'blur(48px)', pointerEvents:'none', animation:'lp-beacon 9s ease-in-out 2s infinite' }} />
+          <div style={{ position:'absolute', inset:0, overflow:'hidden', pointerEvents:'none', opacity:0.28 }}>
+            <div style={{ position:'absolute', top:'-15%', left:'20%', width:2, height:'140%', background:'linear-gradient(to bottom,transparent,#818cf8 45%,transparent)', transform:'rotate(18deg)', filter:'blur(1px)', animation:'lp-pulse 4s ease-in-out infinite' }} />
+            <div style={{ position:'absolute', top:'25%', left:'62%', width:1, height:'80%', background:'linear-gradient(to bottom,transparent,#93c5fd 45%,transparent)', transform:'rotate(38deg)', filter:'blur(1px)', animation:'lp-pulse 5.5s ease-in-out 1s infinite' }} />
           </div>
+          <div style={{ position:'absolute', inset:0, pointerEvents:'none', backgroundImage:'radial-gradient(rgba(99,102,241,0.09) 1px,transparent 1px)', backgroundSize:'36px 36px', maskImage:'radial-gradient(ellipse 80% 60% at 50% 50%,black,transparent)', WebkitMaskImage:'radial-gradient(ellipse 80% 60% at 50% 50%,black,transparent)' }} />
 
-          {/* Stats */}
-          <div style={{ display: 'flex', gap: 'clamp(1.5rem,5vw,4rem)', marginTop: 'clamp(3.5rem,7vw,6rem)', flexWrap: 'wrap', justifyContent: 'center', padding: '2rem 2.5rem', borderRadius: 20, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(10px)', animation: 'lp-in .8s cubic-bezier(.4,0,.2,1) .44s both' }}>
-            {stats.map((s,i) => <StatBlock key={s.label} stat={s} delay={i*80} />)}
-          </div>
-        </section>
-
-        {/* ── FEATURES ───────────────────────────────────────────── */}
-        <section id="features" style={{ padding: 'clamp(5rem,10vw,8rem) clamp(1.5rem,5vw,4rem)', maxWidth: 1140, margin: '0 auto', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 220, height: 1, background: 'linear-gradient(90deg,transparent,rgba(99,102,241,0.55),transparent)' }} />
-          <div ref={featHeadRef} style={{ textAlign: 'center', marginBottom: 'clamp(3rem,6vw,5rem)', opacity: featHeadVisible ? 1 : 0, transform: featHeadVisible ? 'translateY(0)' : 'translateY(24px)', transition: 'all .6s cubic-bezier(.4,0,.2,1)' }}>
-            <p style={{ color: '#818cf8', fontWeight: 700, fontSize: '0.76rem', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '0.85rem' }}>Waxqabadka Nidaamka</p>
-            <h2 style={{ fontSize: 'clamp(2rem,4.5vw,3.1rem)', fontWeight: 900, letterSpacing: '-0.026em', lineHeight: 1.14 }}>Wax kasta oo aad u baahantahay</h2>
-            <p style={{ color: 'rgba(248,250,252,0.46)', marginTop: '0.85rem', fontSize: '1rem', maxWidth: 520, margin: '0.85rem auto 0', lineHeight: 1.72 }}>Nidaam buuxa oo ku habboon ganacsiyada yaryar iyo kuwa dhexdhexaadka ah.</p>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,310px),1fr))', gap: '1.2rem' }}>
-            {features.map((f,i) => <FeatureCard key={f.title} f={f} delay={i*65} />)}
-          </div>
-        </section>
-
-        {/* ── HOW IT WORKS ───────────────────────────────────────── */}
-        <section id="how" style={{ padding: 'clamp(5rem,10vw,8rem) clamp(1.5rem,5vw,4rem)', maxWidth: 1140, margin: '0 auto', position: 'relative' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,460px),1fr))', gap: 'clamp(3rem,6vw,5rem)', alignItems: 'center' }}>
-            <div>
-              <div ref={howHeadRef} style={{ opacity: howHeadVisible ? 1 : 0, transform: howHeadVisible ? 'translateY(0)' : 'translateY(20px)', transition: 'all .6s cubic-bezier(.4,0,.2,1)' }}>
-                <p style={{ color: '#818cf8', fontWeight: 700, fontSize: '0.76rem', letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: '0.85rem' }}>Sida Loogu Shaqeeyo</p>
-                <h2 style={{ fontSize: 'clamp(1.9rem,4vw,2.75rem)', fontWeight: 900, letterSpacing: '-0.026em', lineHeight: 1.2, marginBottom: '2.5rem' }}>
-                  Bilow si fudud,{' '}
-                  <span style={{ color: '#818cf8' }}>maaree si xirfadleh</span>
-                </h2>
+          <div style={{ position:'relative', zIndex:1, display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,390px),1fr))', gap:'clamp(2.5rem,5vw,5rem)', alignItems:'center' }}>
+            {/* Hero text */}
+            <div ref={heroTxtRef} style={{ textAlign:'center', opacity:heroTxtVisible?1:0, transform:heroTxtVisible?'translateY(0)':'translateY(20px)', transition:'all .7s cubic-bezier(.4,0,.2,1)' }}>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:'0.4rem', padding:'0.32rem 0.95rem', borderRadius:999, background:'rgba(99,102,241,0.12)', border:'1px solid rgba(99,102,241,0.3)', fontSize:'0.74rem', fontWeight:700, color:'#a5b4fc', marginBottom:'1.4rem', letterSpacing:'0.06em' }}>
+                <span style={{ width:7, height:7, borderRadius:'50%', background:'#818cf8', display:'inline-block', boxShadow:'0 0 8px #818cf8', animation:'lp-beacon 2s ease-in-out infinite' }} />
+                🚀 Nidaamka Ganacsiga Casriga ah
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-                {steps.map((s,i) => <StepCard key={s.num} step={s} delay={i*100} />)}
-              </div>
-            </div>
-            <HowVisual />
-          </div>
-        </section>
-
-        {/* ── CTA ──────────────────────────────────────────────── */}
-        <section style={{ padding: '0 clamp(1.5rem,5vw,4rem) clamp(5rem,10vw,8rem)', maxWidth: 1140, margin: '0 auto' }}>
-          <div ref={ctaRef} style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.13),rgba(99,102,241,0.09))', border: '1px solid rgba(99,102,241,0.28)', padding: 'clamp(2.5rem,5vw,4.5rem) clamp(2rem,5vw,4rem)', textAlign: 'center', backdropFilter: 'blur(20px)', opacity: ctaVisible ? 1 : 0, transform: ctaVisible ? 'translateY(0) scale(1)' : 'translateY(32px) scale(0.98)', transition: 'all .7s cubic-bezier(.4,0,.2,1)' }}>
-            <LightningLayer opacity={0.18} />
-            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 420, height: 200, background: 'radial-gradient(ellipse,rgba(99,102,241,0.16),transparent 70%)', filter: 'blur(40px)', pointerEvents: 'none' }} />
-            <div style={{ position: 'relative', zIndex: 1 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 1rem', borderRadius: 999, background: 'rgba(99,102,241,0.14)', border: '1px solid rgba(99,102,241,0.32)', fontSize: '0.77rem', fontWeight: 700, color: '#a5b4fc', marginBottom: '1.5rem', letterSpacing: '0.06em' }}>
-                🎯 Diyaar ma u tahay?
-              </div>
-              <h2 style={{ fontSize: 'clamp(1.8rem,4vw,2.8rem)', fontWeight: 900, letterSpacing: '-0.025em', lineHeight: 1.2, marginBottom: '1rem' }}>Ku biir ganacsiyada horumarsan</h2>
-              <p style={{ color: 'rgba(248,250,252,0.52)', marginBottom: '2.25rem', fontSize: '1rem', maxWidth: 480, margin: '0 auto 2.25rem', lineHeight: 1.72 }}>
-                Isticmaal Buuga Xisaabta maanta si aad xisaabaadkaaga ugu maamusho si fudud, degdeg, iyo ammaan ah.
+              <h1 style={{ fontSize:'clamp(2rem,6vw,4.4rem)', fontWeight:900, lineHeight:1.07, letterSpacing:'-0.034em', marginBottom:'1.15rem' }}>
+                Maaree Ganacsigaaga{' '}
+                <span style={{ backgroundImage:'linear-gradient(135deg,#818cf8 0%,#c084fc 50%,#818cf8 100%)', backgroundSize:'200% auto', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', animation:'lp-shimmer 4s linear infinite' }}>Si Xirfadleh</span>
+              </h1>
+              <p style={{ fontSize:'clamp(0.92rem,1.9vw,1.12rem)', color:'rgba(248,250,252,0.54)', lineHeight:1.78, maxWidth:540, margin:'0 auto 1.9rem' }}>
+                Buuga Xisaabta waa nidaam casri ah oo aad ku maamuli karto xisaabaadka ganacsiga, maqalka, daymaha, iyo lacagaha — meel kasta, mar kasta.
               </p>
-              <Link href="/login" className="lp-btn-p" style={{ padding: '1rem 2.75rem', borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 800, fontSize: '1.05rem', textDecoration: 'none', boxShadow: '0 8px 32px rgba(99,102,241,0.5)', display: 'inline-block' }}>
-                Gal Xisaabaadkaaga →
-              </Link>
+              <div style={{ display:'flex', gap:'0.8rem', justifyContent:'center', flexWrap:'wrap' }}>
+                <Link href="/login" id="hero-cta-primary" className="lp-btn-p" style={{ padding:'clamp(0.65rem,2vw,0.85rem) clamp(1.4rem,3.5vw,2.1rem)', borderRadius:11, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff', fontWeight:800, fontSize:'clamp(0.88rem,1.8vw,0.98rem)', textDecoration:'none', boxShadow:'0 6px 26px rgba(99,102,241,0.42)', display:'inline-flex', alignItems:'center', gap:'0.4rem' }}>Bilow Hadda →</Link>
+                <a href="#features" className="lp-btn-g" style={{ padding:'clamp(0.65rem,2vw,0.85rem) clamp(1.4rem,3.5vw,2.1rem)', borderRadius:11, background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.11)', color:'rgba(248,250,252,0.72)', fontWeight:700, fontSize:'clamp(0.88rem,1.8vw,0.98rem)', textDecoration:'none', display:'inline-flex', alignItems:'center', gap:'0.4rem' }}>Waxqabadka ↓</a>
+              </div>
+            </div>
+
+            {/* Hero screenshot */}
+            <div ref={heroImgRef} style={{ position:'relative', opacity:heroImgVisible?1:0, transform:heroImgVisible?'translateY(0) scale(1)':'translateY(22px) scale(0.97)', transition:'all 0.8s cubic-bezier(0.4,0,0.2,1) 0.22s' }}>
+              <div style={{ position:'absolute', inset:-22, background:'radial-gradient(ellipse at center,rgba(99,102,241,0.18),transparent 70%)', borderRadius:26, filter:'blur(26px)', pointerEvents:'none' }} />
+              <div style={{ borderRadius:13, overflow:'hidden', border:'1px solid rgba(255,255,255,0.13)', boxShadow:'0 28px 80px rgba(0,0,0,0.58), 0 0 0 1px rgba(255,255,255,0.05)', animation:'lp-float 8s ease-in-out 1s infinite' }}>
+                <div style={{ height:30, background:'rgba(15,23,42,0.98)', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', padding:'0 10px', gap:5 }}>
+                  {dots.map(c => <div key={c} style={{ width:9, height:9, borderRadius:'50%', background:c, opacity:0.8 }} />)}
+                  <div style={{ flex:1, marginLeft:8, height:17, borderRadius:4, background:'rgba(255,255,255,0.06)', display:'flex', alignItems:'center', paddingLeft:7 }}><span style={{ fontSize:'0.57rem', color:'rgba(255,255,255,0.28)' }}>buugaxisaabta.online/customers</span></div>
+                </div>
+                <Image src="/screenshots/customers.png" alt="Buuga Xisaabta — Customers list with 20 active customers and balances" width={900} height={540} priority style={{ width:'100%', height:'auto', display:'block' }} />
+              </div>
+              <div style={{ position:'absolute', bottom:-14, left:18, background:'rgba(9,14,28,0.93)', border:'1px solid rgba(99,102,241,0.35)', borderRadius:11, padding:'0.48rem 0.95rem', backdropFilter:'blur(16px)', display:'flex', alignItems:'center', gap:'0.48rem', boxShadow:'0 8px 24px rgba(0,0,0,0.42)' }}>
+                <span style={{ fontSize:'1rem' }}>👥</span>
+                <div><div style={{ fontSize:'0.68rem', fontWeight:800, color:'#818cf8' }}>ACTIVE: 20</div><div style={{ fontSize:'0.58rem', color:'rgba(248,250,252,0.38)', fontWeight:600 }}>Macaamiisha</div></div>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* ── FOOTER ──────────────────────────────────────────────── */}
-        <footer style={{ borderTop: '1px solid rgba(255,255,255,0.07)', padding: 'clamp(1.5rem,3vw,2.25rem) clamp(1.5rem,5vw,4rem)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', maxWidth: 1140, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <img src="/icons/icon-192.png" alt="" style={{ width: 24, height: 24, borderRadius: 7, objectFit: 'cover', opacity: 0.62 }} />
-            <span style={{ color: 'rgba(248,250,252,0.32)', fontSize: '0.82rem', fontWeight: 600 }}>Buuga Xisaabta</span>
+        {/* TRUST INDICATORS */}
+        <section style={{ padding:'0 clamp(1rem,5vw,3.5rem) clamp(2rem,4vw,3.5rem)', maxWidth:1200, margin:'0 auto' }}>
+          <div ref={trustRef} style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))', gap:'0.85rem', padding:'clamp(1.1rem,2.5vw,1.6rem) clamp(1.25rem,3.5vw,2.25rem)', borderRadius:16, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', backdropFilter:'blur(12px)', opacity:trustVisible?1:0, transform:trustVisible?'translateY(0)':'translateY(18px)', transition:'all .62s cubic-bezier(.4,0,.2,1)' }}>
+            {trustItems.map((item,i) => (
+              <div key={item.label} style={{ display:'flex', alignItems:'center', gap:'0.65rem', padding:'0.4rem', opacity:trustVisible?1:0, transition:'opacity .5s ease ' + (i*100+200) + 'ms' }}>
+                <div style={{ width:38, height:38, borderRadius:9, flexShrink:0, background:'rgba(99,102,241,0.11)', border:'1px solid rgba(99,102,241,0.22)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem' }}>{item.icon}</div>
+                <div><div style={{ fontWeight:800, fontSize:'0.86rem', color:'#f1f5f9' }}>{item.label}</div><div style={{ fontSize:'0.7rem', color:'rgba(248,250,252,0.36)', fontWeight:600 }}>{item.sub}</div></div>
+              </div>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <a href="#features" className="lp-fl" style={{ color: 'rgba(248,250,252,0.26)', fontSize: '0.8rem', textDecoration: 'none' }}>Waxqabadka</a>
-            <a href="#how" className="lp-fl" style={{ color: 'rgba(248,250,252,0.26)', fontSize: '0.8rem', textDecoration: 'none' }}>Sida Loogu Shaqeeyo</a>
-            <Link href="/login" className="lp-fl" style={{ color: 'rgba(248,250,252,0.26)', fontSize: '0.8rem', textDecoration: 'none' }}>Gal</Link>
+        </section>
+
+        {/* FEATURES */}
+        <section id="features" style={{ padding:'clamp(3.5rem,7vw,6.5rem) clamp(1rem,5vw,3.5rem)', maxWidth:1200, margin:'0 auto', position:'relative' }}>
+          <div style={{ position:'absolute', top:0, left:'50%', transform:'translateX(-50%)', width:180, height:1, background:'linear-gradient(90deg,transparent,rgba(99,102,241,0.5),transparent)' }} />
+          <div ref={featHeadRef} style={{ textAlign:'center', marginBottom:'clamp(2.2rem,4.5vw,4rem)', opacity:featHeadVisible?1:0, transform:featHeadVisible?'translateY(0)':'translateY(18px)', transition:'all .6s cubic-bezier(.4,0,.2,1)' }}>
+            <p style={{ color:'#818cf8', fontWeight:700, fontSize:'0.72rem', letterSpacing:'0.16em', textTransform:'uppercase', marginBottom:'0.65rem' }}>Waxqabadka Nidaamka</p>
+            <h2 style={{ fontSize:'clamp(1.7rem,4vw,2.9rem)', fontWeight:900, letterSpacing:'-0.024em', lineHeight:1.15 }}>Wax kasta oo aad u baahantahay</h2>
+            <p style={{ color:'rgba(248,250,252,0.44)', marginTop:'0.7rem', fontSize:'clamp(0.88rem,1.8vw,0.98rem)', maxWidth:500, margin:'0.7rem auto 0', lineHeight:1.72 }}>Nidaam buuxa oo ku habboon ganacsiyada yaryar iyo kuwa dhexdhexaadka ah.</p>
           </div>
-          <span style={{ color: 'rgba(248,250,252,0.22)', fontSize: '0.78rem' }}>© {new Date().getFullYear()} Buuga Xisaabta · buugaxisaabta.online</span>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,270px),1fr))', gap:'clamp(0.7rem,1.8vw,1rem)' }}>
+            {features.map((f,i) => <FeatureCard key={f.title} f={f} delay={i*55} />)}
+          </div>
+        </section>
+
+        {/* SHOWCASE */}
+        <section id="showcase" style={{ padding:'clamp(0.5rem,2vw,1.5rem) clamp(1rem,5vw,3.5rem)', maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:'clamp(4rem,8vw,7rem)' }}>
+            {showcaseSections.map((s,i) => <ShowcaseSection key={s.title} section={s} index={i} />)}
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section id="cta" style={{ padding:'clamp(4rem,7.5vw,6.5rem) clamp(1rem,5vw,3.5rem)', maxWidth:1200, margin:'0 auto' }}>
+          <div ref={ctaRef} style={{ position:'relative', borderRadius:22, overflow:'hidden', background:'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1),rgba(99,102,241,0.07))', border:'1px solid rgba(99,102,241,0.24)', padding:'clamp(2.5rem,5.5vw,4.5rem) clamp(1.5rem,5vw,4rem)', textAlign:'center', backdropFilter:'blur(20px)', opacity:ctaVisible?1:0, transform:ctaVisible?'translateY(0) scale(1)':'translateY(26px) scale(0.98)', transition:'all .68s cubic-bezier(.4,0,.2,1)' }}>
+            <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:380, height:170, background:'radial-gradient(ellipse,rgba(99,102,241,0.13),transparent 70%)', filter:'blur(36px)', pointerEvents:'none' }} />
+            <div style={{ position:'relative', zIndex:1 }}>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:'0.4rem', padding:'0.28rem 0.85rem', borderRadius:999, background:'rgba(99,102,241,0.13)', border:'1px solid rgba(99,102,241,0.28)', fontSize:'0.72rem', fontWeight:700, color:'#a5b4fc', marginBottom:'1.2rem', letterSpacing:'0.06em' }}>🎯 Diyaar ma u tahay?</div>
+              <h2 style={{ fontSize:'clamp(1.65rem,4vw,2.7rem)', fontWeight:900, letterSpacing:'-0.023em', lineHeight:1.18, marginBottom:'0.85rem' }}>Ku biir ganacsiyada horumarsan</h2>
+              <p style={{ color:'rgba(248,250,252,0.48)', marginBottom:'1.9rem', fontSize:'clamp(0.88rem,1.8vw,0.98rem)', maxWidth:460, margin:'0 auto 1.9rem', lineHeight:1.74 }}>Ku bilow ganacsigaaga isticmaalaya Buuga Xisaabta si ay xisaabaadkaagu ugu maamulaan.</p>
+              <Link href="/login" id="cta-final-btn" className="lp-btn-p" style={{ padding:'clamp(0.75rem,2vw,0.95rem) clamp(1.85rem,4vw,2.6rem)', borderRadius:12, background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff', fontWeight:800, fontSize:'clamp(0.92rem,1.9vw,1.02rem)', textDecoration:'none', boxShadow:'0 8px 30px rgba(99,102,241,0.48)', display:'inline-block' }}>Gal Xisaabaadkaaga →</Link>
+            </div>
+          </div>
+        </section>
+
+        {/* FOOTER */}
+        <footer style={{ borderTop:'1px solid rgba(255,255,255,0.07)', padding:'clamp(1.5rem,3vw,2.25rem) clamp(1rem,5vw,3.5rem)', maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,190px),1fr))', gap:'clamp(1.25rem,2.5vw,2rem)', alignItems:'start' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.65rem' }}>
+                <img src="/icons/icon-192.png" alt="" style={{ width:24, height:24, borderRadius:6, objectFit:'cover', opacity:0.68 }} />
+                <span style={{ fontWeight:900, fontSize:'0.9rem', color:'rgba(248,250,252,0.68)' }}>Buuga Xisaabta</span>
+              </div>
+              <p style={{ fontSize:'0.78rem', color:'rgba(248,250,252,0.28)', lineHeight:1.65, maxWidth:210 }}>Nidaam casri ah oo lagu maamulo xisaabaadka ganacsiga.</p>
+            </div>
+            <div>
+              <p style={{ fontSize:'0.68rem', fontWeight:800, color:'rgba(248,250,252,0.32)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:'0.7rem' }}>Bogga</p>
+              {[{ label:'Guriga', href:'#top' },{ label:'Waxqabadka', href:'#features' },{ label:'Sida Loogu Shaqeeyo', href:'#showcase' },{ label:'Gal', href:'/login' }].map(l => <a key={l.label} href={l.href} className="lp-fl" style={{ display:'block', marginBottom:'0.4rem', fontSize:'0.8rem', color:'rgba(248,250,252,0.26)', textDecoration:'none', fontWeight:600 }}>{l.label}</a>)}
+            </div>
+            <div>
+              <p style={{ fontSize:'0.68rem', fontWeight:800, color:'rgba(248,250,252,0.32)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:'0.7rem' }}>Bilow</p>
+              <p style={{ fontSize:'0.8rem', color:'rgba(248,250,252,0.28)', lineHeight:1.65, marginBottom:'0.8rem' }}>Haysataa akoon? Gal oo bilow.</p>
+              <Link href="/login" style={{ display:'inline-flex', alignItems:'center', gap:'0.3rem', padding:'0.45rem 1rem', borderRadius:7, background:'rgba(99,102,241,0.13)', border:'1px solid rgba(99,102,241,0.26)', color:'#818cf8', fontWeight:700, fontSize:'0.8rem', textDecoration:'none', transition:'all .2s' }}>Gal →</Link>
+            </div>
+          </div>
+          <div style={{ marginTop:'clamp(1.25rem,2.5vw,2rem)', paddingTop:'clamp(0.85rem,1.8vw,1.35rem)', borderTop:'1px solid rgba(255,255,255,0.06)', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'0.5rem' }}>
+            <span style={{ fontSize:'0.73rem', color:'rgba(248,250,252,0.18)' }}>© {new Date().getFullYear()} Buuga Xisaabta · buugaxisaabta.online</span>
+            <span style={{ fontSize:'0.68rem', color:'rgba(248,250,252,0.12)' }}>Precision Ledger System</span>
+          </div>
         </footer>
+
       </div>
     </>
   );
