@@ -1389,7 +1389,7 @@ export default function LedgerPage() {
                                                             return matchesSearch && !c.is_target_days_done && (c.unprocessed_books_count || c.total_books_count);
                                                         }
                                                         if (showPriorityOnly) {
-                                                            return matchesSearch && (priorityIds.has(c.id) || Boolean(noteStatuses[c.id]?.priority_enabled));
+                                                            return matchesSearch && priorityIds.has(c.id);
                                                         }
                                                         return matchesSearch;
                                                     });
@@ -1404,7 +1404,7 @@ export default function LedgerPage() {
                                                         const isCompleted = c.id === lastSavedCustomerId || c.is_target_days_done;
                                                         const isWarning = !isCompleted && (c.total_books_count > 0 || c.unprocessed_books_count > 0);
                                                         const cStatus = noteStatuses[c.id];
-                                                        const hasPriority = Boolean(cStatus?.priority_enabled) || priorityIds.has(c.id);
+                                                        const isSaxSaar = Boolean(cStatus?.priority_enabled);
                                                         const isBusy = Boolean(cStatus?.busy_enabled);
                                                         const hasNote = Boolean(cStatus?.note && cStatus.note.trim() !== '');
 
@@ -1428,13 +1428,13 @@ export default function LedgerPage() {
                                                                         <span className="mr-1.5 shrink-0 text-amber-500 text-xs">⚠️</span>
                                                                     ) : null}
 
-                                                                    {/* Permanent Priority Indicator (Green Check ✓) */}
-                                                                    {hasPriority && (
+                                                                    {/* Sax Saar Indicator: 🟢 ✓ 📞 (Strictly separate from Priority blue checkmark) */}
+                                                                    {isSaxSaar && (
                                                                         <span 
-                                                                            title="Priority Customer"
-                                                                            className="inline-flex items-center justify-center w-4 h-4 mr-1.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black shrink-0 border border-emerald-500/30"
+                                                                            title="✓ 📞 Sax Saar"
+                                                                            className="inline-flex items-center gap-0.5 mr-1.5 text-xs font-black shrink-0 select-none"
                                                                         >
-                                                                            ✓
+                                                                            🟢 ✓ 📞
                                                                         </span>
                                                                     )}
 
@@ -1469,11 +1469,11 @@ export default function LedgerPage() {
                                                                 <button
                                                                     type="button"
                                                                     aria-label={`Notes and status for ${c.name}`}
-                                                                    title="Notes & Priority"
+                                                                    title="Notes & Sax Saar"
                                                                     className={cn(
                                                                         "h-8 w-8 flex items-center justify-center rounded-md transition-all shrink-0",
                                                                         "md:opacity-0 md:group-hover:opacity-100",
-                                                                        (hasPriority || isBusy || hasNote) && "md:opacity-100",
+                                                                        (isSaxSaar || isBusy || hasNote) && "md:opacity-100",
                                                                         "opacity-75 hover:opacity-100 hover:bg-background/80 active:scale-95 text-muted-foreground hover:text-foreground"
                                                                     )}
                                                                     onClick={(e) => {
@@ -1499,7 +1499,7 @@ export default function LedgerPage() {
                                                         );
                                                     }
 
-                                                    const isPriorityCustomer = (c: any) => priorityIds.has(c.id) || Boolean(noteStatuses[c.id]?.priority_enabled);
+                                                    const isPriorityCustomer = (c: any) => priorityIds.has(c.id);
                                                     const starred = filtered.filter(isPriorityCustomer);
                                                     const unstarred = filtered.filter((c: any) => !isPriorityCustomer(c));
 
@@ -2274,13 +2274,6 @@ export default function LedgerPage() {
                             return { ...current, statuses: updatedStatuses };
                         },
                         false // false = do NOT refetch from server!
-                    );
-                }}
-                onClearAllSuccess={() => {
-                    // SAFEGUARD: Optimistic local clear of note statuses only
-                    mutateNoteStatus(
-                        { statuses: {} },
-                        false
                     );
                 }}
             />

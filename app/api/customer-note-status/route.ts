@@ -164,13 +164,11 @@ export const POST = trackApiRoute('/api/customer-note-status', async (request: R
 
 /**
  * DELETE /api/customer-note-status
- * Supports:
- *   1. Single customer clear: ?customerId=...
- *   2. Bulk clear all: ?all=true&confirm=CONFIRM_CLEAR_ALL
+ * Deletes a single customer's note and status: ?customerId=...
  * 
  * SAFEGUARDS:
- * - Requires explicit confirmation token for bulk clear.
  * - Operates EXCLUSIVELY on "CustomerNoteStatus" table.
+ * - Clear All feature is completely removed.
  * - Never touches Customer, Ledger, DailyBook, or accounting data.
  */
 export const DELETE = trackApiRoute('/api/customer-note-status', async (request: Request) => {
@@ -184,49 +182,18 @@ export const DELETE = trackApiRoute('/api/customer-note-status', async (request:
     try {
         const url = new URL(request.url);
         const customerId = url.searchParams.get('customerId');
-        const clearAll = url.searchParams.get('all') === 'true';
-        const confirmToken = url.searchParams.get('confirm');
 
-        // SAFEGUARD: Bulk clear all notes STRICTLY requires SUPER_ADMIN role
-        if (clearAll) {
-            if (session.role !== 'SUPER_ADMIN') {
-                return NextResponse.json(
-                    { error: 'Forbidden: Only SUPER_ADMIN can execute Clear All' },
-                    { status: 403 }
-                );
-            }
-
-            if (confirmToken !== 'CONFIRM_CLEAR_ALL') {
-                return NextResponse.json(
-                    { error: 'Explicit confirmation required. Provide confirm=CONFIRM_CLEAR_ALL to proceed.' },
-                    { status: 400 }
-                );
-            }
-
-            // Strictly deletes ONLY from "CustomerNoteStatus"
-            const result = await pool.query(`DELETE FROM "CustomerNoteStatus"`);
-            const deletedCount = result.rowCount || 0;
-
-            // Audit log the bulk clearing
-            await logAuditDirect({
-                username: session.username || 'ADMIN',
-                role: session.role || 'ADMIN',
-                action: 'CLEAR_ALL_CUSTOMER_NOTES',
-                details: `Admin ${session.username} cleared all customer notes/statuses (${deletedCount} records removed from CustomerNoteStatus). Financial data unaffected.`
-            }).catch(console.error);
-
-            return NextResponse.json({
-                success: true,
-                clearedAll: true,
-                count: deletedCount,
-                message: `Successfully cleared ${deletedCount} customer note/status records.`,
-            });
+        if (url.searchParams.get('all') === 'true') {
+            return NextResponse.json(
+                { error: 'Clear All feature has been removed' },
+                { status: 400 }
+            );
         }
 
         // Single customer clear
         if (!customerId) {
             return NextResponse.json(
-                { error: 'Missing customerId or all=true parameter' },
+                { error: 'Missing customerId parameter' },
                 { status: 400 }
             );
         }
