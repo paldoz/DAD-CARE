@@ -97,8 +97,19 @@ export function CustomerNoteModal({
         }
     };
 
+    // Enabled whenever a note is entered or anything (Sax Saar / Busy) is selected
+    const hasEnteredNote = Boolean(note.trim() || (currentStatus?.note && currentStatus.note.trim()));
+    const hasSelectedAnything = Boolean(priorityEnabled || busyEnabled || currentStatus?.priority_enabled || currentStatus?.busy_enabled);
+    const canClear = hasEnteredNote || hasSelectedAnything;
+
     // Clear Note: Clears ONLY the selected customer's note, preserving Sax Saar and Busy
     const handleClearNote = async () => {
+        if (!hasEnteredNote) {
+            setNote('');
+            toast.info('Wax qoraal ah kuma jiraan oo la tirtiro');
+            return;
+        }
+
         setClearingNote(true);
         try {
             const token = typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
@@ -279,8 +290,13 @@ export function CustomerNoteModal({
                         variant="outline"
                         size="sm"
                         onClick={handleClearNote}
-                        disabled={saving || clearingNote || !note.trim()}
-                        className="h-8 px-2.5 text-xs font-bold text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30 gap-1.5 rounded-xl shadow-xs transition-all active:scale-95"
+                        disabled={!canClear || saving || clearingNote}
+                        className={cn(
+                            "h-8 px-2.5 text-xs font-bold gap-1.5 rounded-xl shadow-xs transition-all active:scale-95",
+                            canClear 
+                                ? "text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30 cursor-pointer" 
+                                : "text-muted-foreground/40 border-border/30 opacity-40 cursor-not-allowed pointer-events-none"
+                        )}
                     >
                         {clearingNote ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
