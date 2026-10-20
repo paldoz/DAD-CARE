@@ -183,6 +183,7 @@ export const DELETE = trackApiRoute('/api/customer-note-status', async (request:
         const url = new URL(request.url);
         const customerId = url.searchParams.get('customerId');
 
+        // Clear All has been completely removed
         if (url.searchParams.get('all') === 'true') {
             return NextResponse.json(
                 { error: 'Clear All feature has been removed' },

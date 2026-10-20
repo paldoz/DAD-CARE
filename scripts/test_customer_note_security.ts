@@ -87,7 +87,7 @@ async function runSecurityTests() {
         const dbCheck = await pool.query('SELECT * FROM "CustomerNoteStatus" WHERE customer_id = $1', [customerId]);
         console.log(`   Verified DB record: note="${dbCheck.rows[0].note}", priority=${dbCheck.rows[0].priority_enabled}`);
 
-        // --- TEST 4: Clear All completely removed (Rejected for all roles) ---
+        // --- TEST 4: Clear All completely removed (Rejected with 400) ---
         console.log('\nTEST 4: Clear All completely removed (all=true returns 400)');
         const clearAllReq = new Request('http://localhost:3000/api/customer-note-status?all=true', {
             method: 'DELETE',

@@ -47,7 +47,7 @@ export function CustomerNoteModal({
     const [busyEnabled, setBusyEnabled] = useState(false);
     const [note, setNote] = useState('');
     const [saving, setSaving] = useState(false);
-    const [clearingNote, setClearingNote] = useState(false);
+    const [clearingCustomer, setClearingCustomer] = useState(false);
 
     // Sync form state whenever modal opens or customer changes
     useEffect(() => {
@@ -97,41 +97,32 @@ export function CustomerNoteModal({
         }
     };
 
-    const handleClearNote = async () => {
-        // Only clear the note, preserving priorityEnabled (Sax Saar) and busyEnabled (Busy)
-        if (!note && !currentStatus?.note) {
-            setNote('');
-            return;
-        }
-
-        setClearingNote(true);
+    // Clear This Customer: Clears notes and status for the currently selected customer only
+    const handleClearThisCustomer = async () => {
+        setClearingCustomer(true);
         try {
             const token = typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
-            const res = await fetch('/api/customer-note-status', {
-                method: 'POST',
+            const res = await fetch(`/api/customer-note-status?customerId=${encodeURIComponent(customer.id)}`, {
+                method: 'DELETE',
                 headers: {
-                    'Content-Type': 'application/json',
                     ...(token ? { 'x-session-token': token } : {}),
                 },
-                body: JSON.stringify({
-                    customerId: customer.id,
-                    priorityEnabled,
-                    busyEnabled,
-                    note: '', // Clear ONLY the note
-                }),
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to clear note');
+            if (!res.ok) throw new Error(data.error || 'Failed to clear customer notes');
 
+            toast.success(`Qoraalka & heerarka ${customer.name} waa la nadiifiyay`);
+            setPriorityEnabled(false);
+            setBusyEnabled(false);
             setNote('');
-            toast.success(`Qoraalka ${customer.name} waa la tirtiray`);
-            onSaveSuccess(data.status || null);
+            onSaveSuccess(null);
+            onClose();
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Khalad ayaa dhacay markii qoraalka la tirtirayay';
+            const message = err instanceof Error ? err.message : 'Khalad ayaa dhacay markii la nadiifinayay macmiilkan';
             toast.error(message);
         } finally {
-            setClearingNote(false);
+            setClearingCustomer(false);
         }
     };
 
@@ -276,17 +267,21 @@ export function CustomerNoteModal({
                 </div>
 
                 <DialogFooter className="flex flex-row items-center justify-between gap-2 pt-2.5 border-t border-border/40 sm:justify-between">
-                    {/* Left: Clear Note button */}
+                    {/* Left: Clear This Customer button (clears only the current customer) */}
                     <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={handleClearNote}
-                        disabled={clearingNote || saving || (!note && !currentStatus?.note)}
-                        className="h-8 px-2 text-xs font-bold text-red-500 hover:text-red-600 hover:bg-red-500/10 gap-1 rounded-xl"
+                        onClick={handleClearThisCustomer}
+                        disabled={saving || clearingCustomer}
+                        className="h-8 px-2.5 text-xs font-bold text-red-500 hover:text-red-600 hover:bg-red-500/10 gap-1.5 rounded-xl border border-red-500/20"
                     >
-                        {clearingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                        Clear Note
+                        {clearingCustomer ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                        <span>Clear This Customer</span>
                     </Button>
 
                     {/* Right: Cancel & Save buttons */}
@@ -296,7 +291,7 @@ export function CustomerNoteModal({
                             variant="outline"
                             size="sm"
                             onClick={onClose}
-                            disabled={saving || clearingNote}
+                            disabled={saving || clearingCustomer}
                             className="h-8 rounded-xl text-xs font-bold px-3"
                         >
                             Cancel
@@ -305,7 +300,7 @@ export function CustomerNoteModal({
                             type="button"
                             size="sm"
                             onClick={handleSave}
-                            disabled={saving || clearingNote}
+                            disabled={saving || clearingCustomer}
                             className="h-8 rounded-xl text-xs font-black px-4 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 shadow-md shadow-primary/20"
                         >
                             {saving ? (
