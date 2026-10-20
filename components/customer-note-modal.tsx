@@ -21,6 +21,7 @@ import {
     Save, 
     ShieldAlert,
     X,
+    ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CustomerNoteStatusRecord } from '@/app/api/customer-note-status/route';
@@ -55,10 +56,12 @@ export function CustomerNoteModal({
     const [clearingCustomer, setClearingCustomer] = useState(false);
     const [clearingAll, setClearingAll] = useState(false);
     const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
+    const [showClearMenu, setShowClearMenu] = useState(false);
 
     // Sync form state whenever modal opens or customer changes
     useEffect(() => {
         if (isOpen && customer) {
+            setShowClearMenu(false);
             const hasPriority = Boolean(currentStatus?.priority_enabled);
             const hasBusy = Boolean(currentStatus?.busy_enabled);
             
@@ -285,7 +288,7 @@ export function CustomerNoteModal({
                             />
                         </div>
 
-                        {/* 🕒 Mashquul Toggle Card (Renamed from Busy) */}
+                        {/* 🕒 Mashquul Toggle Card (Red Theme) */}
                         <div 
                             onClick={handleToggleMashquul}
                             className={cn(
@@ -294,14 +297,14 @@ export function CustomerNoteModal({
                                     ? "opacity-35 cursor-not-allowed bg-muted/15 border-border/20" 
                                     : "cursor-pointer",
                                 busyEnabled 
-                                    ? "bg-amber-500/10 border-amber-500/40 text-amber-950 dark:text-amber-100 shadow-[0_0_10px_rgba(245,158,11,0.12)]" 
+                                    ? "bg-red-500/10 border-red-500/40 text-red-950 dark:text-red-100 shadow-[0_0_10px_rgba(239,68,68,0.15)]" 
                                     : (!priorityEnabled && "bg-muted/30 border-border/40 hover:bg-muted/50")
                             )}
                         >
                             <div className="flex items-center gap-2.5">
                                 <div className={cn(
                                     "w-7 h-7 rounded-full flex items-center justify-center font-black transition-colors",
-                                    busyEnabled ? "bg-amber-500 text-white shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-muted text-muted-foreground"
+                                    busyEnabled ? "bg-red-500 text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]" : "bg-muted text-muted-foreground"
                                 )}>
                                     <Clock className="w-3.5 h-3.5" />
                                 </div>
@@ -309,7 +312,7 @@ export function CustomerNoteModal({
                                     <div className="text-xs font-bold flex items-center gap-1.5">
                                         <span>🕒 Mashquul</span>
                                         {busyEnabled && (
-                                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 font-black">
+                                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-600 dark:text-red-400 font-black">
                                                 Active
                                             </span>
                                         )}
@@ -328,7 +331,7 @@ export function CustomerNoteModal({
                                 checked={busyEnabled} 
                                 disabled={priorityEnabled}
                                 onCheckedChange={handleToggleMashquul}
-                                className="data-[state=checked]:bg-amber-500"
+                                className="data-[state=checked]:bg-red-500"
                                 onClick={(e) => e.stopPropagation()}
                             />
                         </div>
@@ -376,7 +379,7 @@ export function CustomerNoteModal({
                                         type="button"
                                         onClick={() => setNote('')}
                                         title="Clear text note"
-                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground p-0.5 rounded-full"
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground p-0.5 rounded-full cursor-pointer"
                                     >
                                         <X className="w-3.5 h-3.5" />
                                     </button>
@@ -405,28 +408,76 @@ export function CustomerNoteModal({
                     </div>
 
                     <DialogFooter className="flex flex-row items-center justify-between gap-2 pt-2.5 border-t border-border/40 sm:justify-between">
-                        {/* Left: Clear This Customer */}
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleClearCustomer}
-                            disabled={!hasCustomerData || saving || clearingCustomer || clearingAll}
-                            className={cn(
-                                "h-8 px-2.5 text-xs font-bold gap-1.5 rounded-xl shadow-xs transition-all active:scale-95",
-                                hasCustomerData 
-                                    ? "text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30 cursor-pointer" 
-                                    : "text-muted-foreground/40 border-border/30 opacity-40 cursor-not-allowed pointer-events-none"
+                        {/* Left: Clear button with tiny two options */}
+                        <div className="relative">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowClearMenu(!showClearMenu)}
+                                disabled={saving || clearingCustomer || clearingAll}
+                                className={cn(
+                                    "h-8 px-2.5 text-xs font-bold gap-1 rounded-xl shadow-xs transition-all active:scale-95 border-red-500/30 text-red-500 hover:text-red-600 hover:bg-red-500/10 cursor-pointer touch-manipulation",
+                                    showClearMenu && "bg-red-500/15 border-red-500/50"
+                                )}
+                            >
+                                {clearingCustomer || clearingAll ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                                <span>Clear</span>
+                                <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", showClearMenu && "rotate-180")} />
+                            </Button>
+
+                            {/* Tiny Two Options Menu */}
+                            {showClearMenu && (
+                                <>
+                                    {/* Backdrop for closing menu on outside click or touch */}
+                                    <div 
+                                        className="fixed inset-0 z-40 touch-manipulation" 
+                                        onClick={() => setShowClearMenu(false)}
+                                        onTouchStart={() => setShowClearMenu(false)}
+                                    />
+                                    <div className="absolute bottom-full left-0 mb-1.5 z-50 min-w-[180px] p-1.5 bg-popover/95 backdrop-blur-md border border-border/70 shadow-2xl rounded-xl space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                        {/* Option 1: Clear this customer */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowClearMenu(false);
+                                                handleClearCustomer();
+                                            }}
+                                            disabled={!hasCustomerData || clearingCustomer}
+                                            className={cn(
+                                                "w-full flex items-center gap-2 px-2.5 py-2 text-xs font-bold rounded-lg text-left transition-colors touch-manipulation",
+                                                hasCustomerData 
+                                                    ? "hover:bg-red-500/10 active:bg-red-500/20 text-red-500 hover:text-red-600 cursor-pointer" 
+                                                    : "opacity-40 text-muted-foreground cursor-not-allowed pointer-events-none"
+                                            )}
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                                            <span>Clear this customer</span>
+                                        </button>
+
+                                        {/* Option 2: Clear all */}
+                                        {isSuperAdmin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowClearMenu(false);
+                                                    setShowClearAllConfirm(true);
+                                                }}
+                                                disabled={clearingAll}
+                                                className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-bold rounded-lg text-left hover:bg-red-500/10 active:bg-red-500/20 text-red-600 dark:text-red-400 hover:text-red-700 transition-colors cursor-pointer border-t border-border/30 pt-2 touch-manipulation"
+                                            >
+                                                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                                                <span>Clear all</span>
+                                            </button>
+                                        )}
+                                    </div>
+                                </>
                             )}
-                            title="Tirtir Sax Saar, Mashquul, iyo Qoraalka macmiilkan"
-                        >
-                            {clearingCustomer ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                            <span>Clear Customer</span>
-                        </Button>
+                        </div>
 
                         {/* Right: Cancel & Save */}
                         <div className="flex items-center gap-2">
@@ -461,21 +512,6 @@ export function CustomerNoteModal({
                             </Button>
                         </div>
                     </DialogFooter>
-
-                    {/* Admin Clear All Link */}
-                    {isSuperAdmin && (
-                        <div className="pt-2 text-center border-t border-border/20">
-                            <button
-                                type="button"
-                                onClick={() => setShowClearAllConfirm(true)}
-                                disabled={saving || clearingCustomer || clearingAll}
-                                className="text-[10px] font-semibold text-red-500/70 hover:text-red-600 hover:underline transition-colors inline-flex items-center gap-1 cursor-pointer"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Nadiifi Dhammaan (Clear All)</span>
-                            </button>
-                        </div>
-                    )}
                 </DialogContent>
             </Dialog>
 
