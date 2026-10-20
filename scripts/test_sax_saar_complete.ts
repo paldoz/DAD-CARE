@@ -126,17 +126,26 @@ async function runSaxSaarTests() {
         console.log(`   Customer A row count after disable: ${dbDisabled.rows.length} (Cleanly deleted from DB)`);
         if (dbDisabled.rows.length !== 0) throw new Error('Disabled customer was not cleaned from DB');
 
-        // 8. Confirm Clear All has been completely removed
-        console.log('\nTEST 12: Confirm Clear All is completely removed');
-        const clearAllAttempt = new Request('http://localhost:3000/api/customer-note-status?all=true', {
+        // 8. Confirm Clear All requires explicit confirmation token and works safely
+        console.log('\nTEST 12: Clear All Behavior (Requires confirmation token, clears only CustomerNoteStatus)');
+        const clearAllAttemptWithoutToken = new Request('http://localhost:3000/api/customer-note-status?all=true', {
             method: 'DELETE',
             headers: { 'x-session-token': superAdminToken },
         });
-        const clearAllRes = await DELETE(clearAllAttempt, {});
-        const clearAllData = await clearAllRes.json();
-        console.log(`   Attempting DELETE ?all=true -> Status: ${clearAllRes.status}, Error: "${clearAllData.error}"`);
-        if (clearAllRes.status !== 400 || !clearAllData.error.includes('Clear All feature has been removed')) {
-            throw new Error('Clear All route was not properly rejected!');
+        const clearAllRes1 = await DELETE(clearAllAttemptWithoutToken, {});
+        console.log(`   Attempting DELETE ?all=true without token -> Status: ${clearAllRes1.status} (Expected: 400)`);
+        if (clearAllRes1.status !== 400) throw new Error('Clear All without token should return 400');
+
+        // Test with confirm=CONFIRM_CLEAR_ALL
+        const clearAllSuccessReq = new Request('http://localhost:3000/api/customer-note-status?all=true&confirm=CONFIRM_CLEAR_ALL', {
+            method: 'DELETE',
+            headers: { 'x-session-token': superAdminToken },
+        });
+        const clearAllRes2 = await DELETE(clearAllSuccessReq, {});
+        const clearAllData2 = await clearAllRes2.json();
+        console.log(`   Attempting DELETE ?all=true&confirm=CONFIRM_CLEAR_ALL -> Status: ${clearAllRes2.status}, ClearedAll: ${clearAllData2.clearedAll}`);
+        if (clearAllRes2.status !== 200 || !clearAllData2.clearedAll) {
+            throw new Error('Clear All with confirmation token failed!');
         }
 
         // 9. Confirm Priority Blue Checkmark & assigned_customer_ids are 100% UNTOUCHED

@@ -87,25 +87,35 @@ async function runSecurityTests() {
         const dbCheck = await pool.query('SELECT * FROM "CustomerNoteStatus" WHERE customer_id = $1', [customerId]);
         console.log(`   Verified DB record: note="${dbCheck.rows[0].note}", priority=${dbCheck.rows[0].priority_enabled}`);
 
-        // --- TEST 4: Clear All completely removed (Rejected with 400) ---
-        console.log('\nTEST 4: Clear All completely removed (all=true returns 400)');
+        // --- TEST 4: Clear All Missing Confirmation Token (returns 400) ---
+        console.log('\nTEST 4: Clear All Missing Confirmation Token (returns 400)');
         const clearAllReq = new Request('http://localhost:3000/api/customer-note-status?all=true', {
             method: 'DELETE',
             headers: { 'x-session-token': superAdminToken }
         });
         const res4Clear = await DELETE(clearAllReq, {});
-        console.log(`   Clear All attempt -> Status: ${res4Clear.status} (Expected: 400)`);
-        if (res4Clear.status !== 400) throw new Error('Clear All should be rejected with 400!');
+        console.log(`   Clear All without token -> Status: ${res4Clear.status} (Expected: 400)`);
+        if (res4Clear.status !== 400) throw new Error('Clear All without token should return 400!');
 
-        // --- TEST 5: Authorized Clear Single Customer (Role: ADMIN) ---
-        console.log('\nTEST 5: Authorized Clear Single Customer (Role: ADMIN)');
+        // --- TEST 5: Clear All with Confirmation Token (Role: SUPER_ADMIN) ---
+        console.log('\nTEST 5: Clear All with Confirmation Token (Role: SUPER_ADMIN)');
+        const clearAllSuccess = new Request('http://localhost:3000/api/customer-note-status?all=true&confirm=CONFIRM_CLEAR_ALL', {
+            method: 'DELETE',
+            headers: { 'x-session-token': superAdminToken }
+        });
+        const res5Clear = await DELETE(clearAllSuccess, {});
+        console.log(`   Clear All with token -> Status: ${res5Clear.status} (Expected: 200)`);
+        if (res5Clear.status !== 200) throw new Error('Clear All with token failed!');
+
+        // --- TEST 6: Authorized Clear Single Customer (Role: ADMIN) ---
+        console.log('\nTEST 6: Authorized Clear Single Customer (Role: ADMIN)');
         const adminDelSingle = new Request(`http://localhost:3000/api/customer-note-status?customerId=${customerId}`, {
             method: 'DELETE',
             headers: { 'x-session-token': adminToken }
         });
-        const res5 = await DELETE(adminDelSingle, {});
-        console.log(`   Single customer clear with role=ADMIN -> Status: ${res5.status} (Expected: 200)`);
-        if (res5.status !== 200) throw new Error('Single customer delete failed');
+        const res6 = await DELETE(adminDelSingle, {});
+        console.log(`   Single customer clear with role=ADMIN -> Status: ${res6.status} (Expected: 200)`);
+        if (res6.status !== 200) throw new Error('Single customer delete failed');
 
         console.log('\n===============================================================');
         console.log('🎉 ALL SECURITY & AUTHORIZATION TESTS PASSED WITH 100% SUCCESS');

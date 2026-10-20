@@ -1450,20 +1450,20 @@ export default function LedgerPage() {
                                                                         {c.name.toUpperCase()} <span className="opacity-70 font-normal text-xs">(ID: {c.customer_code})</span>
                                                                     </span>
 
-                                                                    {/* Note Indicator Badge */}
-                                                                    {hasNote && (
-                                                                        <span 
-                                                                            title={cStatus?.note}
-                                                                            className="ml-1.5 px-1.5 py-0.2 text-[10px] rounded bg-primary/15 text-primary border border-primary/20 shrink-0 truncate max-w-[90px]"
-                                                                        >
-                                                                            📝
-                                                                        </span>
-                                                                    )}
-
                                                                     {c.id === lastSavedCustomerId && (
                                                                         <span className="ml-1 text-[10px] text-blue-500 font-bold shrink-0">(Just Saved)</span>
                                                                     )}
                                                                 </div>
+
+                                                                {/* Right side: Tiny, beautiful short note (max 23 chars) */}
+                                                                {hasNote && cStatus?.note && (
+                                                                    <span 
+                                                                        title={cStatus.note}
+                                                                        className="ml-auto mr-1.5 px-2 py-0.5 text-[10px] font-medium rounded-md bg-muted/50 text-muted-foreground/90 border border-border/40 shrink-0 truncate max-w-[150px] select-none"
+                                                                    >
+                                                                        {cStatus.note}
+                                                                    </span>
+                                                                )}
 
                                                                 {/* Notebook Icon with Touch Target & Stopped Propagation */}
                                                                 <button
@@ -2274,6 +2274,13 @@ export default function LedgerPage() {
                             return { ...current, statuses: updatedStatuses };
                         },
                         false // false = do NOT refetch from server!
+                    );
+                }}
+                onClearAllSuccess={() => {
+                    // SAFEGUARD: Optimistic local clear of note statuses only
+                    mutateNoteStatus(
+                        { statuses: {} },
+                        false
                     );
                 }}
             />
