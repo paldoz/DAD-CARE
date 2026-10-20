@@ -2279,11 +2279,9 @@ export default function LedgerPage() {
                     );
                 }}
                 onClearAllSuccess={() => {
-                    // SAFEGUARD: Optimistic local clear of note statuses only
-                    mutateNoteStatus(
-                        { statuses: {} },
-                        false
-                    );
+                    // Refetch from server: only THIS admin's customers were cleared,
+                    // so we need accurate server state rather than wiping the whole cache.
+                    mutateNoteStatus(undefined, true);
                 }}
             />
         </div>

@@ -206,7 +206,7 @@ export function CustomerNoteModal({
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Failed to clear all customer notes');
 
-            toast.success(`Dhammaan xaaladaha macaamiisha waa la wada tirtiray (${data.count || 0} macmiil)`);
+            toast.success(`Macaamiishaada priority ah waa la nadiifiyay (${data.count || 0} macmiil)`);
             setShowClearAllConfirm(false);
             if (onClearAllSuccess) {
                 onClearAllSuccess();
@@ -521,11 +521,11 @@ export function CustomerNoteModal({
                             <ShieldAlert className="w-6 h-6" />
                         </div>
                         <DialogTitle className="text-center text-lg font-black text-foreground">
-                            Ma hubtaa inaad nadiifiso dhammaan macaamiisha?
+                            Nadiifi macaamiishaada priority ah?
                         </DialogTitle>
                         <DialogDescription className="text-center text-xs text-muted-foreground space-y-2">
                             <span className="block text-red-600 dark:text-red-400 font-bold bg-red-500/10 p-2.5 rounded-xl border border-red-500/20">
-                                ⚠️ Digniin: Tani waxay tirtiri doontaa Sax Saar, Mashquul, iyo Qoraalada dhammaan macaamiisha.
+                                ⚠️ Digniin: Tani waxay tirtiri doontaa Sax Saar, Mashquul, iyo Qoraalada <strong>macaamiishaada priority ah oo kaliya</strong> — macaamiisha kale ma saameyn doonto.
                             </span>
                             <span className="block text-[11px] text-muted-foreground/90 font-medium">
                                 Xisaabaadka, hadhaaga, lacag-bixinta, iyo buugaagta xisaabta waxba kama badali doonto.

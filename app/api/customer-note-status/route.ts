@@ -165,10 +165,12 @@ export const POST = trackApiRoute('/api/customer-note-status', async (request: R
 /**
  * DELETE /api/customer-note-status
  * Deletes a single customer's note and status: ?customerId=...
- * 
+ * OR bulk-clears notes/statuses for the admin's OWN assigned customers: ?all=true&confirm=CONFIRM_CLEAR_ALL
+ *
  * SAFEGUARDS:
  * - Operates EXCLUSIVELY on "CustomerNoteStatus" table.
- * - Clear All feature is completely removed.
+ * - "Clear All" is SCOPED to the requesting admin's assigned_customer_ids only.
+ *   No admin (including SUPER_ADMIN) can clear notes belonging to other admins' customers.
  * - Never touches Customer, Ledger, DailyBook, or accounting data.
  */
 export const DELETE = trackApiRoute('/api/customer-note-status', async (request: Request) => {
@@ -185,7 +187,7 @@ export const DELETE = trackApiRoute('/api/customer-note-status', async (request:
         const clearAll = url.searchParams.get('all') === 'true';
         const confirmToken = url.searchParams.get('confirm');
 
-        // Bulk clear all customer notes/statuses from CustomerNoteStatus table only
+        // Bulk clear — SCOPED to only this admin's assigned customers
         if (clearAll) {
             if (confirmToken !== 'CONFIRM_CLEAR_ALL') {
                 return NextResponse.json(
@@ -194,22 +196,39 @@ export const DELETE = trackApiRoute('/api/customer-note-status', async (request:
                 );
             }
 
-            // Strictly deletes ONLY from "CustomerNoteStatus"
-            const result = await pool.query(`DELETE FROM "CustomerNoteStatus"`);
+            // Only clear notes for customers assigned to THIS admin
+            const assignedIds: string[] = session.assigned_customer_ids || [];
+
+            if (assignedIds.length === 0) {
+                return NextResponse.json({
+                    success: true,
+                    clearedAll: true,
+                    count: 0,
+                    message: 'No assigned customers found for this admin. Nothing was cleared.',
+                    clearedCustomerIds: [],
+                });
+            }
+
+            // Delete ONLY from CustomerNoteStatus where customer_id is in this admin's list
+            const result = await pool.query(
+                `DELETE FROM "CustomerNoteStatus" WHERE customer_id = ANY($1::uuid[])`,
+                [assignedIds]
+            );
             const deletedCount = result.rowCount || 0;
 
             await logAuditDirect({
                 username: session.username || 'ADMIN',
                 role: session.role || 'ADMIN',
-                action: 'CLEAR_ALL_CUSTOMER_NOTES',
-                details: `Admin ${session.username} cleared all customer notes/statuses (${deletedCount} records removed from CustomerNoteStatus). Financial data unaffected.`
+                action: 'CLEAR_OWN_CUSTOMER_NOTES',
+                details: `Admin ${session.username} cleared notes/statuses for their own ${assignedIds.length} assigned customers (${deletedCount} records removed from CustomerNoteStatus). Financial data unaffected.`
             }).catch(console.error);
 
             return NextResponse.json({
                 success: true,
                 clearedAll: true,
                 count: deletedCount,
-                message: `Successfully cleared ${deletedCount} customer note/status records.`,
+                message: `Successfully cleared ${deletedCount} customer note/status records for your priority customers.`,
+                clearedCustomerIds: assignedIds,
             });
         }
 
