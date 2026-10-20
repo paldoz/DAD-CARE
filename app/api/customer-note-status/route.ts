@@ -211,7 +211,7 @@ export const DELETE = trackApiRoute('/api/customer-note-status', async (request:
 
             // Delete ONLY from CustomerNoteStatus where customer_id is in this admin's list
             const result = await pool.query(
-                `DELETE FROM "CustomerNoteStatus" WHERE customer_id = ANY($1::uuid[])`,
+                `DELETE FROM "CustomerNoteStatus" WHERE customer_id = ANY($1::text[])`,
                 [assignedIds]
             );
             const deletedCount = result.rowCount || 0;
