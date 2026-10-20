@@ -19,6 +19,8 @@ import {
     Trash2, 
     Loader2, 
     Save, 
+    ShieldAlert,
+    X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { CustomerNoteStatusRecord } from '@/app/api/customer-note-status/route';
@@ -34,6 +36,7 @@ interface CustomerNoteModalProps {
     currentStatus?: CustomerNoteStatusRecord | null;
     isSuperAdmin?: boolean;
     onSaveSuccess: (updatedStatus: CustomerNoteStatusRecord | null) => void;
+    onClearAllSuccess?: () => void;
 }
 
 export function CustomerNoteModal({
@@ -41,29 +44,78 @@ export function CustomerNoteModal({
     onClose,
     customer,
     currentStatus,
+    isSuperAdmin = true,
     onSaveSuccess,
+    onClearAllSuccess,
 }: CustomerNoteModalProps) {
     const [priorityEnabled, setPriorityEnabled] = useState(false);
     const [busyEnabled, setBusyEnabled] = useState(false);
     const [note, setNote] = useState('');
     const [saving, setSaving] = useState(false);
-    const [clearingNote, setClearingNote] = useState(false);
+    const [clearingCustomer, setClearingCustomer] = useState(false);
+    const [clearingAll, setClearingAll] = useState(false);
+    const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
 
     // Sync form state whenever modal opens or customer changes
     useEffect(() => {
         if (isOpen && customer) {
-            setPriorityEnabled(Boolean(currentStatus?.priority_enabled));
-            setBusyEnabled(Boolean(currentStatus?.busy_enabled));
-            setNote(currentStatus?.note || '');
+            const hasPriority = Boolean(currentStatus?.priority_enabled);
+            const hasBusy = Boolean(currentStatus?.busy_enabled);
+            
+            // In case existing data has both, prioritize Sax Saar
+            if (hasPriority) {
+                setPriorityEnabled(true);
+                setBusyEnabled(false);
+                setNote('');
+            } else if (hasBusy) {
+                setPriorityEnabled(false);
+                setBusyEnabled(true);
+                setNote(currentStatus?.note || '');
+            } else {
+                setPriorityEnabled(false);
+                setBusyEnabled(false);
+                setNote(currentStatus?.note || '');
+            }
         }
     }, [isOpen, customer, currentStatus]);
 
     if (!customer) return null;
 
+    // Toggle Sax Saar: If selected, Mashquul cannot be selected & note cannot be typed
+    const handleToggleSaxSaar = () => {
+        if (busyEnabled) {
+            toast.info('Fadlan marka hore dami Mashquul si aad Sax Saar u doorato');
+            return;
+        }
+        if (priorityEnabled) {
+            setPriorityEnabled(false);
+        } else {
+            setPriorityEnabled(true);
+            setBusyEnabled(false);
+            setNote(''); // Sax Saar does not take a note
+        }
+    };
+
+    // Toggle Mashquul: If selected, Sax Saar cannot be selected, but note CAN be typed
+    const handleToggleMashquul = () => {
+        if (priorityEnabled) {
+            toast.info('Fadlan marka hore dami Sax Saar si aad Mashquul u doorato');
+            return;
+        }
+        setBusyEnabled(!busyEnabled);
+    };
+
+    // Save current settings (Sax Saar, Mashquul, Note)
     const handleSave = async () => {
         setSaving(true);
         try {
             const token = typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
+            
+            // Enforce business rules before sending
+            const finalPriority = priorityEnabled;
+            const finalBusy = !finalPriority && busyEnabled;
+            const finalNote = finalPriority ? '' : note.trim();
+
             const res = await fetch('/api/customer-note-status', {
                 method: 'POST',
                 headers: {
@@ -72,9 +124,9 @@ export function CustomerNoteModal({
                 },
                 body: JSON.stringify({
                     customerId: customer.id,
-                    priorityEnabled,
-                    busyEnabled,
-                    note: note.trim(),
+                    priorityEnabled: finalPriority,
+                    busyEnabled: finalBusy,
+                    note: finalNote,
                 }),
             });
 
@@ -97,249 +149,388 @@ export function CustomerNoteModal({
         }
     };
 
-    // Enabled whenever a note is entered or anything (Sax Saar / Busy) is selected
-    const hasEnteredNote = Boolean(note.trim() || (currentStatus?.note && currentStatus.note.trim()));
-    const hasSelectedAnything = Boolean(priorityEnabled || busyEnabled || currentStatus?.priority_enabled || currentStatus?.busy_enabled);
-    const canClear = hasEnteredNote || hasSelectedAnything;
+    // Check if this customer currently has any active status or note
+    const hasCustomerData = Boolean(
+        priorityEnabled || 
+        busyEnabled || 
+        note.trim() || 
+        currentStatus?.priority_enabled || 
+        currentStatus?.busy_enabled || 
+        (currentStatus?.note && currentStatus.note.trim())
+    );
 
-    // Clear Note: Clears ONLY the selected customer's note, preserving Sax Saar and Busy
-    const handleClearNote = async () => {
-        if (!hasEnteredNote) {
-            setNote('');
-            toast.info('Wax qoraal ah kuma jiraan oo la tirtiro');
-            return;
-        }
-
-        setClearingNote(true);
+    // Clear Customer: Clears Sax Saar, Mashquul, and Note completely for THIS customer
+    const handleClearCustomer = async () => {
+        setClearingCustomer(true);
         try {
             const token = typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
-            const res = await fetch('/api/customer-note-status', {
-                method: 'POST',
+            const res = await fetch(`/api/customer-note-status?customerId=${encodeURIComponent(customer.id)}`, {
+                method: 'DELETE',
                 headers: {
-                    'Content-Type': 'application/json',
                     ...(token ? { 'x-session-token': token } : {}),
                 },
-                body: JSON.stringify({
-                    customerId: customer.id,
-                    priorityEnabled,
-                    busyEnabled,
-                    note: '', // Clear only the note
-                }),
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to clear note');
+            if (!res.ok) throw new Error(data.error || 'Failed to clear customer status');
 
+            setPriorityEnabled(false);
+            setBusyEnabled(false);
             setNote('');
-            toast.success(`Qoraalka ${customer.name} waa la tirtiray`);
-            onSaveSuccess(data.status || null);
+            toast.success(`Xaaladaha ${customer.name} waa la tirtiray (Sax Saar, Mashquul, Note)`);
+            onSaveSuccess(null);
             onClose();
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Khalad ayaa dhacay markii la tirtirayay qoraalka';
+            const message = err instanceof Error ? err.message : 'Khalad ayaa dhacay markii la tirtirayay xaaladda';
             toast.error(message);
         } finally {
-            setClearingNote(false);
+            setClearingCustomer(false);
+        }
+    };
+
+    // Clear All: Bulk clears all customer notes, Sax Saar, and Mashquul statuses
+    const handleExecuteClearAll = async () => {
+        setClearingAll(true);
+        try {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('dadwork_session_token') || '' : '';
+            const res = await fetch('/api/customer-note-status?all=true&confirm=CONFIRM_CLEAR_ALL', {
+                method: 'DELETE',
+                headers: {
+                    ...(token ? { 'x-session-token': token } : {}),
+                },
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to clear all customer notes');
+
+            toast.success(`Dhammaan xaaladaha macaamiisha waa la wada tirtiray (${data.count || 0} macmiil)`);
+            setShowClearAllConfirm(false);
+            if (onClearAllSuccess) {
+                onClearAllSuccess();
+            }
+            onClose();
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Khalad ayaa dhacay markii la tirtirayay dhammaan xaaladaha';
+            toast.error(message);
+        } finally {
+            setClearingAll(false);
         }
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-            <DialogContent className="sm:max-w-[440px] p-5 glass-panel border border-border/60 shadow-2xl rounded-2xl">
-                <DialogHeader className="space-y-1 pb-2.5 border-b border-border/40">
-                    <div className="flex items-center gap-2 text-primary">
-                        <BookOpen className="w-4 h-4 text-primary shrink-0" />
-                        <DialogTitle className="text-base font-black tracking-tight text-foreground truncate">
-                            {customer.name.toUpperCase()}
-                        </DialogTitle>
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold shrink-0">
-                            ID: {customer.customer_code}
-                        </span>
-                    </div>
-                    <DialogDescription className="text-[11px] text-muted-foreground">
-                        Maamul Sax Saar, Busy, iyo Qoraal. Xisaabaadka waxba kama badalo.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-3 py-2">
-                    {/* ✓ 📞 Sax Saar Toggle Card */}
-                    <div 
-                        onClick={() => setPriorityEnabled(!priorityEnabled)}
-                        className={cn(
-                            "flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none",
-                            priorityEnabled 
-                                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-[0_0_10px_rgba(16,185,129,0.12)]" 
-                                : "bg-muted/30 border-border/40 hover:bg-muted/50"
-                        )}
-                    >
-                        <div className="flex items-center gap-2.5">
-                            <div className={cn(
-                                "w-7 h-7 rounded-full flex items-center justify-center font-black transition-colors",
-                                priorityEnabled ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
-                            )}>
-                                <Check className="w-3.5 h-3.5" />
-                            </div>
-                            <div>
-                                <div className="text-xs font-bold flex items-center gap-1.5">
-                                    <span>✓ 📞 Sax Saar</span>
-                                    {priorityEnabled && (
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black">
-                                            Active
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground">
-                                    Sax saar haddii aad wacday 📞
-                                </div>
-                            </div>
-                        </div>
-                        <Switch 
-                            checked={priorityEnabled} 
-                            onCheckedChange={setPriorityEnabled}
-                            className="data-[state=checked]:bg-emerald-500"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </div>
-
-                    {/* 🕒 Busy Toggle Card */}
-                    <div 
-                        onClick={() => setBusyEnabled(!busyEnabled)}
-                        className={cn(
-                            "flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none",
-                            busyEnabled 
-                                ? "bg-amber-500/10 border-amber-500/40 text-amber-950 dark:text-amber-100 shadow-[0_0_10px_rgba(245,158,11,0.12)]" 
-                                : "bg-muted/30 border-border/40 hover:bg-muted/50"
-                        )}
-                    >
-                        <div className="flex items-center gap-2.5">
-                            <div className={cn(
-                                "w-7 h-7 rounded-full flex items-center justify-center font-black transition-colors",
-                                busyEnabled ? "bg-amber-500 text-white shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-muted text-muted-foreground"
-                            )}>
-                                <Clock className="w-3.5 h-3.5" />
-                            </div>
-                            <div>
-                                <div className="text-xs font-bold flex items-center gap-1.5">
-                                    <span>🕒 Busy</span>
-                                    {busyEnabled && (
-                                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 font-black">
-                                            Active
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="text-[10px] text-muted-foreground">
-                                    Saar haddii uu telka ka qaban waayo 📞
-                                </div>
-                            </div>
-                        </div>
-                        <Switch 
-                            checked={busyEnabled} 
-                            onCheckedChange={setBusyEnabled}
-                            className="data-[state=checked]:bg-amber-500"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </div>
-
-                    {/* Note Input (Max 23 Characters) */}
-                    <div className="space-y-1">
-                        <div className="flex justify-between items-center text-xs font-bold text-foreground">
-                            <label htmlFor="customer-note-input" className="flex items-center gap-1">
-                                <span>Note</span>
-                            </label>
-                            <span className={cn(
-                                "text-[10px] font-mono",
-                                note.length >= 20 ? "text-amber-500 font-bold" : "text-muted-foreground"
-                            )}>
-                                {note.length}/23
+        <>
+            <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+                <DialogContent className="sm:max-w-[440px] p-5 glass-panel border border-border/60 shadow-2xl rounded-2xl">
+                    <DialogHeader className="space-y-1 pb-2.5 border-b border-border/40">
+                        <div className="flex items-center gap-2 text-primary">
+                            <BookOpen className="w-4 h-4 text-primary shrink-0" />
+                            <DialogTitle className="text-base font-black tracking-tight text-foreground truncate">
+                                {customer.name}
+                            </DialogTitle>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0 font-bold">
+                                ID: {customer.customer_code}
                             </span>
                         </div>
-                        <input
-                            id="customer-note-input"
-                            type="text"
-                            maxLength={23}
-                            value={note}
-                            onChange={(e) => setNote(e.target.value.slice(0, 23))}
-                            placeholder="Ku qor wuxuu ku yiri sida: hadhow i soo wac..."
-                            className="w-full text-xs rounded-xl px-3 py-2.5 bg-background/60 border border-border/60 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-muted-foreground/60 font-medium"
-                        />
-                    </div>
+                        <DialogDescription className="text-[11px] text-muted-foreground">
+                            Dooro midkood: Sax Saar AMA Mashquul. Xisaabaadka waxba kama badalo.
+                        </DialogDescription>
+                    </DialogHeader>
 
-                    {/* Metadata if already updated previously */}
-                    {currentStatus?.updated_at && (
-                        <div className="text-[10px] text-muted-foreground/70 flex justify-between items-center pt-1 border-t border-border/20">
-                            <span>
-                                Ugu dambeeyay: {new Date(currentStatus.updated_at).toLocaleDateString('so-SO', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
-                            </span>
-                            {currentStatus.updated_by && (
-                                <span className="font-semibold text-primary/80">
-                                    By: {currentStatus.updated_by}
-                                </span>
+                    <div className="space-y-3 py-2">
+                        {/* ✓ 📞 Sax Saar Toggle Card */}
+                        <div 
+                            onClick={handleToggleSaxSaar}
+                            className={cn(
+                                "flex items-center justify-between p-2.5 rounded-xl border transition-all select-none",
+                                busyEnabled 
+                                    ? "opacity-35 cursor-not-allowed bg-muted/15 border-border/20" 
+                                    : "cursor-pointer",
+                                priorityEnabled 
+                                    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-950 dark:text-emerald-100 shadow-[0_0_10px_rgba(16,185,129,0.12)]" 
+                                    : (!busyEnabled && "bg-muted/30 border-border/40 hover:bg-muted/50")
                             )}
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <div className={cn(
+                                    "w-7 h-7 rounded-full flex items-center justify-center font-black transition-colors",
+                                    priorityEnabled ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
+                                )}>
+                                    <Check className="w-3.5 h-3.5" />
+                                </div>
+                                <div>
+                                    <div className="text-xs font-bold flex items-center gap-1.5">
+                                        <span>✓ 📞 Sax Saar</span>
+                                        {priorityEnabled && (
+                                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black">
+                                                Active
+                                            </span>
+                                        )}
+                                        {busyEnabled && (
+                                            <span className="text-[9px] text-muted-foreground font-normal italic">
+                                                (Xiran yahay)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                        Sax saar haddii aad wacday 📞
+                                    </div>
+                                </div>
+                            </div>
+                            <Switch 
+                                checked={priorityEnabled} 
+                                disabled={busyEnabled}
+                                onCheckedChange={handleToggleSaxSaar}
+                                className="data-[state=checked]:bg-emerald-500"
+                                onClick={(e) => e.stopPropagation()}
+                            />
                         </div>
-                    )}
-                </div>
 
-                <DialogFooter className="flex flex-row items-center justify-between gap-2 pt-2.5 border-t border-border/40 sm:justify-between">
-                    {/* Left: Clear Note button */}
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleClearNote}
-                        disabled={!canClear || saving || clearingNote}
-                        className={cn(
-                            "h-8 px-2.5 text-xs font-bold gap-1.5 rounded-xl shadow-xs transition-all active:scale-95",
-                            canClear 
-                                ? "text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30 cursor-pointer" 
-                                : "text-muted-foreground/40 border-border/30 opacity-40 cursor-not-allowed pointer-events-none"
-                        )}
-                    >
-                        {clearingNote ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                        )}
-                        <span>Clear Note</span>
-                    </Button>
+                        {/* 🕒 Mashquul Toggle Card (Renamed from Busy) */}
+                        <div 
+                            onClick={handleToggleMashquul}
+                            className={cn(
+                                "flex items-center justify-between p-2.5 rounded-xl border transition-all select-none",
+                                priorityEnabled 
+                                    ? "opacity-35 cursor-not-allowed bg-muted/15 border-border/20" 
+                                    : "cursor-pointer",
+                                busyEnabled 
+                                    ? "bg-amber-500/10 border-amber-500/40 text-amber-950 dark:text-amber-100 shadow-[0_0_10px_rgba(245,158,11,0.12)]" 
+                                    : (!priorityEnabled && "bg-muted/30 border-border/40 hover:bg-muted/50")
+                            )}
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <div className={cn(
+                                    "w-7 h-7 rounded-full flex items-center justify-center font-black transition-colors",
+                                    busyEnabled ? "bg-amber-500 text-white shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-muted text-muted-foreground"
+                                )}>
+                                    <Clock className="w-3.5 h-3.5" />
+                                </div>
+                                <div>
+                                    <div className="text-xs font-bold flex items-center gap-1.5">
+                                        <span>🕒 Mashquul</span>
+                                        {busyEnabled && (
+                                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 font-black">
+                                                Active
+                                            </span>
+                                        )}
+                                        {priorityEnabled && (
+                                            <span className="text-[9px] text-muted-foreground font-normal italic">
+                                                (Xiran yahay)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground">
+                                        Saar haddii uu telka ka qaban waayo 📞
+                                    </div>
+                                </div>
+                            </div>
+                            <Switch 
+                                checked={busyEnabled} 
+                                disabled={priorityEnabled}
+                                onCheckedChange={handleToggleMashquul}
+                                className="data-[state=checked]:bg-amber-500"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
 
-                    {/* Right: Cancel & Save buttons */}
-                    <div className="flex items-center gap-2">
+                        {/* Note Input (Max 23 Characters) — Disabled when Sax Saar is active */}
+                        <div className={cn("space-y-1 transition-opacity", priorityEnabled && "opacity-50")}>
+                            <div className="flex justify-between items-center text-xs font-bold text-foreground">
+                                <label htmlFor="customer-note-input" className="flex items-center gap-1">
+                                    <span>Note</span>
+                                    {priorityEnabled && (
+                                        <span className="text-[10px] text-muted-foreground font-normal italic">
+                                            (Sax Saar uma baahna qoraal)
+                                        </span>
+                                    )}
+                                </label>
+                                <span className={cn(
+                                    "text-[10px] font-mono",
+                                    note.length >= 20 ? "text-amber-500 font-bold" : "text-muted-foreground"
+                                )}>
+                                    {note.length}/23
+                                </span>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    id="customer-note-input"
+                                    type="text"
+                                    maxLength={23}
+                                    value={note}
+                                    disabled={priorityEnabled}
+                                    onChange={(e) => setNote(e.target.value.slice(0, 23))}
+                                    placeholder={
+                                        priorityEnabled 
+                                            ? "Sax Saar qoraal uma baahna" 
+                                            : "Ku qor wuxuu ku yiri sida: hadhow i soo wac..."
+                                    }
+                                    className={cn(
+                                        "w-full text-xs rounded-xl pl-3 pr-8 py-2.5 border outline-none transition-all font-medium",
+                                        priorityEnabled 
+                                            ? "bg-muted/30 border-border/30 text-muted-foreground cursor-not-allowed placeholder:text-muted-foreground/40"
+                                            : "bg-background/60 border-border/60 focus:border-primary focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
+                                    )}
+                                />
+                                {!priorityEnabled && note.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setNote('')}
+                                        title="Clear text note"
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground p-0.5 rounded-full"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Metadata if updated previously */}
+                        {currentStatus?.updated_at && (
+                            <div className="text-[10px] text-muted-foreground/70 flex justify-between items-center pt-1 border-t border-border/20">
+                                <span>
+                                    Ugu dambeeyay: {new Date(currentStatus.updated_at).toLocaleDateString('so-SO', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    })}
+                                </span>
+                                {currentStatus.updated_by && (
+                                    <span className="font-semibold text-primary/80">
+                                        By: {currentStatus.updated_by}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="flex flex-row items-center justify-between gap-2 pt-2.5 border-t border-border/40 sm:justify-between">
+                        {/* Left: Clear This Customer */}
                         <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={onClose}
-                            disabled={saving || clearingNote}
-                            className="h-8 rounded-xl text-xs font-bold px-3"
+                            onClick={handleClearCustomer}
+                            disabled={!hasCustomerData || saving || clearingCustomer || clearingAll}
+                            className={cn(
+                                "h-8 px-2.5 text-xs font-bold gap-1.5 rounded-xl shadow-xs transition-all active:scale-95",
+                                hasCustomerData 
+                                    ? "text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/30 cursor-pointer" 
+                                    : "text-muted-foreground/40 border-border/30 opacity-40 cursor-not-allowed pointer-events-none"
+                            )}
+                            title="Tirtir Sax Saar, Mashquul, iyo Qoraalka macmiilkan"
                         >
-                            Cancel
+                            {clearingCustomer ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                            <span>Clear Customer</span>
+                        </Button>
+
+                        {/* Right: Cancel & Save */}
+                        <div className="flex items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={onClose}
+                                disabled={saving || clearingCustomer || clearingAll}
+                                className="h-8 rounded-xl text-xs font-bold px-3"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleSave}
+                                disabled={saving || clearingCustomer || clearingAll}
+                                className="h-8 rounded-xl text-xs font-black px-4 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 shadow-md shadow-primary/20"
+                            >
+                                {saving ? (
+                                    <>
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Save...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="w-3 h-3" />
+                                        Save
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </DialogFooter>
+
+                    {/* Admin Clear All Link */}
+                    {isSuperAdmin && (
+                        <div className="pt-2 text-center border-t border-border/20">
+                            <button
+                                type="button"
+                                onClick={() => setShowClearAllConfirm(true)}
+                                disabled={saving || clearingCustomer || clearingAll}
+                                className="text-[10px] font-semibold text-red-500/70 hover:text-red-600 hover:underline transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Nadiifi Dhammaan (Clear All)</span>
+                            </button>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* CONFIRMATION DIALOG FOR CLEAR ALL */}
+            <Dialog open={showClearAllConfirm} onOpenChange={setShowClearAllConfirm}>
+                <DialogContent className="sm:max-w-[420px] p-6 glass-panel border border-red-500/40 shadow-2xl rounded-2xl">
+                    <DialogHeader className="space-y-2">
+                        <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto border border-red-500/20">
+                            <ShieldAlert className="w-6 h-6" />
+                        </div>
+                        <DialogTitle className="text-center text-lg font-black text-foreground">
+                            Ma hubtaa inaad nadiifiso dhammaan macaamiisha?
+                        </DialogTitle>
+                        <DialogDescription className="text-center text-xs text-muted-foreground space-y-2">
+                            <span className="block text-red-600 dark:text-red-400 font-bold bg-red-500/10 p-2.5 rounded-xl border border-red-500/20">
+                                ⚠️ Digniin: Tani waxay tirtiri doontaa Sax Saar, Mashquul, iyo Qoraalada dhammaan macaamiisha.
+                            </span>
+                            <span className="block text-[11px] text-muted-foreground/90 font-medium">
+                                Xisaabaadka, hadhaaga, lacag-bixinta, iyo buugaagta xisaabta waxba kama badali doonto.
+                            </span>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <DialogFooter className="flex sm:flex-row gap-2 pt-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setShowClearAllConfirm(false)}
+                            disabled={clearingAll}
+                            className="w-full sm:w-1/2 h-10 rounded-xl font-bold text-xs"
+                        >
+                            Ka noqo
                         </Button>
                         <Button
                             type="button"
-                            size="sm"
-                            onClick={handleSave}
-                            disabled={saving || clearingNote}
-                            className="h-8 rounded-xl text-xs font-black px-4 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 shadow-md shadow-primary/20"
+                            variant="destructive"
+                            onClick={handleExecuteClearAll}
+                            disabled={clearingAll}
+                            className="w-full sm:w-1/2 h-10 rounded-xl font-black text-xs bg-red-600 hover:bg-red-700 text-white gap-1.5 shadow-lg shadow-red-600/30 cursor-pointer"
                         >
-                            {saving ? (
+                            {clearingAll ? (
                                 <>
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    Save...
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Nadiifinayaa...
                                 </>
                             ) : (
                                 <>
-                                    <Save className="w-3 h-3" />
-                                    Save
+                                    <Trash2 className="w-4 h-4" />
+                                    Haa, Nadiifi Dhammaan
                                 </>
                             )}
                         </Button>
-                    </div>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }

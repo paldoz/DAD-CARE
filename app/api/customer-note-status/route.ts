@@ -183,13 +183,34 @@ export const DELETE = trackApiRoute('/api/customer-note-status', async (request:
         const url = new URL(request.url);
         const customerId = url.searchParams.get('customerId');
         const clearAll = url.searchParams.get('all') === 'true';
+        const confirmToken = url.searchParams.get('confirm');
 
-        // Clear All has been permanently removed
+        // Bulk clear all customer notes/statuses from CustomerNoteStatus table only
         if (clearAll) {
-            return NextResponse.json(
-                { error: 'Clear All feature has been removed. Only individual customer notes can be cleared.' },
-                { status: 400 }
-            );
+            if (confirmToken !== 'CONFIRM_CLEAR_ALL') {
+                return NextResponse.json(
+                    { error: 'Explicit confirmation required. Provide confirm=CONFIRM_CLEAR_ALL to proceed.' },
+                    { status: 400 }
+                );
+            }
+
+            // Strictly deletes ONLY from "CustomerNoteStatus"
+            const result = await pool.query(`DELETE FROM "CustomerNoteStatus"`);
+            const deletedCount = result.rowCount || 0;
+
+            await logAuditDirect({
+                username: session.username || 'ADMIN',
+                role: session.role || 'ADMIN',
+                action: 'CLEAR_ALL_CUSTOMER_NOTES',
+                details: `Admin ${session.username} cleared all customer notes/statuses (${deletedCount} records removed from CustomerNoteStatus). Financial data unaffected.`
+            }).catch(console.error);
+
+            return NextResponse.json({
+                success: true,
+                clearedAll: true,
+                count: deletedCount,
+                message: `Successfully cleared ${deletedCount} customer note/status records.`,
+            });
         }
 
         // Single customer clear

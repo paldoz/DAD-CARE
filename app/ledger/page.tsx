@@ -1438,10 +1438,10 @@ export default function LedgerPage() {
                                                                         </span>
                                                                     )}
 
-                                                                    {/* Permanent Busy Indicator (Amber Dot •) */}
+                                                                    {/* Permanent Mashquul Indicator (Amber Dot •) */}
                                                                     {isBusy && (
                                                                         <span 
-                                                                            title="Customer is Busy"
+                                                                            title="Macmiilku waa Mashquul"
                                                                             className="inline-flex items-center justify-center w-2.5 h-2.5 mr-1.5 rounded-full bg-amber-500 shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.6)]"
                                                                         />
                                                                     )}
@@ -2274,6 +2274,13 @@ export default function LedgerPage() {
                             return { ...current, statuses: updatedStatuses };
                         },
                         false // false = do NOT refetch from server!
+                    );
+                }}
+                onClearAllSuccess={() => {
+                    // SAFEGUARD: Optimistic local clear of note statuses only
+                    mutateNoteStatus(
+                        { statuses: {} },
+                        false
                     );
                 }}
             />
