@@ -87,6 +87,48 @@ function getVipCount(note: string | undefined | null, fallbackKg: number = 0): n
     return found ? totalCount : fallbackKg;
 }
 
+export function parseFriendlyDeviceName(ua?: string | null): { name: string; key: string } {
+    if (!ua || typeof ua !== 'string' || !ua.trim()) {
+        return { name: '🌐 Unknown Device', key: 'unknown' };
+    }
+    const lower = ua.toLowerCase();
+
+    // Check iOS devices first
+    if (lower.includes('iphone')) {
+        return { name: '📱 iPhone', key: 'iphone' };
+    }
+    if (lower.includes('ipad')) {
+        return { name: '📱 iPad', key: 'ipad' };
+    }
+
+    // Android devices
+    if (lower.includes('android')) {
+        if (lower.includes('samsung') || lower.includes('sm-')) {
+            return { name: '📱 Samsung (Android)', key: 'android_samsung' };
+        }
+        if (lower.includes('pixel')) {
+            return { name: '📱 Google Pixel', key: 'android_pixel' };
+        }
+        if (lower.includes('xiaomi') || lower.includes('redmi') || lower.includes('mi ') || lower.includes('poco')) {
+            return { name: '📱 Xiaomi (Android)', key: 'android_xiaomi' };
+        }
+        return { name: '📱 Android Phone', key: 'android_phone' };
+    }
+
+    // Desktop OS
+    if (lower.includes('windows') || lower.includes('win64') || lower.includes('win32')) {
+        return { name: '💻 Windows PC', key: 'windows_pc' };
+    }
+    if (lower.includes('macintosh') || lower.includes('mac os x')) {
+        return { name: '💻 Mac', key: 'mac_pc' };
+    }
+    if (lower.includes('linux')) {
+        return { name: '💻 Linux PC', key: 'linux_pc' };
+    }
+
+    return { name: '🌐 Unknown Device', key: 'unknown' };
+}
+
 interface PerUserMaqal {
     user_id: string;
     username: string;
@@ -477,6 +519,55 @@ export default function SettingsPage() {
     const [adminDetailLogs, setAdminDetailLogs] = useState<any[]>([]);
     const [adminDetailLoading, setAdminDetailLoading] = useState(false);
     const [adminDetailStats, setAdminDetailStats] = useState<any>(null);
+
+    // Precompute device recognition for each log in adminDetailLogs (chronological order)
+    const adminDeviceAnalysis = useMemo(() => {
+        // Sort chronologically (oldest to newest) to track when each device signature was first seen
+        const chronological = [...adminDetailLogs].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+
+        const seenDevices = new Set<string>();
+        const resultMap = new Map<string, {
+            deviceName: string;
+            isFirstTime: boolean;
+            isKnown: boolean;
+            isUnverified: boolean;
+        }>();
+
+        for (const log of chronological) {
+            const parsed = parseFriendlyDeviceName(log.user_agent);
+            
+            if (!log.user_agent || parsed.key === 'unknown') {
+                resultMap.set(log.id, {
+                    deviceName: parsed.name,
+                    isFirstTime: false,
+                    isKnown: false,
+                    isUnverified: true,
+                });
+            } else {
+                const hasSeen = seenDevices.has(parsed.key);
+                if (!hasSeen) {
+                    seenDevices.add(parsed.key);
+                    resultMap.set(log.id, {
+                        deviceName: parsed.name,
+                        isFirstTime: log.action === 'LOGIN',
+                        isKnown: log.action !== 'LOGIN',
+                        isUnverified: false,
+                    });
+                } else {
+                    resultMap.set(log.id, {
+                        deviceName: parsed.name,
+                        isFirstTime: false,
+                        isKnown: true,
+                        isUnverified: false,
+                    });
+                }
+            }
+        }
+
+        return resultMap;
+    }, [adminDetailLogs]);
 
     // Helper to format relative time for inactive users
     const formatRelativeTime = (date?: Date): string => {
@@ -3813,6 +3904,14 @@ export default function SettingsPage() {
                                                                             <span className="font-mono text-[7px] bg-black/20 dark:bg-white/10 px-1 py-0.5 rounded border border-white/5">{log.ip_address}</span>
                                                                         </>
                                                                     )}
+                                                                    {log.user_agent && (
+                                                                        <>
+                                                                            <span className="w-1 h-1 rounded-full bg-white/10"></span>
+                                                                            <span className="text-[7px] px-1 py-0.5 rounded bg-black/20 dark:bg-white/10 border border-white/5 font-bold" title={log.user_agent}>
+                                                                                {parseFriendlyDeviceName(log.user_agent).name}
+                                                                            </span>
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                             {log.details && <p className="text-[10px] text-muted-foreground/90 leading-relaxed mt-0.5 truncate group-hover:whitespace-normal group-hover:text-clip">{log.details}</p>}
@@ -4324,11 +4423,58 @@ export default function SettingsPage() {
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-xs font-bold text-foreground">{log.action}</p>
                                                     {log.details && <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed truncate">{log.details}</p>}
-                                                    <p className="text-[9px] text-muted-foreground/60 mt-0.5">
-                                                        {logDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · {logDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                                                        {log.ip_address && <span className="ml-2 px-1 py-0.5 bg-muted rounded text-[8px]">{log.ip_address}</span>}
-                                                        {log.user_agent && <span className="ml-1 px-1 py-0.5 bg-muted rounded text-[8px] truncate max-w-[120px] inline-block align-bottom" title={log.user_agent}>{log.user_agent.split(' ')[0]}</span>}
-                                                    </p>
+                                                    <div className="flex items-center gap-1.5 flex-wrap text-[9px] text-muted-foreground/60 mt-1">
+                                                        <span>
+                                                            {logDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} · {logDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                        {log.ip_address && (
+                                                            <span className="px-1.5 py-0.5 bg-muted/70 rounded text-[8px] font-mono border border-border/30">
+                                                                {log.ip_address}
+                                                            </span>
+                                                        )}
+                                                        {(() => {
+                                                            const dev = adminDeviceAnalysis.get(log.id) || {
+                                                                deviceName: parseFriendlyDeviceName(log.user_agent).name,
+                                                                isFirstTime: false,
+                                                                isKnown: false,
+                                                                isUnverified: !log.user_agent,
+                                                            };
+                                                            return (
+                                                                <>
+                                                                    <span 
+                                                                        className="px-1.5 py-0.5 bg-muted/70 rounded text-[8px] font-bold text-foreground/80 border border-border/30 truncate max-w-[150px] inline-block align-bottom" 
+                                                                        title={log.user_agent || 'No device info recorded'}
+                                                                    >
+                                                                        {dev.deviceName}
+                                                                    </span>
+                                                                    {isLogin && (
+                                                                        dev.isFirstTime ? (
+                                                                            <span 
+                                                                                className="px-1.5 py-0.5 rounded text-[8px] font-black bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 inline-flex items-center gap-1"
+                                                                                title="First time this device signature appeared in this admin's login history"
+                                                                            >
+                                                                                🚨 New Device (1st time)
+                                                                            </span>
+                                                                        ) : dev.isKnown ? (
+                                                                            <span 
+                                                                                className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-muted/50 text-muted-foreground/80 border border-border/20 inline-block align-bottom"
+                                                                                title="Device previously seen for this admin"
+                                                                            >
+                                                                                Known Device
+                                                                            </span>
+                                                                        ) : dev.isUnverified ? (
+                                                                            <span 
+                                                                                className="px-1.5 py-0.5 rounded text-[8px] font-medium bg-muted/40 text-muted-foreground/60 border border-border/20 inline-block align-bottom"
+                                                                                title="Device details could not be reliably distinguished"
+                                                                            >
+                                                                                Device Not Verified
+                                                                            </span>
+                                                                        ) : null
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );

@@ -2276,13 +2276,6 @@ export default function LedgerPage() {
                         false // false = do NOT refetch from server!
                     );
                 }}
-                onClearAllSuccess={() => {
-                    // SAFEGUARD: Optimistic local clear of note statuses only
-                    mutateNoteStatus(
-                        { statuses: {} },
-                        false
-                    );
-                }}
             />
         </div>
     );
