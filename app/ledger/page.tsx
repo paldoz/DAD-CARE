@@ -1438,18 +1438,29 @@ export default function LedgerPage() {
                                                                         </span>
                                                                     )}
 
-                                                                    {/* Permanent Mashquul Indicator (Red Dot + Clock: 🔴 🕒) */}
+                                                                    {/* Permanent Mashquul Indicator (❓) */}
                                                                     {isBusy && (
                                                                         <span 
                                                                             title="Macmiilku waa Mashquul"
                                                                             className="inline-flex items-center gap-0.5 mr-1.5 text-xs font-black shrink-0 select-none"
                                                                         >
-                                                                            🔴 🕒
+                                                                            ❓
                                                                         </span>
                                                                     )}
 
                                                                     <span className="truncate">
-                                                                        {c.name.toUpperCase()} <span className="opacity-70 font-normal text-xs">(ID: {c.customer_code})</span>
+                                                                        {isSaxSaar ? (
+                                                                            <span className="rounded px-1 bg-green-500/20 text-green-700 dark:text-green-300">
+                                                                                {c.name.toUpperCase()}
+                                                                            </span>
+                                                                        ) : isBusy ? (
+                                                                            <span className="rounded px-1 bg-red-500/20 text-red-700 dark:text-red-300">
+                                                                                {c.name.toUpperCase()}
+                                                                            </span>
+                                                                        ) : (
+                                                                            c.name.toUpperCase()
+                                                                        )}{' '}
+                                                                        <span className="opacity-70 font-normal text-xs">(ID: {c.customer_code})</span>
                                                                     </span>
 
                                                                     {c.id === lastSavedCustomerId && (
