@@ -177,7 +177,7 @@ export function CustomerNoteModal({
                                     )}
                                 </div>
                                 <div className="text-[10px] text-muted-foreground">
-                                    Calaamadda 🟢 ✓ 📞 ku dar macmiilkan
+                                    Sax saar haddii aad wacday 📞
                                 </div>
                             </div>
                         </div>
@@ -216,7 +216,7 @@ export function CustomerNoteModal({
                                     )}
                                 </div>
                                 <div className="text-[10px] text-muted-foreground">
-                                    Waxay u yeelaysaa dhibicda huruudda ah ee • liiska
+                                    Saar haddii uu telka ka qaban waayo 📞
                                 </div>
                             </div>
                         </div>
@@ -247,7 +247,7 @@ export function CustomerNoteModal({
                             maxLength={23}
                             value={note}
                             onChange={(e) => setNote(e.target.value.slice(0, 23))}
-                            placeholder="Write a short note..."
+                            placeholder="Ku qor wuxuu ku yiri sida: hadhow i soo wac..."
                             className="w-full text-xs rounded-xl px-3 py-2.5 bg-background/60 border border-border/60 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-muted-foreground/60 font-medium"
                         />
                     </div>
