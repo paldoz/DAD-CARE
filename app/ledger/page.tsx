@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils';
 import useSWR, { mutate } from 'swr';
 import { AnimatedBackground } from '@/components/animated-background';
 import { useSession } from '@/hooks/useSession';
+import { CustomerNoteModal } from '@/components/customer-note-modal';
+import type { CustomerNoteStatusRecord } from '@/app/api/customer-note-status/route';
 
 const fetcher = async (url: string) => {
     // Cookie-only auth (credentials: include) — NO x-session-token header.
@@ -450,6 +452,24 @@ export default function LedgerPage() {
         new Set<string>((priorityData?.priorityIds || currentUser?.assigned_customer_ids || []) as string[]),
         [priorityData, currentUser]
     );
+
+    // ── Contextual Customer Notes & Statuses (Decoupled from financial ledger) ──
+    const [activeNoteCustomer, setActiveNoteCustomer] = useState<{
+        id: string;
+        name: string;
+        customer_code: string;
+    } | null>(null);
+
+    const { data: noteStatusData, mutate: mutateNoteStatus } = useSWR<{
+        statuses: Record<string, CustomerNoteStatusRecord>;
+    }>('/api/customer-note-status', fetcher, {
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
+        revalidateIfStale: false,
+        refreshInterval: 0,
+        dedupingInterval: 60000,
+    });
+    const noteStatuses = useMemo(() => noteStatusData?.statuses || {}, [noteStatusData]);
 
     const toggleStar = async (e: React.MouseEvent, customerId: string) => {
         e.stopPropagation();
@@ -1369,7 +1389,7 @@ export default function LedgerPage() {
                                                             return matchesSearch && !c.is_target_days_done && (c.unprocessed_books_count || c.total_books_count);
                                                         }
                                                         if (showPriorityOnly) {
-                                                            return matchesSearch && priorityIds.has(c.id);
+                                                            return matchesSearch && (priorityIds.has(c.id) || Boolean(noteStatuses[c.id]?.priority_enabled));
                                                         }
                                                         return matchesSearch;
                                                     });
@@ -1383,11 +1403,16 @@ export default function LedgerPage() {
                                                     const renderCustomer = (c: any) => {
                                                         const isCompleted = c.id === lastSavedCustomerId || c.is_target_days_done;
                                                         const isWarning = !isCompleted && (c.total_books_count > 0 || c.unprocessed_books_count > 0);
+                                                        const cStatus = noteStatuses[c.id];
+                                                        const hasPriority = Boolean(cStatus?.priority_enabled) || priorityIds.has(c.id);
+                                                        const isBusy = Boolean(cStatus?.busy_enabled);
+                                                        const hasNote = Boolean(cStatus?.note && cStatus.note.trim() !== '');
+
                                                         return (
                                                             <div 
                                                                 key={c.id}
                                                                 className={cn(
-                                                                    "relative flex cursor-default select-none items-center rounded-sm px-2 py-2.5 text-sm font-bold outline-none hover:bg-accent hover:text-accent-foreground group",
+                                                                    "relative flex cursor-pointer select-none items-center justify-between rounded-md px-2 py-2 text-sm font-bold outline-none transition-colors hover:bg-accent hover:text-accent-foreground group",
                                                                     selectedCustomerId === c.id ? "bg-primary/10 text-primary" : ""
                                                                 )}
                                                                 onClick={() => {
@@ -1396,13 +1421,72 @@ export default function LedgerPage() {
                                                                     setCustomerSearch('');
                                                                 }}
                                                             >
-                                                                {isCompleted ? (
-                                                                    <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5 shrink-0" />
-                                                                ) : isWarning ? (
-                                                                    <span className="mr-1.5 shrink-0">⚠️ </span>
-                                                                ) : null}
-                                                                {c.name.toUpperCase()} (ID: {c.customer_code})
-                                                                {c.id === lastSavedCustomerId && <span className="ml-1 text-[10px] text-blue-500 font-bold">(Just Saved)</span>}
+                                                                <div className="flex items-center min-w-0 flex-1 pr-2">
+                                                                    {isCompleted ? (
+                                                                        <CheckCircle2 className="w-4 h-4 text-blue-500 fill-blue-500/20 mr-1.5 shrink-0" />
+                                                                    ) : isWarning ? (
+                                                                        <span className="mr-1.5 shrink-0 text-amber-500 text-xs">⚠️</span>
+                                                                    ) : null}
+
+                                                                    {/* Permanent Priority Indicator (Green Check ✓) */}
+                                                                    {hasPriority && (
+                                                                        <span 
+                                                                            title="Priority Customer"
+                                                                            className="inline-flex items-center justify-center w-4 h-4 mr-1.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black shrink-0 border border-emerald-500/30"
+                                                                        >
+                                                                            ✓
+                                                                        </span>
+                                                                    )}
+
+                                                                    {/* Permanent Busy Indicator (Amber Dot •) */}
+                                                                    {isBusy && (
+                                                                        <span 
+                                                                            title="Customer is Busy"
+                                                                            className="inline-flex items-center justify-center w-2.5 h-2.5 mr-1.5 rounded-full bg-amber-500 shrink-0 shadow-[0_0_6px_rgba(245,158,11,0.6)]"
+                                                                        />
+                                                                    )}
+
+                                                                    <span className="truncate">
+                                                                        {c.name.toUpperCase()} <span className="opacity-70 font-normal text-xs">(ID: {c.customer_code})</span>
+                                                                    </span>
+
+                                                                    {/* Note Indicator Badge */}
+                                                                    {hasNote && (
+                                                                        <span 
+                                                                            title={cStatus?.note}
+                                                                            className="ml-1.5 px-1.5 py-0.2 text-[10px] rounded bg-primary/15 text-primary border border-primary/20 shrink-0 truncate max-w-[90px]"
+                                                                        >
+                                                                            📝
+                                                                        </span>
+                                                                    )}
+
+                                                                    {c.id === lastSavedCustomerId && (
+                                                                        <span className="ml-1 text-[10px] text-blue-500 font-bold shrink-0">(Just Saved)</span>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Notebook Icon with Touch Target & Stopped Propagation */}
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`Notes and status for ${c.name}`}
+                                                                    title="Notes & Priority"
+                                                                    className={cn(
+                                                                        "h-8 w-8 flex items-center justify-center rounded-md transition-all shrink-0",
+                                                                        "md:opacity-0 md:group-hover:opacity-100",
+                                                                        (hasPriority || isBusy || hasNote) && "md:opacity-100",
+                                                                        "opacity-75 hover:opacity-100 hover:bg-background/80 active:scale-95 text-muted-foreground hover:text-foreground"
+                                                                    )}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        e.preventDefault();
+                                                                        setActiveNoteCustomer(c);
+                                                                    }}
+                                                                    onTouchStart={(e) => {
+                                                                        e.stopPropagation();
+                                                                    }}
+                                                                >
+                                                                    <BookOpen className="w-3.5 h-3.5" />
+                                                                </button>
                                                             </div>
                                                         );
                                                     };
@@ -1415,8 +1499,9 @@ export default function LedgerPage() {
                                                         );
                                                     }
 
-                                                    const starred = filtered.filter((c: any) => priorityIds.has(c.id));
-                                                    const unstarred = filtered.filter((c: any) => !priorityIds.has(c.id));
+                                                    const isPriorityCustomer = (c: any) => priorityIds.has(c.id) || Boolean(noteStatuses[c.id]?.priority_enabled);
+                                                    const starred = filtered.filter(isPriorityCustomer);
+                                                    const unstarred = filtered.filter((c: any) => !isPriorityCustomer(c));
 
                                                     return (
                                                         <>
@@ -2167,6 +2252,38 @@ export default function LedgerPage() {
                     </div>
                 </div>
             )}
+
+            {/* Contextual Customer Note & Status Modal */}
+            <CustomerNoteModal
+                isOpen={!!activeNoteCustomer}
+                onClose={() => setActiveNoteCustomer(null)}
+                customer={activeNoteCustomer}
+                currentStatus={activeNoteCustomer ? noteStatuses[activeNoteCustomer.id] : null}
+                isSuperAdmin={isSuperAdmin}
+                onSaveSuccess={(updated) => {
+                    if (!activeNoteCustomer) return;
+                    // SAFEGUARD: Optimistic local update without reloading financial ledger or balances
+                    mutateNoteStatus(
+                        (current) => {
+                            const updatedStatuses = { ...(current?.statuses || {}) };
+                            if (updated) {
+                                updatedStatuses[activeNoteCustomer.id] = updated;
+                            } else {
+                                delete updatedStatuses[activeNoteCustomer.id];
+                            }
+                            return { ...current, statuses: updatedStatuses };
+                        },
+                        false // false = do NOT refetch from server!
+                    );
+                }}
+                onClearAllSuccess={() => {
+                    // SAFEGUARD: Optimistic local clear of note statuses only
+                    mutateNoteStatus(
+                        { statuses: {} },
+                        false
+                    );
+                }}
+            />
         </div>
     );
 }

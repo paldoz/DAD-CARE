@@ -46,6 +46,7 @@ model Customer {
   deleted_at    DateTime?
   daily_items   DailyBookItem[]
   ledger_items  Ledger[]
+  note_status   CustomerNoteStatus?
 
   @@index([customer_code])
   @@index([created_at])
@@ -133,4 +134,18 @@ model AuditLog {
   @@index([username])
   @@index([action])
   @@index([created_at])
+}
+
+model CustomerNoteStatus {
+  id               String    @id @default(uuid())
+  customer_id      String    @unique
+  customer         Customer  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  priority_enabled Boolean   @default(false)
+  busy_enabled     Boolean   @default(false)
+  note             String?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  updated_by       String?
+
+  @@index([customer_id])
 }
