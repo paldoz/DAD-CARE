@@ -460,20 +460,18 @@ export function CustomerNoteModal({
                                         </button>
 
                                         {/* Option 2: Clear all */}
-                                        {isSuperAdmin && (
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setShowClearMenu(false);
-                                                    setShowClearAllConfirm(true);
-                                                }}
-                                                disabled={clearingAll}
-                                                className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-bold rounded-lg text-left hover:bg-red-500/10 active:bg-red-500/20 text-red-600 dark:text-red-400 hover:text-red-700 transition-colors cursor-pointer border-t border-border/30 pt-2 touch-manipulation"
-                                            >
-                                                <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
-                                                <span>Clear all</span>
-                                            </button>
-                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setShowClearMenu(false);
+                                                setShowClearAllConfirm(true);
+                                            }}
+                                            disabled={clearingAll}
+                                            className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-bold rounded-lg text-left hover:bg-red-500/10 active:bg-red-500/20 text-red-600 dark:text-red-400 hover:text-red-700 transition-colors cursor-pointer border-t border-border/30 pt-2 touch-manipulation"
+                                        >
+                                            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                                            <span>Clear all</span>
+                                        </button>
                                     </div>
                                 </>
                             )}

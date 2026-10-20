@@ -2261,7 +2261,7 @@ export default function LedgerPage() {
                 onClose={() => setActiveNoteCustomer(null)}
                 customer={activeNoteCustomer}
                 currentStatus={activeNoteCustomer ? noteStatuses[activeNoteCustomer.id] : null}
-                isSuperAdmin={isSuperAdmin}
+                isSuperAdmin={isSuperAdmin || isAdmin}
                 onSaveSuccess={(updated) => {
                     if (!activeNoteCustomer) return;
                     // SAFEGUARD: Optimistic local update without reloading financial ledger or balances
