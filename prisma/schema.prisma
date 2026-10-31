@@ -38,18 +38,20 @@ model User {
 }
 
 model Customer {
-  id            String          @id @default(uuid())
-  customer_code String          @unique
-  name          String
-  avatar_url    String?
-  created_at    DateTime        @default(now())
-  deleted_at    DateTime?
-  daily_items   DailyBookItem[]
-  ledger_items  Ledger[]
-  note_status   CustomerNoteStatus?
+  id                    String          @id @default(uuid())
+  customer_code         String          @unique
+  name                  String
+  avatar_url            String?
+  first_daily_book_date DateTime?       @db.Date
+  created_at            DateTime        @default(now())
+  deleted_at            DateTime?
+  daily_items           DailyBookItem[]
+  ledger_items          Ledger[]
+  note_status           CustomerNoteStatus?
 
   @@index([customer_code])
   @@index([created_at])
+  @@index([first_daily_book_date])
 }
 
 model DailyBook {

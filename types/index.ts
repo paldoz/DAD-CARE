@@ -5,6 +5,11 @@ export interface Customer {
     gender?: string;
     phone?: string;
     avatar_url?: string;
+    first_daily_book_date?: string | null;
+    created_at?: string;
+    deleted_at?: string | null;
+    is_kabarka?: boolean;
+    is_unassignable?: boolean;
     unprocessed_books_count?: number;
     total_books_count?: number;
     is_target_days_done?: boolean;

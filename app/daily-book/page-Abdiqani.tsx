@@ -31,8 +31,9 @@ interface Customer {
     avatar_url?: string;
     is_kabarka?: boolean;
     is_unassignable?: boolean;
+    first_daily_book_date?: string | null;
     created_at?: string;
-    deleted_at?: string;
+    deleted_at?: string | null;
 }
 
 interface DailyBookItem {

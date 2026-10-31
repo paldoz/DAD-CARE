@@ -9,7 +9,7 @@ const getDailyBookInit = unstable_cache(
     async () => {
         // Fetch customers sorted by their numeric customer_code (so #1 comes before #2, etc.)
         const { rows: customers } = await pool.query(`
-          SELECT id, name, customer_code, is_kabarka, is_unassignable, created_at, deleted_at
+          SELECT id, name, customer_code, is_kabarka, is_unassignable, created_at, deleted_at, first_daily_book_date::text as first_daily_book_date
           FROM "Customer"
           ORDER BY 
             CASE WHEN customer_code ~ '^[0-9]+$' THEN customer_code::int ELSE 9999 END ASC,
@@ -18,7 +18,7 @@ const getDailyBookInit = unstable_cache(
 
         // Get the most recent daily-book date (no full history)
         const { rows: recent } = await pool.query(`
-          SELECT date FROM "DailyBook"
+          SELECT date::text as date FROM "DailyBook"
           WHERE deleted_at IS NULL
           ORDER BY date DESC
           LIMIT 1

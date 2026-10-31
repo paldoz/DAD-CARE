@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import { unstable_cache } from 'next/cache';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
+import { getAuthoritativeActiveDailyBookDate } from '@/lib/daily-book-utils';
 
 import { getAllCustomerStats, getCachedAllCustomerStats } from '@/app/utils/rankHelpers';
 import { z } from 'zod';
@@ -601,11 +602,15 @@ export const POST = trackApiRoute('/api/customers', async (request: Request) => 
         }
 
         // 2. Create the Customer record
+        // Server-side: compute the active Daily Book date from database state only.
+        // This is NEVER influenced by the browser's displayed date.
+        const activeDailyBookDate = await getAuthoritativeActiveDailyBookDate(pool);
+
         const { rows: inserted } = await pool.query(
-            `INSERT INTO "Customer" (id, name, customer_code, gender, phone, created_at)
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())
+            `INSERT INTO "Customer" (id, name, customer_code, gender, phone, first_daily_book_date, created_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, NOW())
              RETURNING *`,
-            [name, customer_code, gender || null, phone || null]
+            [name, customer_code, gender || null, phone || null, activeDailyBookDate]
         );
 
         const data = inserted[0];
@@ -615,6 +620,8 @@ export const POST = trackApiRoute('/api/customers', async (request: Request) => 
         revalidatePath('/api/daily-book-init');
         // @ts-ignore
         revalidateTag('customers');
+        // @ts-ignore
+        revalidateTag('daily-book-init');
         // @ts-ignore
         revalidateTag('dashboard');
         return NextResponse.json(data);
