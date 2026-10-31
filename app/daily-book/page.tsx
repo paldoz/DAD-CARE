@@ -299,7 +299,7 @@ function DailyBookPageInner() {
 
     // ⚡ SWR Hooks for Lightning Fast Caching
     const { data: initData, isError: initError, mutate: mutateInit } = useDailyBookInit();
-    const loadInit = () => mutateInit(); // Used by AddCustomerDialog to refresh after adding a customer
+    const loadInit = () => mutateInit(undefined, { revalidate: true }); // Used by AddCustomerDialog to refresh after adding a customer
     const dateStr = format(date, 'yyyy-MM-dd');
     // ⚡ Only fetch today's date entries when actually in edit mode — saves ~2–8 KB per load in history mode
     const { data: bookData } = useDailyBookDate((isInitialized && (viewMode === 'edit' || !!editingDate)) ? dateStr : null);
@@ -855,12 +855,15 @@ function DailyBookPageInner() {
         // 1. Existing search filter
         if (!smartCustomerSearch(c, debouncedSearchTerm)) return false;
 
-        // 2. Historical Creation Date Filter (Rule 1)
-        if (c.created_at) {
-            const customerCreatedStr = format(parseISO(c.created_at), 'yyyy-MM-dd');
-            if (customerCreatedStr > bookDateStr) {
-                return false;
-            }
+        // 2. Historical Creation / First Daily Book Date Filter (Rule 1)
+        // Use first_daily_book_date (the authoritative active Daily Book date when created),
+        // falling back to created_at for legacy customer records.
+        const customerStartDateStr = c.first_daily_book_date
+            ? String(c.first_daily_book_date).substring(0, 10)
+            : (c.created_at ? format(parseISO(c.created_at), 'yyyy-MM-dd') : null);
+
+        if (customerStartDateStr && customerStartDateStr > bookDateStr) {
+            return false;
         }
 
         // 3. Historical Deletion Date Filter

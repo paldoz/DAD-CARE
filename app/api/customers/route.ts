@@ -609,7 +609,7 @@ export const POST = trackApiRoute('/api/customers', async (request: Request) => 
         const { rows: inserted } = await pool.query(
             `INSERT INTO "Customer" (id, name, customer_code, gender, phone, first_daily_book_date, created_at)
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::date, NOW())
-             RETURNING *`,
+             RETURNING id, name, customer_code, gender, phone, first_daily_book_date::text as first_daily_book_date, created_at`,
             [name, customer_code, gender || null, phone || null, activeDailyBookDate]
         );
 

@@ -66,6 +66,11 @@ export function AddCustomerDialog({ onSuccess, trigger, nextId }: AddCustomerPro
             toast.success('Customer added!');
             mutate('/api/dashboard');
             mutate('/api/customers?lite=true');
+            mutate('/api/daily-book-init', undefined, { revalidate: true });
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('dadwork_customers_stale', Date.now().toString());
+                window.dispatchEvent(new Event('dadwork_customers_stale'));
+            }
             setCustomerId('');
             setName('');
             setGender('');
