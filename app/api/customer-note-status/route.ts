@@ -3,10 +3,12 @@ import pool from '@/lib/db';
 import { requireSession } from '@/lib/require-session';
 import { trackApiRoute } from '@/lib/egress-tracker';
 import { logAuditDirect } from '@/lib/audit';
+import { MAQAL_PAIRS_CTE } from '@/lib/maqal-utils';
 
 export interface CustomerNoteStatusRecord {
     customer_id: string;
     priority_enabled: boolean;
+    priority_pair_key: string | null;
     busy_enabled: boolean;
     note: string;
     updated_at: string;
@@ -30,7 +32,8 @@ export const GET = trackApiRoute('/api/customer-note-status', async (request: Re
         const query = `
             SELECT 
                 customer_id, 
-                priority_enabled, 
+                priority_enabled,
+                priority_pair_key,
                 busy_enabled, 
                 COALESCE(note, '') AS note, 
                 updated_at, 
@@ -47,6 +50,7 @@ export const GET = trackApiRoute('/api/customer-note-status', async (request: Re
             statuses[row.customer_id] = {
                 customer_id: row.customer_id,
                 priority_enabled: Boolean(row.priority_enabled),
+                priority_pair_key: row.priority_pair_key || null,
                 busy_enabled: Boolean(row.busy_enabled),
                 note: row.note || '',
                 updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
@@ -111,29 +115,57 @@ export const POST = trackApiRoute('/api/customer-note-status', async (request: R
 
         const updatedBy = session.username || session.userId || 'Admin';
 
+        // ── Resolve Sax Saar pair key server-side ──────────────────────────────
+        // When turning Sax Saar ON, we record which Maqal pair is currently active.
+        // This allows automatic reset when the pair changes (same timing as Blue Checkmark).
+        // When turning OFF, pair key is cleared (NULL).
+        // Uses the identical target_pair formula as is_target_days_done (Blue Checkmark).
+        let resolvedPairKey: string | null = null;
+        if (cleanPriority) {
+            const pairResult = await pool.query(`
+                ${MAQAL_PAIRS_CTE}
+                SELECT date1::text || '+' || date2::text AS pair_key
+                FROM pairs
+                WHERE date2 < (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Mogadishu')::date
+                ORDER BY date2 DESC
+                LIMIT 1;
+            `);
+            if (pairResult.rows.length === 0) {
+                // Cannot activate Sax Saar without a valid pair — prevents permanent NULL
+                return NextResponse.json(
+                    { error: 'Cannot activate Sax Saar: no active Maqal pair found. Please check your Daily Book dates.' },
+                    { status: 400 }
+                );
+            }
+            resolvedPairKey = pairResult.rows[0].pair_key;
+        }
+
         const upsertQuery = `
             INSERT INTO "CustomerNoteStatus" (
                 customer_id, 
-                priority_enabled, 
+                priority_enabled,
+                priority_pair_key,
                 busy_enabled, 
                 note, 
                 updated_at, 
                 updated_by
             )
-            VALUES ($1, $2, $3, $4, NOW(), $5)
+            VALUES ($1, $2, $3, $4, $5, NOW(), $6)
             ON CONFLICT (customer_id) 
             DO UPDATE SET 
                 priority_enabled = EXCLUDED.priority_enabled,
+                priority_pair_key = EXCLUDED.priority_pair_key,
                 busy_enabled = EXCLUDED.busy_enabled,
                 note = EXCLUDED.note,
                 updated_at = NOW(),
                 updated_by = EXCLUDED.updated_by
-            RETURNING customer_id, priority_enabled, busy_enabled, note, updated_at, updated_by;
+            RETURNING customer_id, priority_enabled, priority_pair_key, busy_enabled, note, updated_at, updated_by;
         `;
 
         const { rows } = await pool.query(upsertQuery, [
             customerId,
             cleanPriority,
+            resolvedPairKey,
             cleanBusy,
             cleanNote,
             updatedBy,
@@ -142,6 +174,7 @@ export const POST = trackApiRoute('/api/customer-note-status', async (request: R
         const record: CustomerNoteStatusRecord = {
             customer_id: rows[0].customer_id,
             priority_enabled: Boolean(rows[0].priority_enabled),
+            priority_pair_key: rows[0].priority_pair_key || null,
             busy_enabled: Boolean(rows[0].busy_enabled),
             note: rows[0].note || '',
             updated_at: new Date(rows[0].updated_at).toISOString(),

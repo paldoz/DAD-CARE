@@ -365,7 +365,7 @@ export default function LedgerPage() {
     const SESSION_KEY = 'dadwork_ledger_session_active';
 
     // Data state
-    const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean }[]>('/api/customers?mode=ledger', fetcher, {
+    const { data: rawCustomers, isLoading: fetchingCustomers, mutate: mutateCustomers } = useSWR<{ id: string, name: string, customer_code: string, unprocessed_books_count?: number, total_books_count?: number, is_target_days_done?: boolean, pair_date1?: string, pair_date2?: string }[]>('/api/customers?mode=ledger', fetcher, {
         revalidateOnFocus: false,     // ⚡ don't re-fetch on every tab-switch
         dedupingInterval: 60000,      // ⚡ 1 req per min max
         keepPreviousData: true,
@@ -373,6 +373,14 @@ export default function LedgerPage() {
     });
     const allCustomers = (rawCustomers || []).filter((c: any) => !c.is_inactive && !c.is_unassignable);
     
+
+    // -- Sax Saar: current Maqal pair key, from the SAME SWR cache as the Blue Checkmark --
+    // Both features read from /api/customers?mode=ledger (same cache entry, same DB query),
+    // guaranteeing they reset at exactly the same moment when the target pair advances.
+    // pair_date1/pair_date2 are a global value returned identically for every customer row.
+    const currentPairKey: string | null = (rawCustomers && rawCustomers.length > 0 && rawCustomers[0].pair_date1 && rawCustomers[0].pair_date2)
+        ? (rawCustomers[0].pair_date1 + '+' + rawCustomers[0].pair_date2)
+        : null;
     // Form state
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     
@@ -1404,7 +1412,7 @@ export default function LedgerPage() {
                                                         const isCompleted = c.id === lastSavedCustomerId || c.is_target_days_done;
                                                         const isWarning = !isCompleted && (c.total_books_count > 0 || c.unprocessed_books_count > 0);
                                                         const cStatus = noteStatuses[c.id];
-                                                        const isSaxSaar = Boolean(cStatus?.priority_enabled);
+                                                        const isSaxSaar = Boolean(cStatus?.priority_enabled) && Boolean(cStatus?.priority_pair_key) && cStatus?.priority_pair_key === currentPairKey; // Auto-resets when Maqal pair changes, same timing as Blue Checkmark
                                                         const isBusy = Boolean(cStatus?.busy_enabled);
                                                         const hasNote = Boolean(cStatus?.note && cStatus.note.trim() !== '');
 

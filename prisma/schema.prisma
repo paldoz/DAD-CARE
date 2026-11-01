@@ -139,15 +139,16 @@ model AuditLog {
 }
 
 model CustomerNoteStatus {
-  id               String    @id @default(uuid())
-  customer_id      String    @unique
-  customer         Customer  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  priority_enabled Boolean   @default(false)
-  busy_enabled     Boolean   @default(false)
-  note             String?
-  created_at       DateTime  @default(now())
-  updated_at       DateTime  @updatedAt
-  updated_by       String?
+  id                  String    @id @default(uuid())
+  customer_id         String    @unique
+  customer            Customer  @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  priority_enabled    Boolean   @default(false)
+  priority_pair_key   String?   // Maqal pair key active when Sax Saar was turned ON (e.g. "2026-10-29+2026-10-30")
+  busy_enabled        Boolean   @default(false)
+  note                String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  updated_by          String?
 
   @@index([customer_id])
 }
