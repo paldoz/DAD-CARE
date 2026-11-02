@@ -467,7 +467,9 @@ const getCachedCustomersLedger = unstable_cache(
                     WHEN COALESCE(td.target_pair_ledger_count, 0) >= 2 THEN true
                     WHEN (c.created_at AT TIME ZONE 'Africa/Mogadishu')::date > (SELECT date2 FROM target_pair) THEN true
                     ELSE false
-                END as is_target_days_done
+                END as is_target_days_done,
+                tp.date1::text as pair_date1,
+                tp.date2::text as pair_date2
             FROM "Customer" c
             LEFT JOIN (
                 SELECT customer_id, COUNT(DISTINCT id) as total_books_count, SUM(kg) as total_daily_kg
@@ -486,6 +488,7 @@ const getCachedCustomersLedger = unstable_cache(
                         IN (SELECT date1 FROM target_pair UNION SELECT date2 FROM target_pair)
                 GROUP BY customer_id
             ) td ON c.id = td.customer_id
+            LEFT JOIN target_pair tp ON true
             ORDER BY c.name ASC;
         `;
         const { rows } = await pool.query(query);
