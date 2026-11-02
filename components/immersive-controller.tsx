@@ -1,24 +1,26 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import { usePathname } from 'next/navigation';
 
 /**
  * ImmersiveController
- * Enforces true immersive fullscreen mode on mobile Android devices.
- * - Hides the top status bar (time, battery, wifi).
- * - Hides the bottom navigation bar and gesture indicator.
- * - Restores fullscreen on route transitions, app focus, and user interaction.
- * - Leaves desktop browsers untouched.
+ * Requests fullscreen ONCE on initial mount, only if not already fullscreen.
+ *
+ * Why only once:
+ * - PWA installed with "display": "fullscreen" already launches in fullscreen via WebAPK.
+ * - SPA (Next.js) route changes do NOT exit fullscreen — no need to re-request.
+ * - Every requestFullscreen() call triggers Android Chrome's security notification
+ *   ("To exit full screen, drag from the top and touch the back button").
+ * - Calling it on touchstart, click, focus, or pathname changes causes repeated
+ *   notifications during normal navigation. Removed entirely.
  */
 export function ImmersiveController() {
-    const pathname = usePathname();
-
     const enterFullscreen = useCallback(async () => {
         if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-        // Target mobile/touch devices only
-        const isMobileOrTouch = window.matchMedia('(pointer: coarse)').matches ||
+        // Only target mobile / touch devices
+        const isMobileOrTouch =
+            window.matchMedia('(pointer: coarse)').matches ||
             /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
         if (!isMobileOrTouch) return;
@@ -26,6 +28,7 @@ export function ImmersiveController() {
         const doc = document as any;
         const docEl = document.documentElement as any;
 
+        // Do nothing if already in fullscreen — avoids triggering Android's notification
         const isAlreadyFullscreen = !!(
             doc.fullscreenElement ||
             doc.webkitFullscreenElement ||
@@ -33,66 +36,37 @@ export function ImmersiveController() {
             doc.msFullscreenElement
         );
 
-        if (!isAlreadyFullscreen) {
-            const requestMethod =
-                docEl.requestFullscreen ||
-                docEl.webkitRequestFullscreen ||
-                docEl.mozRequestFullScreen ||
-                docEl.msRequestFullscreen;
+        if (isAlreadyFullscreen) return;
 
-            if (requestMethod) {
-                try {
-                    // navigationUI: 'hide' specifically commands Android/Chromium to hide the navigation gesture bar
-                    await requestMethod.call(docEl, { navigationUI: 'hide' });
-                } catch {
-                    // Requires user gesture on initial cold load; touch/click listeners below handle it
-                }
+        const requestMethod =
+            docEl.requestFullscreen ||
+            docEl.webkitRequestFullscreen ||
+            docEl.mozRequestFullScreen ||
+            docEl.msRequestFullscreen;
+
+        if (requestMethod) {
+            try {
+                await requestMethod.call(docEl, { navigationUI: 'hide' });
+            } catch {
+                // Requires a user gesture — silently ignored on cold load;
+                // the PWA manifest fullscreen display mode handles OS-level fullscreen.
             }
         }
 
-        // Lock to portrait-primary if supported
+        // Lock portrait orientation if supported
         try {
             if (window.screen?.orientation && 'lock' in window.screen.orientation) {
                 await (window.screen.orientation as any).lock('portrait-primary');
             }
         } catch {
-            // Orientation lock not permitted or unsupported on device
+            // Orientation lock not permitted or unsupported on this device
         }
     }, []);
 
-    useEffect(() => {
-        const handleInteraction = () => {
-            enterFullscreen();
-        };
-
-        const handleVisibility = () => {
-            if (document.visibilityState === 'visible') {
-                enterFullscreen();
-            }
-        };
-
-        // Listen for user taps/clicks to trigger fullscreen on first gesture
-        window.addEventListener('touchstart', handleInteraction, { passive: true });
-        window.addEventListener('click', handleInteraction, { passive: true });
-        window.addEventListener('focus', handleVisibility);
-        document.addEventListener('visibilitychange', handleVisibility);
-
-        // Immediate attempt on mount
-        enterFullscreen();
-
-        return () => {
-            window.removeEventListener('touchstart', handleInteraction);
-            window.removeEventListener('click', handleInteraction);
-            window.removeEventListener('focus', handleVisibility);
-            document.removeEventListener('visibilitychange', handleVisibility);
-        };
-    }, [enterFullscreen]);
-
-    // Re-assert immersive mode on every route change
+    // Single attempt on mount only — no repeated calls on navigation, focus, or interaction
     useEffect(() => {
         enterFullscreen();
-    }, [pathname, enterFullscreen]);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     return null;
 }
-
