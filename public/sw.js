@@ -1,5 +1,5 @@
 // v6-landing: Bumped to force-clear old cache that had stale / route
-const CACHE_NAME = 'dadcare-v6-landing';
+const CACHE_NAME = 'dadcare-v7-fullscreen';
 const STATIC_ASSETS = [
   '/dashboard',
   '/customers',

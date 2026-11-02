@@ -58,7 +58,7 @@ export function MobileNav() {
             {/* Bottom Tab Bar - Premium Glass Design */}
             <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
                 {/* Glass background */}
-                <div className="bg-card/90 backdrop-blur-2xl border-t border-border/50 shadow-[0_-4px_30px_rgba(0,0,0,0.1)]">
+                <div className="bg-card/90 backdrop-blur-2xl border-t border-border/50 shadow-[0_-4px_30px_rgba(0,0,0,0.1)] pb-[env(safe-area-inset-bottom,0px)]">
                     <div className="flex items-center justify-around h-[68px] px-2 max-w-md mx-auto">
                         {mainTabs.map((tab) => {
                             const isActive = pathname === tab.href || pathname?.startsWith(`${tab.href}/`);
